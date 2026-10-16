@@ -12,7 +12,7 @@ import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanv
 import { api, fileToBase64, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ASPECTS, GAZES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS, PRESETS, PROPS,
-  SCENES, SKIN_TONES, presetPrompt, type AccessoryInfo, type Item, type PoseMode,
+  SCENES, SET_SHOTS, SKIN_TONES, presetPrompt, type AccessoryInfo, type Item, type PoseMode,
 } from '@/lib/catalog';
 
 type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
@@ -277,7 +277,8 @@ export default function TryOn() {
     }
   }
 
-  async function generate() {
+  // set = ชุดภาพ 4 มุม (SET_SHOTS): รูปหลักสร้างตามที่เลือก แล้วส่งรูปหลักเป็นต้นแบบให้อีก 3 มุมพร้อมกัน
+  async function generate(set = false) {
     if (!outfit && !accs.length && !pose && !aiPose && !scene) return setStatus('เลือกชุด ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
@@ -292,7 +293,9 @@ export default function TryOn() {
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
     ].join(' · ') + ` — ${choice.label}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
-    setBusy(harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)' : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
+    const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
+    setBusy(set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
+      : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)' : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
     try {
       // ย่อรูปทุกรูปก่อน (ได้ขนาดจริงที่ส่งไว้ทำ log ด้วย)
       const person = await jpegBase64(model.src!);
@@ -302,7 +305,7 @@ export default function TryOn() {
       const sceneImg = !shotScene && scene?.src ? await jpegBase64(scene.src) : null;
       // ที่มาของแต่ละรูป: server เก็บลง log ว่าส่งรูปไหนไปเป็น Image อะไร (ไม่ได้ส่งให้ AI)
       const ref = (item: Item | undefined, img: { w: number; h: number } | null) => (item && img ? { name: item.name, src: item.src, w: img.w, h: img.h } : null);
-      const out = await api('/api/generate', {
+      const body = {
         model: choice.id,
         person: person.data,
         outfit: outfitImg?.data ?? null,
@@ -332,20 +335,35 @@ export default function TryOn() {
         quality,
         extra: extra.trim(),
         look: shot ? null : presetPrompt(preset), // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ
-        full_body: preset.fullBody,
-        framing: shot ? null : preset.framing.prompt,
+        // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของชุดถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
+        full_body: set ? SET_SHOTS[0].fullBody : preset.fullBody,
+        framing: shot ? null : set ? SET_SHOTS[0].framing : preset.framing.prompt,
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
         harmonize,
-        caption,
-      });
-
-      const made: Result[] = [{ src: out.src, caption }]; // server เซฟไว้ใน results/ แล้ว
+      };
+      const out = await api('/api/generate', { ...body, caption: set ? setCaption(0) : caption });
+      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption }]; // server เซฟไว้ใน results/ แล้ว
+      if (set) {
+        // มุมที่เหลือ: ส่งรูปหลักไปเป็นรูปแรก ไม่ส่งรูปท่า/ฉาก (server ใช้ buildSetPrompt) — พังบางรูป ยังเก็บรูปที่ได้
+        setBusy(`AI กำลังสร้างอีก ${SET_SHOTS.length - 1} มุมพร้อมกัน... (ประมาณ 30–90 วินาที)`);
+        const hero = await jpegBase64(out.src);
+        const rest = await Promise.allSettled(SET_SHOTS.slice(1).map((s, j) => api('/api/generate', {
+          ...body,
+          set_ref: hero.data,
+          set_shot: { name: s.name, framing: s.framing, angle: s.angle, full_body: s.fullBody },
+          refs: { ...body.refs, set_ref: { name: setCaption(0), src: out.src, w: hero.w, h: hero.h } },
+          caption: setCaption(j + 1),
+        }).then(({ src }) => ({ src, caption: setCaption(j + 1) }))));
+        made.push(...rest.filter((x) => x.status === 'fulfilled').map((x) => x.value));
+        const failed = rest.filter((x) => x.status === 'rejected');
+        if (failed.length) setStatus(`ชุดภาพได้ ${made.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
+      }
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
-      if (!REAL_FACE) {
-        // ปิดอยู่ -> ใช้รูปจาก AI ตามเดิม
+      if (!REAL_FACE || set) {
+        // ปิดอยู่ / ชุดภาพ (หลายมุม หน้าหันต่างกัน) -> ใช้รูปจาก AI ตามเดิม
       } else if (onFace) {
         setStatus(`ใส่${onFace}อยู่บนหน้า เลยใช้หน้าจาก AI (ถ้าใส่หน้าจริง ${onFace}จะหายไป)`);
       } else {
@@ -582,6 +600,9 @@ export default function TryOn() {
   } else if (cur.key === 'settings') {
     inspector = <>
       <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>สร้างรูป</button>
+      <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}>
+        ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI {SET_SHOTS.length} เท่า</small>
+      </button>
       <details className="advanced">
         <summary>ขั้นสูง <small>โมเดล AI · สัดส่วน · การมอง · พร็อพ · สั่งเพิ่ม</small></summary>
         <Section title="โมเดล AI">
@@ -657,6 +678,10 @@ export default function TryOn() {
         </div>
         <div className="top-actions">
           <button className="btn btn-secondary" onClick={save}><IconDownload /> <span className="hide-sm">ดาวน์โหลด</span></button>
+          <button className="btn btn-secondary" disabled={busy !== null || !aiModels?.length} title={SET_SHOTS.map((s) => s.name).join(' · ')}
+            onClick={() => void generate(true)}>
+            ชุดภาพ {SET_SHOTS.length} มุม
+          </button>
           <button className="btn btn-primary" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>
             {busy !== null ? 'กำลังสร้าง...' : 'สร้างรูป'}
           </button>

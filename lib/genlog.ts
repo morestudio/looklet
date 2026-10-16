@@ -2,7 +2,7 @@
 // 1 รูป = 1 ไฟล์ใน logs/ (JSON จัดย่อหน้า เปิดใน VS Code แล้วพับ/กางทีละ section ได้)
 //   ชื่อไฟล์ = ชื่อรูปผลลัพธ์: results/20261015-152904-f43438.jpg -> logs/20261015-152904-f43438.json
 //   สร้างไม่สำเร็จ (ไม่มีรูป) -> logs/<วันเวลา>-<สุ่ม>-error.json
-//   ai = โมเดล AI + ค่าที่ส่ง | model = นางแบบ | element = ชุด / ของเสริม / ฉาก | pose = ท่าโพสต์ | style = แสง / กล้อง / พร็อพ
+//   ai = โมเดล AI + ค่าที่ส่ง | model = นางแบบ | element = ชุด / ของเสริม / ฉาก | pose = ท่าโพสต์ | set = ชุดภาพหลายมุม | style = แสง / กล้อง / พร็อพ
 //   image = ลำดับรูปที่ AI เห็น (Image n ในพรอมต์), file = รูปต้นฉบับ, sent = ขนาดที่ส่งจริงหลังย่อ
 //   prompt = ทีละประโยค (ต่อกันด้วยช่องว่าง 1 ตัว = ข้อความที่ส่งจริง), result = รูปผลลัพธ์ (/api/files/results/...)
 import 'server-only';
@@ -25,6 +25,7 @@ export type GenerateLog = {
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
   pose: { mode: string } & Partial<LogImage>;
+  set?: { shot: string } & Partial<LogImage>; // ชุดภาพหลายมุม: มุมของรูปนี้ + รูปหลักที่ใช้เป็นต้นแบบ
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
   harmonizePrompt?: string[]; // รอบสอง: ส่งรูปที่ได้จากรอบแรกรูปเดียว + พรอมต์นี้

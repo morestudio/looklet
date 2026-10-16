@@ -189,6 +189,22 @@ export const PRESETS: Preset[] = [
     color: { label: 'อุ่น สีสดแต่เป็นธรรมชาติ', prompt: 'Warm, rich but natural colors, mixed daylight and tungsten white balance.' } },
 ];
 
+// ---------- ชุดภาพ 4 มุม: กดครั้งเดียวได้หลายรูปเหมือนถ่ายช็อตเดียวกัน ----------
+// รูปแรก (หน้าตรง) สร้างตามที่เลือกทุกอย่าง แล้วส่งรูปนั้นไปเป็นต้นแบบให้รูปที่เหลือ (คน ชุด ฉาก แสง ตรงกันทั้งชุด)
+// framing = ระยะ (แทนระยะของชุดถ่ายภาพ), angle = มุมกล้อง + ท่า สำหรับรูปที่ 2 เป็นต้นไป (รูปแรกใช้ท่าที่เลือกไว้)
+export type SetShot = { id: string; name: string; fullBody: boolean; framing: string; angle: string };
+export const SET_SHOTS: SetShot[] = [
+  { id: 'front', name: 'หน้าตรง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+    angle: "Camera angle: straight on at the model's chest height, the model facing the camera." },
+  { id: 'three-quarter', name: 'เฉียง 3/4', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+    angle: 'Camera angle: a three-quarter view: the body is turned about 45 degrees away from the camera, the face turned back toward the camera.' },
+  { id: 'back', name: 'ด้านหลัง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+    angle: "Camera angle: from behind and slightly to one side, so the back of the outfit is clearly visible; the model looks back over the shoulder so part of the face shows." },
+  { id: 'detail', name: 'ใกล้ เอวขึ้นไป', fullBody: false,
+    framing: 'framed from the waist up so the outfit details and any accessories fill the frame, with the legs out of frame',
+    angle: 'Camera angle: close, at chest height, straight on, focused on the fabric, details and accessories.' },
+];
+
 // รวมส่วนของชุดถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
 export const presetPrompt = (p: Preset) =>
   `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;

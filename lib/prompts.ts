@@ -161,6 +161,42 @@ export function buildPrompt({
   return lines.join(' ');
 }
 
+// ชุดภาพหลายมุม: รูปที่ 2 เป็นต้นไป — รูปที่ส่งเรียงเป็น: 1 รูปหลักของชุด, 2 นางแบบ, (ชุด), (ของเสริม...)
+// รูปหลักมีคน ชุด ฉาก แสงครบแล้ว ให้ AI ลอกทุกอย่างจากรูปนั้น เปลี่ยนแค่มุมกล้อง/ระยะ/ท่า
+// ไม่ใส่ REALISM/แสงของชุดถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
+export type SetPromptInput = {
+  framing: string; angle: string; fullBody: boolean; hasOutfit: boolean; accessories?: string[]; extra?: string | null;
+};
+
+export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessories = [], extra }: SetPromptInput) {
+  const lines = [
+    `Create one fashion photograph, ${framing}.`,
+    'Image 1 is a photo from the same photo shoot. Keep everything from image 1 the same: the same person (face, hairstyle, '
+      + 'body shape and skin), the same outfit and accessories, the same location and background, the same light direction, '
+      + 'color grading, lens look and image quality.',
+    'Image 2 shows the same model: use it to keep the face identical.',
+  ];
+  let n = 3;
+  if (hasOutfit) {
+    lines.push(`Image ${n} is the outfit: use it to keep the garments accurate, including parts that are not visible in image 1. `
+      + `Ignore the face, body and background of image ${n}.`);
+    n += 1;
+  }
+  if (accessories.length) {
+    for (const what of accessories) {
+      lines.push(`Image ${n} is a product photo of ${what}.`);
+      n += 1;
+    }
+    lines.push(ACCESSORY_RULES);
+  }
+  lines.push(`Only the camera angle, framing and pose change. ${angle} Choose a natural, relaxed fashion pose that suits this angle.`);
+  lines.push('It must look like the next frame from the same real photo shoot, not a new composite. '
+    + 'Keep the existing skin texture; do not smooth it.');
+  if (fullBody) lines.push('Show the full body from head to feet.');
+  if (extra) lines.push('Additional instruction: ' + extra);
+  return lines.join(' ');
+}
+
 // รอบสอง (ไม่บังคับ): ให้ AI ดูรูปที่ได้อีกรอบแล้วเกลี่ยแสง/เงา/สีให้เป็นรูปเดียวกัน
 export const HARMONIZE_PROMPT =
   'This photo may look like a composite. Make it look like one natural photograph taken by a single camera: '

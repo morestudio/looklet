@@ -1,7 +1,7 @@
 import { availableModels, generateImage, type Img } from '@/lib/ai';
 import { MAX_ACCESSORIES, POSE_MODES, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
-import { buildPrompt, harmonizePrompt } from '@/lib/prompts';
+import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
 import { saveImage } from '@/lib/storage';
 
@@ -28,21 +28,33 @@ export const POST = post(async (req) => {
   if (accessories.length > MAX_ACCESSORIES) return json(400, { error: `ของเสริมใส่ได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป` });
   const poseMode: PoseMode = POSE_MODES.find((m) => m.id === req.pose_mode)?.id ?? 'pose';
   const shotScene = Boolean(req.pose) && poseMode === 'shot-scene'; // ฉากมาจากรูปท่าโพสต์ ไม่ใช้ฉากที่เลือก
+  // ชุดภาพหลายมุม (รูปที่ 2 เป็นต้นไป): set_ref = รูปหลักของชุด, set_shot = ระยะ + มุมกล้อง (SET_SHOTS) — ไม่ส่งรูปท่า/ฉาก ใช้จากรูปหลัก
+  const setRef: string | null = typeof req.set_ref === 'string' && req.set_ref ? req.set_ref : null;
+  const setShot = setRef && req.set_shot && typeof req.set_shot === 'object' ? req.set_shot as Record<string, unknown> : null;
+  if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
 
   // รูปที่ส่งให้ AI: นางแบบ (ต้องมี) + ชุด + ของเสริม + ท่าโพสต์ + ฉาก (ถ้าเลือก) — ลำดับต้องตรงกับ buildPrompt
   // ทำรายการเดียวใช้ทั้งส่ง AI และทำ log ลำดับใน log จะตรงกับที่ AI เห็นเสมอ
   const refs = (req.refs && typeof req.refs === 'object' ? req.refs : {}) as Record<string, unknown>;
   const accRefs = Array.isArray(refs.accessories) ? refs.accessories : [];
   const inputs = [
+    { role: 'รูปหลักของชุด', data: setRef, ref: toRef(refs.set_ref) },
     { role: 'นางแบบ', data: req.person, ref: toRef(refs.person) },
     { role: 'ชุด', data: req.outfit, ref: toRef(refs.outfit) },
     ...accessories.map((a, i) => ({ role: 'ของเสริม', data: a.data, ref: toRef(accRefs[i]) })),
-    { role: 'ท่าโพสต์', data: req.pose, ref: toRef(refs.pose) },
-    { role: 'ฉาก', data: shotScene ? null : req.scene_image, ref: toRef(refs.scene) },
+    { role: 'ท่าโพสต์', data: setRef ? null : req.pose, ref: toRef(refs.pose) },
+    { role: 'ฉาก', data: setRef || shotScene ? null : req.scene_image, ref: toRef(refs.scene) },
   ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string' && x.data.length > 0);
   const images: Img[] = inputs.map((x) => ({ data: x.data, mime: 'image/jpeg' }));
   const look: string | null = req.look ?? null;
-  const prompt = buildPrompt({
+  const prompt = setRef ? buildSetPrompt({
+    framing: text(setShot!.framing)!,
+    angle: text(setShot!.angle)!,
+    fullBody: setShot!.full_body !== false,
+    hasOutfit: Boolean(req.outfit),
+    accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
+    extra: req.extra,
+  }) : buildPrompt({
     hasOutfit: Boolean(req.outfit),
     hasSceneImage: !shotScene && Boolean(req.scene_image),
     sceneText: shotScene ? null : req.scene_text,
@@ -60,7 +72,7 @@ export const POST = post(async (req) => {
   });
   const opt = { aspect: req.aspect ?? '2:3', size: req.size ?? '1024x1536', quality: req.quality ?? 'medium' };
 
-  const harmonizeText = req.harmonize ? harmonizePrompt(look) : null;
+  const harmonizeText = req.harmonize && !setRef ? harmonizePrompt(look) : null; // ชุดภาพ: รูปหลักปรับแสงมาแล้ว
 
   // ---------- log สิ่งที่ส่งให้ AI (lib/genlog.ts) แบ่งเป็น ai / model / element / pose / style / prompt ----------
   // params = ค่าที่ lib/ai.ts ส่งให้เจ้านั้นจริง (OpenAI บางโมเดลไม่รับ input_fidelity แล้วส่งใหม่แบบไม่ใส่ — ดูได้ใน terminal)
@@ -99,9 +111,10 @@ export const POST = post(async (req) => {
     element: {
       outfit: byRole('ชุด')[0] ?? 'ชุดเดิม',
       accessories: byRole('ของเสริม'),
-      scene: shotScene ? 'ใช้ฉากจากรูปท่าโพสต์' : byRole('ฉาก')[0] ?? (sceneText ? { name: toRef(refs.scene).name, text: sceneText } : 'ฉากเดิม'),
+      scene: setRef ? 'ใช้ฉากจากรูปหลักของชุด' : shotScene ? 'ใช้ฉากจากรูปท่าโพสต์' : byRole('ฉาก')[0] ?? (sceneText ? { name: toRef(refs.scene).name, text: sceneText } : 'ฉากเดิม'),
     },
-    pose: { mode: text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'), ...byRole('ท่าโพสต์')[0] },
+    pose: { mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'), ...byRole('ท่าโพสต์')[0] },
+    ...(setRef ? { set: { shot: text(setShot!.name) ?? '', ...byRole('รูปหลักของชุด')[0] } } : {}),
     style,
     prompt: sentences(prompt),
     ...(harmonizeText ? { harmonizePrompt: sentences(harmonizeText) } : {}),

@@ -214,3 +214,6 @@ dialog .retouch-actions { justify-content: flex-end; }
 .advanced summary { padding: 8px 0; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; }
 .advanced summary small { margin-left: 6px; color: var(--mute); font-size: 12px; font-weight: 400; }
 .advanced[open] summary { margin-bottom: 8px; }
+/* ปุ่มชุดภาพหลายมุม: บรรทัดล่างบอกว่าได้มุมไหนบ้าง */
+.set-btn { flex-direction: column; gap: 4px; height: auto; min-height: 52px; margin-top: -8px; white-space: normal; }
+.set-btn small { color: var(--mute); font-size: 11px; font-weight: 400; }
