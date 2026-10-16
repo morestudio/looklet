@@ -527,12 +527,17 @@ export default function TryOn() {
       </div>
       {/* รายละเอียดอยู่นอกส่วนที่เลื่อน: เลื่อนรายการสไตล์ได้ กล่องนี้อยู่กับที่ตลอด */}
       {!shot && (
+        // วาดรายละเอียดทุกสไตล์ซ้อนกันในช่องเดียว โชว์แค่อันที่เลือก -> กล่องสูงเท่าอันที่ยาวสุดเสมอ เปลี่ยนสไตล์แล้วไม่กระโดด
         <div className="preset-detail">
-          <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
-            <dl className="preset-parts">
-              {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
-            </dl>
-          </Section>
+          {PRESETS.map((p) => (
+            <div key={p.id} className={p.id === preset.id ? '' : 'stack-hidden'} aria-hidden={p.id !== preset.id}>
+              <Section title={`ใน ${p.name} มีอะไรบ้าง`}>
+                <dl className="preset-parts">
+                  {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{p[key].label}</dd></div>)}
+                </dl>
+              </Section>
+            </div>
+          ))}
         </div>
       )}
     </>;
