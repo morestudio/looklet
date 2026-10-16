@@ -9,7 +9,7 @@ import {
 } from './icons';
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
-import { api, fileToBase64, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize } from '@/lib/browser';
+import { api, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ASPECTS, GAZES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS, PRESETS, PROPS,
   SCENES, SET_SHOTS, SKIN_TONES, presetPrompt, type AccessoryInfo, type Item, type PoseMode,
@@ -181,7 +181,7 @@ export default function TryOn() {
   async function addUpload(key: Key, file: File, name: string, type?: string) {
     let src: string;
     try {
-      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, data: await fileToBase64(file), mime: file.type }));
+      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...(await uploadImage(file)) }));
     } catch (err) {
       src = URL.createObjectURL(file); // เซฟไม่ได้ -> ใช้ชั่วคราวไปก่อน
       setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh`);
