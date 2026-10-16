@@ -225,3 +225,6 @@ dialog .retouch-actions { justify-content: flex-end; }
 .set-label { display: block; width: 60px; margin-top: 2px; color: var(--mute); font-size: 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-pending { display: grid; place-items: center; width: 60px; aspect-ratio: 2 / 3; border-radius: var(--r-sm); background: var(--canvas); }
 .set-pending .spinner { width: 18px; height: 18px; border-width: 2px; }
+/* รายละเอียดสไตล์ถ่ายภาพ: ติดขอบล่างของแผง (.panel เลื่อนในตัว) รายการสไตล์เลื่อนผ่านใต้กล่องนี้ */
+.preset-detail { position: sticky; bottom: 0; z-index: 1; margin: 0 -16px; padding: 14px 16px 16px; background: var(--canvas); border-top: 1px solid var(--hairline-soft); box-shadow: 0 -8px 16px -12px rgba(0, 0, 0, .25); }
+.preset-detail .sec { margin-bottom: 0; }

@@ -523,12 +523,15 @@ export default function TryOn() {
           ))}
         </div>
       </Section>
+      {/* รายละเอียดติดขอบล่างของแผง: เลื่อนรายการสไตล์ได้ รายละเอียดยังเห็นตลอด */}
       {!shot && (
-        <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
-          <dl className="preset-parts">
-            {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
-          </dl>
-        </Section>
+        <div className="preset-detail">
+          <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
+            <dl className="preset-parts">
+              {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
+            </dl>
+          </Section>
+        </div>
       )}
     </>;
   } else {
