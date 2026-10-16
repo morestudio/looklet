@@ -217,3 +217,11 @@ dialog .retouch-actions { justify-content: flex-end; }
 /* ปุ่มชุดภาพหลายมุม: บรรทัดล่างบอกว่าได้มุมไหนบ้าง */
 .set-btn { flex-direction: column; gap: 4px; height: auto; min-height: 52px; margin-top: -8px; white-space: normal; }
 .set-btn small { color: var(--mute); font-size: 11px; font-weight: 400; }
+/* ชุดภาพหลายมุม: รูปในชุดเดียวกันอยู่ในกรอบเดียว มีชื่อมุมใต้รูป */
+.set-group { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface-card); }
+.set-head { display: flex; gap: 6px; color: var(--ink-soft); font-size: 11px; font-weight: 700; }
+.set-head span { color: var(--ash); font-weight: 500; }
+.set-items { display: flex; gap: 6px; }
+.set-label { display: block; width: 60px; margin-top: 2px; color: var(--mute); font-size: 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-pending { display: grid; place-items: center; width: 60px; aspect-ratio: 2 / 3; border-radius: var(--r-sm); background: var(--canvas); }
+.set-pending .spinner { width: 18px; height: 18px; border-width: 2px; }

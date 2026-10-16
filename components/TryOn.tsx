@@ -36,9 +36,11 @@ const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
 const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'หน้าเรียว'], ['acne', 'ลบสิว/จุดด่าง'], ['smooth', 'หน้าเนียน'], ['white', 'ผิวขาว']];
 
-type Result = { src: string; caption: string };
+type Result = { src: string; caption: string; set?: SetTag }; // set = อยู่ในชุดภาพหลายมุม
 type AiModel = { id: string; label: string };
-type Stored = { src: string; name?: string; caption?: string; type?: string };
+const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
+type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
@@ -76,6 +78,8 @@ export default function TryOn() {
   const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
   const [busy, setBusy] = useState<string | null>(null);
+  // ชุดภาพที่กำลังสร้างมุมที่เหลือ: รูปหลักโชว์แล้ว ดูได้ระหว่างรอ (ไม่บังรูป) ประวัติรูปโชว์ช่องรอ left ช่อง
+  const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
   const [aiModel, setAiModel] = useState('');
   const [presetId, setPresetId] = useState(PRESETS[0].id); // ชุดถ่ายภาพ (แสง + เลนส์ + มุม + ระยะ + โทนสี)
@@ -121,7 +125,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้' })));
+        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -342,23 +346,10 @@ export default function TryOn() {
         props: propChoices.map((p) => p.prompt),
         harmonize,
       };
-      const out = await api('/api/generate', { ...body, caption: set ? setCaption(0) : caption });
-      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption }]; // server เซฟไว้ใน results/ แล้ว
-      if (set) {
-        // มุมที่เหลือ: ส่งรูปหลักไปเป็นรูปแรก ไม่ส่งรูปท่า/ฉาก (server ใช้ buildSetPrompt) — พังบางรูป ยังเก็บรูปที่ได้
-        setBusy(`AI กำลังสร้างอีก ${SET_SHOTS.length - 1} มุมพร้อมกัน... (ประมาณ 30–90 วินาที)`);
-        const hero = await jpegBase64(out.src);
-        const rest = await Promise.allSettled(SET_SHOTS.slice(1).map((s, j) => api('/api/generate', {
-          ...body,
-          set_ref: hero.data,
-          set_shot: { name: s.name, framing: s.framing, angle: s.angle, full_body: s.fullBody },
-          refs: { ...body.refs, set_ref: { name: setCaption(0), src: out.src, w: hero.w, h: hero.h } },
-          caption: setCaption(j + 1),
-        }).then(({ src }) => ({ src, caption: setCaption(j + 1) }))));
-        made.push(...rest.filter((x) => x.status === 'fulfilled').map((x) => x.value));
-        const failed = rest.filter((x) => x.status === 'rejected');
-        if (failed.length) setStatus(`ชุดภาพได้ ${made.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
-      }
+      const setId = set ? newSetId() : null;
+      const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
+      const out = await api('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
+      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0) }]; // server เซฟไว้ใน results/ แล้ว
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
@@ -376,10 +367,32 @@ export default function TryOn() {
       // เตรียมไว้ก่อน แตะสไลเดอร์แล้วจะไม่ต้องรอ
       prepare(made[0].src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message} — ลองเลื่อนสไลเดอร์อีกครั้ง`));
       frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // จอแคบ: เลื่อนมาให้เห็นรูปที่ได้
+      if (setId) {
+        // มุมที่เหลือ: ส่งรูปหลักไปเป็นรูปแรก ไม่ส่งรูปท่า/ฉาก (server ใช้ buildSetPrompt) — เสร็จรูปไหนขึ้นประวัติรูปนั้นเลย พังบางรูปยังเก็บรูปที่ได้
+        setPendingSet({ id: setId, left: SET_SHOTS.length - 1 });
+        setBusy(`AI กำลังสร้างอีก ${SET_SHOTS.length - 1} มุมพร้อมกัน...`);
+        const hero = await jpegBase64(out.src);
+        const rest = await Promise.allSettled(SET_SHOTS.slice(1).map((s, j) => api('/api/generate', {
+          ...body,
+          set_ref: hero.data,
+          set_shot: { name: s.name, framing: s.framing, angle: s.angle, full_body: s.fullBody },
+          refs: { ...body.refs, set_ref: { name: setCaption(0), src: out.src, w: hero.w, h: hero.h } },
+          caption: setCaption(j + 1),
+          set: setTag(j + 1),
+        }).then(({ src }) => {
+          setResults((r) => [{ src, caption: setCaption(j + 1), set: setTag(j + 1) }, ...r]);
+          setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
+        }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
+        const failed = rest.filter((x) => x.status === 'rejected');
+        if (failed.length) {
+          setStatus(`ชุดภาพได้ ${SET_SHOTS.length - failed.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
+        }
+      }
     } catch (err) {
       setStatus('สร้างรูปไม่สำเร็จ: ' + (err as Error).message);
     } finally {
       setBusy(null);
+      setPendingSet(null);
     }
   }
 
@@ -669,6 +682,36 @@ export default function TryOn() {
     </>;
   }
 
+  // ---------- ประวัติรูป: รูปในชุดภาพเดียวกันอยู่ในกรอบเดียว เรียงตามมุม (SET_SHOTS) ----------
+  const thumb = (i: number, label?: string) => (
+    <div className="deletable" key={results[i].src}>
+      <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
+        <img src={results[i].src} alt={results[i].caption} />
+      </button>
+      <DeleteButton onClick={() => void deleteResult(i)} />
+      {label && <span className="set-label">{label}</span>}
+    </div>
+  );
+  const historyItems: ReactNode[] = [];
+  const seenSets = new Set<string>();
+  results.forEach((r, i) => {
+    if (!r.set) return void historyItems.push(thumb(i));
+    const id = r.set.id;
+    if (seenSets.has(id)) return; // กลุ่มนี้วาดไปแล้วตอนเจอรูปแรกของชุด
+    seenSets.add(id);
+    const members = results.map((x, j) => ({ x, j })).filter(({ x }) => x.set?.id === id).sort((a, b) => a.x.set!.index - b.x.set!.index);
+    const left = pendingSet?.id === id ? pendingSet.left : 0;
+    historyItems.push(
+      <div className="set-group" key={'set-' + id}>
+        <div className="set-head">ชุดภาพ <span>{left ? 'กำลังสร้าง...' : `${members.length}/${SET_SHOTS.length} มุม`}</span></div>
+        <div className="set-items">
+          {members.map(({ x, j }) => thumb(j, SET_SHOTS[x.set!.index]?.name))}
+          {Array.from({ length: left }, (_, k) => <div className="set-pending" key={k}><div className="spinner" /></div>)}
+        </div>
+      </div>,
+    );
+  });
+
   return (
     <div className="app">
       <header className="topbar">
@@ -713,7 +756,7 @@ export default function TryOn() {
         </aside>
 
         <section className="stage">
-          <div className={'frame' + (busy !== null ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
+          <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
             {compare && <figure><img src={displaySrc} alt="ก่อนแต่ง" /><figcaption>ก่อนแต่ง</figcaption></figure>}
             <figure><canvas ref={canvasRef} />{compare && <figcaption>หลังแต่ง</figcaption>}</figure>
             {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
@@ -732,14 +775,7 @@ export default function TryOn() {
           </div>
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
-            {results.map((r, i) => (
-              <div className="deletable" key={r.src}>
-                <button className={current === i ? 'active' : ''} title={r.caption} onClick={() => setCurrent(i)}>
-                  <img src={r.src} alt={r.caption} />
-                </button>
-                <DeleteButton onClick={() => void deleteResult(i)} />
-              </div>
-            ))}
+            {historyItems}
             {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; มุมขวาบน</p>}
           </div>
         </section>

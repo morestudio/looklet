@@ -3,7 +3,7 @@ import { MAX_ACCESSORIES, POSE_MODES, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
-import { saveImage } from '@/lib/storage';
+import { saveImage, type SetTag } from '@/lib/storage';
 
 // what = คำบรรยายประเภท, show = ท่าที่ทำให้ของชิ้นนี้เด่น (ทั้งคู่มาจาก ACCESSORY_TYPES)
 type Accessory = { data: string; what?: string; show?: string };
@@ -31,6 +31,9 @@ export const POST = post(async (req) => {
   // ชุดภาพหลายมุม (รูปที่ 2 เป็นต้นไป): set_ref = รูปหลักของชุด, set_shot = ระยะ + มุมกล้อง (SET_SHOTS) — ไม่ส่งรูปท่า/ฉาก ใช้จากรูปหลัก
   const setRef: string | null = typeof req.set_ref === 'string' && req.set_ref ? req.set_ref : null;
   const setShot = setRef && req.set_shot && typeof req.set_shot === 'object' ? req.set_shot as Record<string, unknown> : null;
+  // ป้ายชุดภาพ (ทุกรูปในชุด รวมรูปหลัก) เก็บใน .json คู่รูป ให้ประวัติรูปจัดกลุ่มได้หลัง refresh
+  const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
+    ? { id: req.set.id, index: req.set.index } : null;
   if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
 
   // รูปที่ส่งให้ AI: นางแบบ (ต้องมี) + ชุด + ของเสริม + ท่าโพสต์ + ฉาก (ถ้าเลือก) — ลำดับต้องตรงกับ buildPrompt
@@ -125,7 +128,8 @@ export const POST = post(async (req) => {
     let image = await generateImage(req.model, images, prompt, opt);
     if (harmonizeText) image = await generateImage(req.model, [image], harmonizeText, opt);
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
-    const src = await saveImage({ area: 'results' }, image.data, image.mime, { caption: String(req.caption ?? '').slice(0, 300) });
+    const src = await saveImage({ area: 'results' }, image.data, image.mime,
+      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}) });
     await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
     return json(200, { src });
   } catch (e) {
