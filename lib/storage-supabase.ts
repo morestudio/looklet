@@ -37,7 +37,10 @@ export async function sbList(area: string, kind: string | null): Promise<Row[]> 
   return data as Row[];
 }
 
+// เช็กแถวในตารางก่อน: CDN ของ Supabase เก็บไฟล์ไว้ 1 ชม. ลบแล้วยังโหลดได้ (แผนฟรีไม่ล้าง cache ตอนลบ) — ไม่มีแถว = ลบแล้ว
 export async function sbRead(key: string) {
+  const row = await sb().from('images').select('path').eq('path', key).maybeSingle();
+  if (!row.data) return null;
   const { data, error } = await sb().storage.from(BUCKET).download(key);
   return error || !data ? null : Buffer.from(await data.arrayBuffer());
 }
