@@ -12,7 +12,6 @@
 export type Item = { name: string; src?: string; emoji?: string; prompt?: string; type?: string; uploaded?: boolean };
 export type AccessoryType = { id: string; name: string; prompt: string; show: string; face?: boolean };
 export type AccessoryInfo = { name: string; type: string }; // ชื่อ + ประเภท (id) ของของเสริมหนึ่งชิ้น
-export type Look = { name: string; prompt: string | null; closeup?: boolean; isDefault?: boolean };
 
 // รูปใน public/images — เข้ารหัสชื่อไฟล์ไทยใน URL (React ใส่ URL รูปลง HTTP header ให้ browser โหลดล่วงหน้า header รับแต่ตัวอักษรอังกฤษ)
 const img = (file: string) => '/images/' + encodeURIComponent(file);
@@ -94,35 +93,9 @@ export const POSE_MODES = [
 ] as const;
 export type PoseMode = (typeof POSE_MODES)[number]['id'];
 
-// ---------- กล้องและสไตล์ภาพ: ไม่เลือก = ไม่สั่ง (คำสั่งเหมือนเดิม) ----------
-// ใช้เมื่อไม่ได้ "ลอกทั้งช็อต" (ลอกทั้งช็อตเอากล้อง/ระยะ/การมองจากรูปต้นแบบ) — prompt ส่งต่อท้ายคำสั่งให้ AI
+// ---------- ตัวเลือกเพิ่มเติม (ขั้นสูง): ไม่เลือก = ไม่สั่ง ----------
+// ใช้เมื่อไม่ได้ "ลอกทั้งช็อต" — prompt ส่งต่อท้ายคำสั่งให้ AI
 export type Choice = { id: string; name: string; prompt: string };
-
-// สไตล์ภาพบอกเลนส์/กล้องเอง -> สั่งให้แทนเลนส์ที่ "แสงสี" บอกไว้ (แสงสีแต่ละแบบระบุเลนส์มาด้วย)
-export const SHOT_STYLES: Choice[] = [
-  { id: 'phone', name: 'ถ่ายมือถือแบบ IG', prompt: 'Camera style: a candid Instagram outfit photo taken on a smartphone: phone main camera (about 26mm), '
-    + 'everything in focus, natural phone colors with mild HDR, casual and slightly imperfect framing. '
-    + 'This replaces any lens or camera settings mentioned above; keep the lighting.' },
-  { id: 'mirror', name: 'เซลฟี่กระจก', prompt: 'Camera style: a mirror selfie: the model stands in front of a mirror and takes the photo with a smartphone '
-    + 'held at chest height, the phone visible in the reflection and not covering the face. This replaces any lens or camera settings mentioned above.' },
-  { id: 'film', name: 'ฟิล์ม 35mm', prompt: 'Camera style: shot on a 35mm film camera: visible film grain, slightly faded warm colors, soft highlight roll-off. '
-    + 'This replaces any lens or camera settings mentioned above; keep the lighting.' },
-];
-
-export const CAMERA_ANGLES: Choice[] = [
-  { id: 'eye', name: 'ระดับสายตา', prompt: "Camera angle: at the model's eye level, straight on." },
-  { id: 'low', name: 'เสยต่ำ ขายาว', prompt: 'Camera angle: low, from about knee height looking slightly up, so the legs look longer.' },
-  { id: 'high', name: 'มองลงจากบน', prompt: 'Camera angle: high, looking down at the model from above.' },
-];
-
-// ระยะ: ใส่ในบรรทัดแรกของคำสั่ง (ไม่งั้น AI ยึดระยะจากรูปนางแบบ), fullBody = เห็นทั้งตัว
-export const FRAMINGS: (Choice & { fullBody: boolean })[] = [
-  { id: 'wide', name: 'เห็นฉากเยอะ คนเล็ก', fullBody: true, prompt: 'framed as a wide environmental shot: the whole body is visible but fills only '
-    + 'about a third of the frame height, placed off-center, with plenty of the location around' },
-  { id: 'full', name: 'เต็มตัว', fullBody: true, prompt: 'framed full body from head to feet, filling most of the frame height' },
-  { id: 'knee', name: 'เข่าขึ้นไป', fullBody: false, prompt: 'framed from the knees up' },
-  { id: 'half', name: 'ครึ่งตัว', fullBody: false, prompt: 'framed from the waist up with the legs out of frame' },
-];
 
 export const GAZES: Choice[] = [
   { id: 'camera', name: 'มองกล้อง', prompt: 'Gaze: the model looks straight into the camera.' },
@@ -156,44 +129,69 @@ export const SCENES: Item[] = [
   { name: 'รันเวย์', emoji: '✨', prompt: 'a high-end fashion show runway with spotlights and an audience' },
 ];
 
-// แสงสี: ส่งต่อท้ายคำสั่งให้ AI ทำให้ดูเป็นรูปถ่ายคนจริง (lib/prompts.ts ใส่เรื่องผิว/ผ้า/แสงตกกระทบคนและฉากให้อีกชั้น)
-// แต่ละแบบบอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน สีสะท้อนอะไร" ดูจากรูปตัวอย่างของ notamodel.studio
-// closeup = ถ่ายใกล้ ไม่บังคับเต็มตัว, isDefault = ตัวที่เลือกไว้ตอนเปิดหน้า, prompt = null คือไม่สั่งเรื่องแสงสีเพิ่ม (ไว้เทียบ)
-export const LOOKS: Look[] = [
-  { name: 'Studio closeup — ถ่ายใกล้ เน้นสินค้า', closeup: true, prompt:
-    'Lighting and camera: close-up, product-focused fashion shot on a 100mm lens at f/8, framed from the waist or chest up '
-    + 'so the outfit and any product fill the frame. One large softbox from the front-side as the key light, a white reflector '
-    + 'filling the shadow side, and a soft rim light from behind separating the person from the background. '
-    + 'Fabric weave, stitching, buttons and materials are crisp and readable; shiny surfaces show real softbox reflections. '
-    + 'Clean neutral color with true-to-life product colors.' },
-  { name: 'Studio — สตูดิโอไฟนุ่ม', isDefault: true, prompt:
-    'Lighting and camera: fashion lookbook shot on an 85mm lens at f/8 against a seamless white or light grey backdrop. '
-    + 'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
-    + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
-    + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
-    + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
-    + 'and collarbones. Neutral, slightly cool white balance, low contrast, clean colors.' },
-  { name: 'Flash — แฟลชตรง เงาคม', prompt:
-    'Lighting and camera: editorial fashion shot with a direct on-camera flash on a 35mm lens. Hard frontal light: bright skin '
-    + 'with crisp specular highlights on the forehead, nose and cheekbones, and a sharp-edged dark shadow cast right behind the '
-    + 'person onto the wall or floor, offset slightly to one side. The flash falls off quickly, so the background is noticeably '
-    + 'darker than the person. Punchy contrast, saturated colors, slight vignette.' },
-  { name: 'Indoor — ในอาคาร แสงหน้าต่าง', prompt:
-    'Lighting and camera: indoor shot on a 50mm lens at f/2.8 in a real interior. The main light is soft daylight from a large '
-    + 'window on one side, with warm lamps in the room as secondary light. The window side of the face and body is brighter and '
-    + 'the far side falls into gentle shadow; the same light falls across the walls, floor and furniture, creating soft shadows '
-    + 'and gradients through the room. The colors of the room (wood, walls, floor) bounce onto the skin and clothes. '
-    + 'Background slightly out of focus. Warm, rich but natural colors, mixed daylight and tungsten white balance.' },
-  { name: 'Sunlight — แดดจริง เงาคม', prompt:
-    'Lighting and camera: outdoor photo in real direct sunlight, at eye level on a 35mm lens, everything in focus. '
-    + 'The sun is high and to one side: hard light with crisp, dark-edged shadows; highlights on the cheekbones, nose, forearms '
-    + 'and tops of the shoulders; eye sockets and under the chin slightly shadowed. The person casts a sharp shadow on the ground '
-    + 'in exactly the same direction and length as the shadows of poles, trees and buildings around them; leaves may cast '
-    + 'dappled shadows. Shadows are slightly blue from the sky, and bright pavement bounces warm light up under the face and '
-    + 'clothes. White clothes keep their texture without blowing out. Warm daylight white balance, natural contrast, '
-    + 'slight smartphone HDR look.' },
-  { name: 'ไม่สั่งเรื่องแสงสี', prompt: null },
+// ---------- ชุดถ่ายภาพ (preset): แสง + เลนส์ + มุมกล้อง + ระยะ + โทนสี ที่เข้ากันเป็นชุดเดียว ----------
+// แต่ละส่วนมี label = ที่โชว์ในหน้าเว็บ, prompt = ที่ส่งให้ AI จริง (ภาษาอังกฤษ) -> หน้าเว็บโชว์ตรงกับที่ส่งเสมอ
+// แยกตัวเลือกแสง/กล้อง/ระยะเองเคยขัดกัน (แสงบอกเลนส์ สไตล์ภาพบอกเลนส์อีกที) AI ต้องเลือกครึ่งๆ กลางๆ รูปเลยดูปลอม
+// แสง: บอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน" ดูจากรูปตัวอย่างของ notamodel.studio
+// framing ใส่ในบรรทัดแรกของคำสั่ง (ไม่งั้น AI ยึดระยะจากรูปนางแบบ), fullBody = เห็นทั้งตัว (lib/prompts.ts สั่งเพิ่มท้ายคำสั่ง)
+export type PresetPart = { label: string; prompt: string };
+export type Preset = {
+  id: string; name: string; hint: string; fullBody: boolean;
+  light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart;
+};
+// ลำดับที่โชว์ในหน้าเว็บ
+export const PRESET_PARTS = [
+  { key: 'light', name: 'แสง' }, { key: 'lens', name: 'เลนส์' }, { key: 'angle', name: 'มุมกล้อง' },
+  { key: 'framing', name: 'ระยะ' }, { key: 'color', name: 'โทนสี' },
+] as const;
+
+export const PRESETS: Preset[] = [
+  { id: 'studio', name: 'Studio lookbook', hint: 'เต็มตัว ฉากสตูดิโอ ไฟนุ่ม เหมาะกับฉากสตูดิโอหรือฉากเดิม', fullBody: true,
+    light: { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
+      'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
+      + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
+      + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
+      + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
+      + 'and collarbones.' },
+    lens: { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, the whole person sharp' },
+    angle: { label: 'ระดับอก มองตรง', prompt: 'camera at chest height, straight on' },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
+    color: { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' } },
+  { id: 'closeup', name: 'Product close-up', hint: 'ครึ่งตัว เน้นเนื้อผ้าและสินค้าให้ชัด', fullBody: false,
+    light: { label: 'ซอฟต์บ็อกซ์ด้านหน้า + แผ่นสะท้อน + ไฟขอบหลัง', prompt:
+      'One large softbox from the front-side as the key light, a white reflector filling the shadow side, and a soft rim light '
+      + 'from behind separating the person from the background. Fabric weave, stitching, buttons and materials are crisp and readable; '
+      + 'shiny surfaces show real softbox reflections.' },
+    lens: { label: '100mm f/8 รายละเอียดคม', prompt: 'shot on a full-frame camera with a 100mm lens at f/8' },
+    angle: { label: 'ระดับอก มองตรง', prompt: 'camera at chest height, straight on' },
+    framing: { label: 'เอวขึ้นไป ชุด/สินค้าเต็มเฟรม', prompt: 'framed from the waist up so the outfit and any product fill the frame, with the legs out of frame' },
+    color: { label: 'สีสินค้าตรงจริง โทนกลาง', prompt: 'Clean neutral color with true-to-life product colors.' } },
+  { id: 'street', name: 'Outdoor street', hint: 'แดดจริงกลางแจ้ง เงาคม เหมาะกับฉากถนน/นอกอาคาร', fullBody: true,
+    light: { label: 'แดดจริง เงาคม ตามทิศเดียวกับฉาก', prompt:
+      'Real direct sunlight, high and to one side: hard light with crisp, dark-edged shadows; highlights on the cheekbones, nose, '
+      + 'forearms and tops of the shoulders; eye sockets and under the chin slightly shadowed. The person casts a sharp shadow on the '
+      + 'ground in exactly the same direction and length as the shadows of poles, trees and buildings around them. Shadows are slightly '
+      + 'blue from the sky, and bright pavement bounces warm light up under the face and clothes. White clothes keep their texture '
+      + 'without blowing out.' },
+    lens: { label: '35mm ชัดทั้งภาพ', prompt: 'shot on a full-frame camera with a 35mm lens, everything in focus' },
+    angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
+    framing: { label: 'เต็มตัว เห็นฉากรอบตัว', prompt: 'framed full body from head to feet with some of the street visible around the model' },
+    color: { label: 'แดดอุ่น คอนทราสต์ธรรมชาติ', prompt: 'Warm daylight white balance, natural contrast.' } },
+  { id: 'indoor', name: 'Indoor lifestyle', hint: 'แสงหน้าต่างในบ้าน/คาเฟ่ อบอุ่น เหมาะกับฉากในอาคาร', fullBody: true,
+    light: { label: 'แสงหน้าต่างข้างเดียว + โคมไฟอุ่น', prompt:
+      'The main light is soft daylight from a large window on one side, with warm lamps in the room as secondary light. The window side '
+      + 'of the face and body is brighter and the far side falls into gentle shadow; the same light falls across the walls, floor and '
+      + 'furniture, creating soft shadows and gradients through the room. The colors of the room (wood, walls, floor) bounce onto the '
+      + 'skin and clothes.' },
+    lens: { label: '50mm f/2.8 หลังเบลอเล็กน้อย', prompt: 'shot on a full-frame camera with a 50mm lens at f/2.8, the background slightly out of focus' },
+    angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet' },
+    color: { label: 'อุ่น สีสดแต่เป็นธรรมชาติ', prompt: 'Warm, rich but natural colors, mixed daylight and tungsten white balance.' } },
 ];
+
+// รวมส่วนของชุดถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
+export const presetPrompt = (p: Preset) =>
+  `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
 
 export const SKIN_TONES = [
   { name: 'ขาวอมชมพู', color: '#f3d3c3' },

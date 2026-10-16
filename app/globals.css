@@ -202,3 +202,15 @@ dialog .retouch-actions { justify-content: flex-end; }
   .stage { padding: 12px 16px; }
   .frame { flex: none; height: 70vh; }
 }
+
+/* ---------- ชุดถ่ายภาพ: แสง/เลนส์/มุม/ระยะ/โทนสี ของชุดที่เลือก ---------- */
+.preset-parts { display: grid; gap: 0; margin: 0; }
+.preset-parts div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--hairline-soft); font-size: 13px; }
+.preset-parts div:last-child { border-bottom: 0; }
+.preset-parts dt { color: var(--mute); }
+.preset-parts dd { margin: 0; color: var(--ink-soft); font-weight: 600; }
+/* ขั้นสูง: ตัวเลือกที่ไม่ค่อยต้องแตะ พับไว้ */
+.advanced { margin-bottom: 14px; }
+.advanced summary { padding: 8px 0; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; }
+.advanced summary small { margin-left: 6px; color: var(--mute); font-size: 12px; font-weight: 400; }
+.advanced[open] summary { margin-bottom: 8px; }

@@ -29,24 +29,23 @@ export type PromptInput = {
   hasSceneImage: boolean;
   sceneText?: string | null;
   extra?: string | null;
-  look?: string | null; // prompt ของ "แสงสี" ที่เลือก (null = ไม่สั่งเรื่องแสงสี)
+  look?: string | null; // แสง/เลนส์/มุมกล้อง/โทนสีของชุดถ่ายภาพที่เลือก (presetPrompt ใน catalog) null = ไม่สั่ง
   fullBody?: boolean;
   accessories?: string[]; // คำบรรยายของเสริมแต่ละชิ้น เรียงตามรูปที่ส่ง
   hasPose?: boolean; // มีรูปท่าโพสต์ (ส่งต่อจากของเสริม ก่อนฉาก)
   autoPose?: boolean; // "AI เลือกท่าให้": ไม่มีรูปท่า ให้ AI จัดท่าเองให้สินค้าเด่น
   poseHints?: string[]; // ท่าที่ทำให้ของเสริมแต่ละชิ้นเด่น (show ใน ACCESSORY_TYPES) ใช้คู่กับ autoPose
   poseMode?: PoseMode; // เอาอะไรจากรูปท่าโพสต์ (POSE_MODES) ใช้คู่กับ hasPose
-  framing?: string | null; // ระยะ/การวางคน (FRAMINGS) ใส่ในบรรทัดแรก
-  camera?: string[]; // สไตล์ภาพ / มุมกล้อง (SHOT_STYLES, CAMERA_ANGLES)
+  framing?: string | null; // ระยะของชุดถ่ายภาพ (framing ใน PRESETS) ใส่ในบรรทัดแรก
   gaze?: string | null; // การมอง (GAZES)
   props?: string[]; // พร็อพในมือ (PROPS)
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, camera = [], gaze = null, props = [],
+  poseMode = 'pose', framing = null, gaze = null, props = [],
 }: PromptInput) {
-  // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/camera/look ที่เลือก (คำสั่งจะขัดกัน)
+  // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของชุดถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
   const shotScene = hasPose && poseMode === 'shot-scene';
   let first: string;
@@ -155,10 +154,9 @@ export function buildPrompt({
   }
   if (shot) lines.push(REALISM); // แสง/โทนสีเอาจากรูปต้นแบบ ไม่ใส่ look
   else if (look) lines.push(REALISM, look);
-  if (!shot) lines.push(...camera); // หลัง look: สไตล์ภาพสั่งแทนเลนส์ที่ look บอกไว้
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
-  if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // แสงแบบถ่ายใกล้ (เน้นสินค้า) บอกการครอปเองใน look
+  if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }
