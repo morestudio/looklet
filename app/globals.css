@@ -225,6 +225,3 @@ dialog .retouch-actions { justify-content: flex-end; }
 .set-label { display: block; width: 60px; margin-top: 2px; color: var(--mute); font-size: 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-pending { display: grid; place-items: center; width: 60px; aspect-ratio: 2 / 3; border-radius: var(--r-sm); background: var(--canvas); }
 .set-pending .spinner { width: 18px; height: 18px; border-width: 2px; }
-.options.presets { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-.options.presets .option { justify-content: center; min-height: 40px; padding: 8px 10px; font-size: 13px; }
-.preset-hint { margin: 0 0 4px; }

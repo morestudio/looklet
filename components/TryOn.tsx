@@ -515,18 +515,16 @@ export default function TryOn() {
     panel = <>
       {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ สไตล์ถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
       <Section title="สไตล์ถ่ายภาพ">
-        {/* 2 คอลัมน์ ชื่ออย่างเดียว (คำอธิบายอยู่ในกล่องรายละเอียดด้านล่าง) ให้เห็นรายละเอียดโดยไม่ต้องเลื่อน */}
-        <div className="options presets">
+        <div className="options">
           {PRESETS.map((p) => (
             <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot} onClick={() => setPresetId(p.id)}>
-              <b>{p.name}</b>
+              <b>{p.name}</b><small>{p.hint}</small>
             </button>
           ))}
         </div>
       </Section>
       {!shot && (
         <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
-          <p className="muted-text preset-hint">{preset.hint}</p>
           <dl className="preset-parts">
             {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
           </dl>
