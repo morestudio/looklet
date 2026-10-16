@@ -1,0 +1,204 @@
+/* หน้าตาสไตล์ Pinterest: พื้นครีม สีแดงใช้เฉพาะปุ่มหลัก/ตัวที่เลือก มุมโค้ง 16px / 32px / วงกลม
+   layout แบบ workspace: เมนูขั้นตอน | แผงเลือก | รูป | แผงปรับแต่ง — อยู่ในจอเดียว ไม่ต้องเลื่อนทั้งหน้า (แต่ละแผงเลื่อนในตัว) */
+:root {
+  /* สี */
+  --primary: #e60023; --primary-pressed: #cc001f; --on-primary: #ffffff; --primary-soft: #fde8eb;
+  --ink: #000000; --ink-soft: #211922; --body: #33332e; --mute: #62625b; --ash: #91918c;
+  --hairline: #dadad3; --hairline-soft: #e5e5e0; --secondary-bg: #e5e5e0; --secondary-pressed: #c8c8c1;
+  --canvas: #ffffff; --surface-soft: #fbfbf9; --surface-card: #f6f6f3;
+  --focus: #435ee5;
+  --r-sm: 10px; --r-md: 16px; --r-lg: 32px; --r-full: 9999px;
+  /* ฟอนต์โหลดผ่าน next/font ใน app/layout.tsx */
+  --font: var(--font-inter), var(--font-thai), -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--surface-soft); color: var(--body); font: 400 16px/1.4 var(--font); }
+button, select, input, textarea { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- ปุ่ม ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 6px 14px; border: 0; border-radius: var(--r-md); font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn-secondary { background: var(--secondary-bg); color: var(--ink); }
+.btn-secondary:active { background: var(--secondary-pressed); }
+.btn-secondary.on { background: var(--ink); color: #fff; }
+.btn-tertiary { background: transparent; color: var(--ink); }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
+.btn-primary:active { background: var(--primary-pressed); }
+.btn:disabled { background: var(--surface-card); color: var(--ash); cursor: default; }
+
+/* ---------- โครงหน้า ---------- */
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.topbar { flex: 0 0 60px; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: var(--canvas); border-bottom: 1px solid var(--hairline-soft); }
+.brand { flex: 0 0 auto; color: var(--primary); font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+.beta { margin-left: 4px; padding: 2px 8px; border-radius: var(--r-full); background: var(--primary-soft); color: var(--primary); font-size: 11px; font-weight: 700; vertical-align: 3px; }
+.status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--primary-pressed); font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+.status-x { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); cursor: pointer; }
+.top-actions { display: flex; gap: 8px; margin-left: auto; }
+
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 84px 340px minmax(0, 1fr) 300px; grid-template-areas: "rail panel stage inspector"; }
+.rail { grid-area: rail; }
+.panel { grid-area: panel; }
+.stage { grid-area: stage; }
+.inspector { grid-area: inspector; }
+
+/* เมนูขั้นตอน (ซ้ายสุด) */
+.rail { display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; overflow-y: auto; background: var(--canvas); border-right: 1px solid var(--hairline-soft); }
+.rail-btn { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px 10px; border: 0; border-radius: var(--r-md); background: none; color: var(--mute); font-size: 11px; font-weight: 600; cursor: pointer; }
+.rail-btn:hover { background: var(--surface-card); }
+.rail-btn.active { background: var(--primary-soft); color: var(--primary); }
+.rail-btn .n { position: absolute; top: 5px; left: 9px; color: var(--ash); font-size: 10px; }
+.rail-btn.active .n { color: var(--primary); }
+.rail-btn .dot { position: absolute; top: 8px; right: 12px; width: 7px; height: 7px; border-radius: var(--r-full); background: var(--primary); }
+
+/* แผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา): เลื่อนในตัว */
+.panel, .inspector { min-height: 0; overflow-y: auto; padding: 18px 16px 24px; background: var(--canvas); }
+.panel { border-right: 1px solid var(--hairline-soft); }
+.inspector { border-left: 1px solid var(--hairline-soft); }
+.panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.panel-head h2 { margin: 0; color: var(--ink-soft); font-size: 18px; font-weight: 700; }
+.panel-head .hint { margin-left: auto; color: var(--ash); font-size: 12px; font-weight: 500; }
+.num { display: inline-grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: var(--r-full); background: var(--ink-soft); color: var(--on-primary); font-size: 13px; font-weight: 700; }
+.search { display: flex; align-items: center; gap: 8px; height: 40px; margin-bottom: 10px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--ash); }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ink); font-size: 14px; }
+.next { width: 100%; margin-top: 18px; }
+.note { margin: 0 0 12px; padding: 8px 12px; border-radius: var(--r-md); background: var(--surface-card); color: var(--ink-soft); font-size: 12px; }
+.muted-text { margin: 4px 0 0; color: var(--mute); font-size: 12px; line-height: 1.5; }
+
+/* หัวข้อย่อยในแผง */
+.sec { margin-bottom: 20px; }
+.sec h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 10px; color: var(--ink-soft); font-size: 14px; font-weight: 700; }
+.sec h3 small { color: var(--ash); font-size: 12px; font-weight: 500; }
+.big { margin: 0; color: var(--ink-soft); font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.tips { margin: 0; padding-left: 18px; color: var(--body); font-size: 13px; line-height: 1.75; }
+
+/* ตัวเลือกแบบการ์ด (โมเดล AI / แสงสี) */
+.options { display: grid; gap: 8px; }
+.option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); color: var(--ink); font-size: 14px; text-align: left; cursor: pointer; }
+.option small { color: var(--mute); font-size: 12px; }
+.option.active { border-color: var(--primary); background: #fff7f8; box-shadow: 0 0 0 1px var(--primary); }
+.option:disabled { opacity: .45; cursor: default; }
+
+/* ปุ่มกลุ่ม */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chip { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; }
+.chip.active { background: var(--ink); color: #fff; }
+.chip:disabled { opacity: .45; cursor: default; }
+.ratio { display: inline-block; height: 14px; margin-right: 6px; border: 1.5px solid currentColor; border-radius: 3px; }
+.swatch { width: 34px; height: 34px; padding: 0; border: 0; border-radius: var(--r-full); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+.swatch.active { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--ink); }
+
+/* ---------- การ์ดรูป (pin-card): รูปคือการ์ด ไม่มีขอบใน ---------- */
+/* minmax(0, 1fr) + min-width: 0 = ทุกช่องกว้างเท่ากันเสมอ
+   (1fr เฉยๆ ยอมให้ช่องขยายตามขนาดจริงของรูป: อัปโหลดรูปกว้างกว่าตัวอื่น ช่องนั้นใหญ่ ช่องอื่นถูกบีบ — เห็นชัดใน Safari) */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.grid > * { min-width: 0; }
+.grid.muted { opacity: .4; } /* ตัวเลือกที่ไม่ถูกใช้ตอนนี้ (เช่น ฉาก ตอนลอกทั้งช็อต + ฉาก) */
+/* width: 100% = การ์ดที่ห่อด้วย .deletable (รูปที่อัปโหลดเอง) ไม่ใช่ช่องของตารางโดยตรง ปุ่มจะหดตามเนื้อหา ต้องบังคับให้เต็มช่อง */
+.card { position: relative; width: 100%; padding: 0; border: 0; background: none; color: var(--body); cursor: pointer; text-align: left; }
+.card .pic, .card .tile { display: block; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--r-md); background: var(--surface-card); outline: 3px solid transparent; outline-offset: -3px; }
+.card.active .pic, .card.active .tile { outline-color: var(--primary); }
+.card.active::after { content: '✓'; position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r-full); background: var(--primary); color: #fff; font-size: 12px; }
+.card .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.models .pic.zoom img { transform: scale(1.8); transform-origin: 50% 8%; }
+.outfits .pic img, .accessories .pic img { object-fit: contain; background: #fff; }
+.poses .pic img { object-fit: contain; } /* ท่าโพสต์: เห็นทั้งตัวตั้งแต่หัวถึงเท้า */
+.card .tile { display: grid; place-items: center; font-size: 28px; }
+.card .tile.text { font-size: 12px; color: var(--mute); }
+/* ชื่อ: ตัดคำได้ทุกที่ (ชื่อไฟล์ยาวไม่มีเว้นวรรค เช่น 496004634_1248..._n เคยดันการ์ดกว้างจนรูปทับกัน) ไม่เกิน 2 บรรทัด ชื่อเต็มอยู่ใน title */
+.card span {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
+  padding: 6px 2px 0; font-size: 12px; font-weight: 500; line-height: 1.35;
+}
+.card.add .tile { background: none; border: 2px dashed var(--hairline); color: var(--ash); font-size: 24px; }
+.card.add input { display: none; }
+/* ของเสริม: การ์ดรอระหว่าง AI ดูรูป + ปุ่มประเภท (กดเพื่อแก้ชื่อ/ประเภท) */
+.card.pending { cursor: default; }
+.card.pending .pic { position: relative; }
+.card.pending .pic img { opacity: .45; }
+.card.pending span { color: var(--mute); }
+.pending-spin { position: absolute; inset: 0; display: grid; place-items: center; }
+.pending-spin .spinner { width: 24px; height: 24px; border: 3px solid rgba(0, 0, 0, .12); border-top-color: var(--ink-soft); }
+.acc-type { margin: 4px 0 0 2px; padding: 2px 8px; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); font-size: 11px; font-weight: 500; cursor: pointer; }
+.acc-type:hover { color: var(--ink); }
+.deletable { position: relative; }
+.del { position: absolute; top: 6px; left: 6px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-full); background: rgba(255, 255, 255, .92); color: var(--ink); font-size: 15px; line-height: 1; cursor: pointer; }
+
+/* ของเสริมที่เลือก (แผงขวา) */
+.sel-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 8px; border-radius: var(--r-md); background: var(--surface-card); }
+.sel-row img { flex: 0 0 44px; height: 44px; object-fit: contain; border-radius: var(--r-sm); background: #fff; }
+.sel-row div { flex: 1; min-width: 0; }
+.sel-row b { display: block; color: var(--ink-soft); font-size: 13px; overflow-wrap: anywhere; }
+.icon-btn { flex: 0 0 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--canvas); color: var(--ink); font-size: 16px; cursor: pointer; }
+
+/* สรุปที่เลือก (ล่างแผงขวา) — กดแต่ละบรรทัดเพื่อไปขั้นนั้น */
+.summary { margin-top: 8px; padding: 12px 14px; border-radius: var(--r-md); background: var(--surface-card); }
+.sum-row { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 7px 0; border: 0; border-bottom: 1px solid var(--hairline-soft); background: none; color: var(--mute); font-size: 13px; text-align: left; cursor: pointer; }
+.sum-row:last-child { border-bottom: 0; }
+.sum-row b { color: var(--ink-soft); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.sum-row:hover b { color: var(--primary); }
+.gen-btn { width: 100%; height: 52px; margin: 4px 0 16px; font-size: 16px; }
+.text-input { display: block; width: 100%; min-height: 76px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--ink); font-size: 14px; resize: vertical; }
+
+/* ---------- รูปตรงกลาง ---------- */
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; padding: 16px 20px; }
+.frame { position: relative; flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px; overflow: hidden; border-radius: var(--r-lg); background: var(--surface-card); }
+.frame figure { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; margin: 0; display: flex; align-items: center; justify-content: center; }
+.frame canvas, .frame figure img { display: block; max-width: 100%; max-height: 100%; border-radius: 12px; }
+.frame figcaption { position: absolute; top: 8px; left: 8px; padding: 4px 10px; border-radius: var(--r-full); background: rgba(255, 255, 255, .92); color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+.frame.compare figure:last-of-type figcaption { background: var(--primary); color: #fff; }
+.overlay { position: absolute; inset: 0; display: none; flex-direction: column; gap: 14px; align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); color: #fff; font-size: 14px; font-weight: 600; }
+.busy .overlay { display: flex; }
+.spinner { width: 40px; height: 40px; border: 4px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: var(--r-full); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.stage-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.caption { flex: 1 1 220px; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--mute); font-size: 12px; }
+.frame-hint { position: absolute; left: 50%; bottom: 14px; max-width: calc(100% - 32px); transform: translateX(-50%); padding: 6px 12px; border-radius: var(--r-full); background: rgba(255, 255, 255, .94); box-shadow: 0 2px 8px rgba(0, 0, 0, .08); color: var(--ink-soft); font-size: 12px; text-align: center; }
+.tool { height: 36px; font-size: 13px; }
+.history-head { display: flex; gap: 6px; color: var(--ink-soft); font-size: 13px; font-weight: 700; }
+.history-head span { color: var(--ash); font-weight: 500; }
+.history { flex: 0 0 auto; display: flex; gap: 8px; min-height: 40px; overflow-x: auto; padding-bottom: 4px; }
+.history .deletable { flex: 0 0 auto; }
+.history .del { top: 4px; left: 4px; width: 20px; height: 20px; font-size: 13px; }
+.history button:not(.del) { flex: 0 0 auto; width: 60px; padding: 0; border: 0; border-radius: var(--r-sm); overflow: hidden; background: var(--canvas); outline: 3px solid transparent; outline-offset: -3px; cursor: pointer; }
+.history button:not(.del).active { outline-color: var(--primary); }
+.history img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
+
+/* ---------- แต่งรูป ---------- */
+.sliders { display: grid; gap: 14px; }
+.slider label { display: flex; justify-content: space-between; color: var(--ink-soft); font-size: 14px; font-weight: 500; }
+.slider output { color: var(--mute); font-size: 12px; }
+.slider input { width: 100%; margin: 6px 0 0; accent-color: var(--primary); }
+.retouch-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.check { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 14px; color: var(--ink-soft); font-size: 14px; cursor: pointer; }
+.check input { margin-top: 3px; accent-color: var(--primary); }
+.check small { display: block; color: var(--mute); font-size: 12px; }
+.sub { margin: 0 0 8px; color: var(--mute); font-size: 12px; font-weight: 500; }
+
+/* ---------- หน้าต่างของเสริม ---------- */
+dialog { width: min(420px, calc(100vw - 32px)); padding: 20px; border: 0; border-radius: var(--r-md); background: var(--canvas); color: var(--body); }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog h2 { margin: 0 0 14px; color: var(--ink-soft); font-size: 18px; font-weight: 600; }
+dialog .retouch-actions { justify-content: flex-end; }
+#accPreview { display: block; width: 100%; height: 200px; margin-bottom: 14px; object-fit: contain; border-radius: var(--r-md); background: var(--surface-card); }
+.field { display: block; margin-bottom: 12px; color: var(--mute); font-size: 12px; font-weight: 500; }
+.field input { display: block; width: 100%; height: 44px; margin-top: 6px; padding: 0 15px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); color: var(--ink); font-size: 14px; }
+
+/* ---------- จอกลาง: แผงปรับแต่งย้ายไปอยู่ใต้แผงเลือก ---------- */
+@media (max-width: 1279px) {
+  .workspace { grid-template-columns: 84px 320px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 45%); grid-template-areas: "rail panel stage" "rail inspector stage"; }
+  .panel { border-bottom: 1px solid var(--hairline-soft); }
+  .inspector { border-left: 0; border-right: 1px solid var(--hairline-soft); }
+}
+/* ---------- จอเล็ก (มือถือ): เรียงลงทีละส่วน เลื่อนทั้งหน้า เมนูขั้นตอนเป็นแถบบน ---------- */
+@media (max-width: 860px) {
+  .app { height: auto; }
+  .topbar { position: sticky; top: 0; z-index: 6; padding: 0 12px; }
+  .hide-sm { display: none; }
+  .workspace { display: block; }
+  .rail { position: sticky; top: 60px; z-index: 5; flex-direction: row; overflow-x: auto; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--hairline-soft); }
+  .rail-btn { flex: 0 0 auto; min-width: 70px; }
+  .panel, .inspector { overflow: visible; border: 0; }
+  .stage { padding: 12px 16px; }
+  .frame { flex: none; height: 70vh; }
+}

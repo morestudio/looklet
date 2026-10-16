@@ -1,0 +1,11 @@
+import { json, post } from '@/lib/route';
+import { isKind, saveImage } from '@/lib/storage';
+
+// รูปที่เพิ่มเอง (นางแบบ/ชุด/ของเสริม/ฉาก) — ของเสริมเก็บประเภทไว้ด้วย (id ใน ACCESSORY_TYPES ของ lib/catalog.ts)
+export const POST = post(async (req) => {
+  if (!isKind(req.kind) || !req.data) return json(400, { error: 'ข้อมูลรูปไม่ถูกต้อง' });
+  const meta: Record<string, string> = { name: String(req.name || 'รูปที่เพิ่ม').slice(0, 80) };
+  if (req.type) meta.type = String(req.type).slice(0, 20);
+  const src = await saveImage({ area: 'uploads', kind: req.kind }, req.data, req.mime || 'image/png', meta);
+  return json(200, { src });
+});

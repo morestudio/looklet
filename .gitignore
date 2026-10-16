@@ -1,0 +1,21 @@
+# API key อยู่ใน .env — ห้ามขึ้น GitHub
+.env*
+
+# รูปที่ AI สร้าง และรูปที่กด "+ เพิ่มรูป" (lib/storage.ts สร้างโฟลเดอร์ให้เองตอนเซฟ)
+results/
+images/uploads/
+# บันทึกสิ่งที่ส่งให้ AI ทุกครั้งที่เจนรูป (lib/genlog.ts)
+logs/
+
+# Next.js / npm
+/node_modules
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+
+# misc
+.DS_Store
+*.pem
