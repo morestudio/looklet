@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const thai = Noto_Sans_Thai({ subsets: ['thai'], variable: '--font-thai' });
 
 export const metadata: Metadata = {
-  title: 'ห้องลองชุด AI',
+  title: 'Looklet',
   description: 'เลือกนางแบบ ชุด ของเสริม และฉาก ให้ AI สร้างรูป แล้วแต่งรูปต่อได้ในเครื่อง',
 };
 

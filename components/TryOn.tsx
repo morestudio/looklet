@@ -1,5 +1,5 @@
 'use client';
-// ห้องลองชุด AI: เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
+// Looklet: เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -727,7 +727,7 @@ export default function TryOn() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">ห้องลองชุด <span className="beta">Beta</span></div>
+        <div className="brand">Looklet <span className="beta">Beta</span></div>
         <div className="status" role="status" title={status}>
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
         </div>

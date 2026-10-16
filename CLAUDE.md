@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"clotheson" (repo: looklet) — an AI fitting room. The user picks a model + outfit + accessories + pose + scene, the server asks Gemini or OpenAI to generate a fashion photo, then the browser retouches it (makeup/skin) locally with MediaPipe at no cost. UI text and code comments are in Thai; keep writing comments in Thai to match. AI prompts are written in English on purpose (image models follow English more precisely).
+Looklet (package name `clotheson`) — an AI fitting room. The user picks a model + outfit + accessories + pose + scene, the server asks Gemini or OpenAI to generate a fashion photo, then the browser retouches it (makeup/skin) locally with MediaPipe at no cost. UI text and code comments are in Thai; keep writing comments in Thai to match. AI prompts are written in English on purpose (image models follow English more precisely).
 
 `AGENTS.md` warns that this Next.js (16.4, with `cacheComponents` + `partialPrefetching` in `next.config.ts`) differs from training data — read `node_modules/next/dist/docs/` before using Next APIs.
 

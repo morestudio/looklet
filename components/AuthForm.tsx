@@ -35,7 +35,7 @@ export function LoginForm() {
 
   return (
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
-      <div className="brand">ห้องลองชุด <span className="beta">Beta</span></div>
+      <div className="brand">Looklet <span className="beta">Beta</span></div>
       <h1>เข้าสู่ระบบ</h1>
       <label>อีเมล<input className="field" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
       <label>รหัสผ่าน<input className="field" type="password" autoComplete="current-password" required value={password}
@@ -67,7 +67,7 @@ export function ChangePasswordForm() {
 
   return (
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
-      <div className="brand">ห้องลองชุด <span className="beta">Beta</span></div>
+      <div className="brand">Looklet <span className="beta">Beta</span></div>
       <h1>เปลี่ยนรหัสผ่าน</h1>
       <label>รหัสผ่านใหม่<input className="field" type="password" autoComplete="new-password" required value={password}
         onChange={(e) => setPassword(e.target.value)} /></label>
@@ -75,12 +75,12 @@ export function ChangePasswordForm() {
         onChange={(e) => setConfirm(e.target.value)} /></label>
       {msg && <p className={msg.ok ? 'auth-ok' : 'auth-error'} role="alert">{msg.text}</p>}
       <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}</button>
-      <button className="btn btn-tertiary" type="button" onClick={() => go('/')}>← กลับไปห้องลองชุด</button>
+      <button className="btn btn-tertiary" type="button" onClick={() => go('/')}>← กลับไป Looklet</button>
     </form>
   );
 }
 
-// ปุ่มออกจากระบบ (แถบบนของห้องลองชุด)
+// ปุ่มออกจากระบบ (แถบบนของ Looklet)
 export async function signOut() {
   await createClient().auth.signOut();
   go('/login');
