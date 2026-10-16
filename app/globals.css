@@ -203,7 +203,7 @@ dialog .retouch-actions { justify-content: flex-end; }
   .frame { flex: none; height: 70vh; }
 }
 
-/* ---------- ชุดถ่ายภาพ: แสง/เลนส์/มุม/ระยะ/โทนสี ของชุดที่เลือก ---------- */
+/* ---------- สไตล์ถ่ายภาพ: แสง/เลนส์/มุม/ระยะ/โทนสี ของชุดที่เลือก ---------- */
 .preset-parts { display: grid; gap: 0; margin: 0; }
 .preset-parts div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--hairline-soft); font-size: 13px; }
 .preset-parts div:last-child { border-bottom: 0; }

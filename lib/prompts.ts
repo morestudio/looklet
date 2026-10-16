@@ -29,14 +29,14 @@ export type PromptInput = {
   hasSceneImage: boolean;
   sceneText?: string | null;
   extra?: string | null;
-  look?: string | null; // แสง/เลนส์/มุมกล้อง/โทนสีของชุดถ่ายภาพที่เลือก (presetPrompt ใน catalog) null = ไม่สั่ง
+  look?: string | null; // แสง/เลนส์/มุมกล้อง/โทนสีของสไตล์ถ่ายภาพที่เลือก (presetPrompt ใน catalog) null = ไม่สั่ง
   fullBody?: boolean;
   accessories?: string[]; // คำบรรยายของเสริมแต่ละชิ้น เรียงตามรูปที่ส่ง
   hasPose?: boolean; // มีรูปท่าโพสต์ (ส่งต่อจากของเสริม ก่อนฉาก)
   autoPose?: boolean; // "AI เลือกท่าให้": ไม่มีรูปท่า ให้ AI จัดท่าเองให้สินค้าเด่น
   poseHints?: string[]; // ท่าที่ทำให้ของเสริมแต่ละชิ้นเด่น (show ใน ACCESSORY_TYPES) ใช้คู่กับ autoPose
   poseMode?: PoseMode; // เอาอะไรจากรูปท่าโพสต์ (POSE_MODES) ใช้คู่กับ hasPose
-  framing?: string | null; // ระยะของชุดถ่ายภาพ (framing ใน PRESETS) ใส่ในบรรทัดแรก
+  framing?: string | null; // ระยะของสไตล์ถ่ายภาพ (framing ใน PRESETS) ใส่ในบรรทัดแรก
   gaze?: string | null; // การมอง (GAZES)
   props?: string[]; // พร็อพในมือ (PROPS)
 };
@@ -45,7 +45,7 @@ export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, props = [],
 }: PromptInput) {
-  // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของชุดถ่ายภาพ (คำสั่งจะขัดกัน)
+  // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
   const shotScene = hasPose && poseMode === 'shot-scene';
   let first: string;
@@ -163,7 +163,7 @@ export function buildPrompt({
 
 // ชุดภาพหลายมุม: รูปที่ 2 เป็นต้นไป — รูปที่ส่งเรียงเป็น: 1 รูปหลักของชุด, 2 นางแบบ, (ชุด), (ของเสริม...)
 // รูปหลักมีคน ชุด ฉาก แสงครบแล้ว ให้ AI ลอกทุกอย่างจากรูปนั้น เปลี่ยนแค่มุมกล้อง/ระยะ/ท่า
-// ไม่ใส่ REALISM/แสงของชุดถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
+// ไม่ใส่ REALISM/แสงของสไตล์ถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
 export type SetPromptInput = {
   framing: string; angle: string; fullBody: boolean; hasOutfit: boolean; accessories?: string[]; extra?: string | null;
 };

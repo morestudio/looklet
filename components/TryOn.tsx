@@ -51,7 +51,7 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   { key: 'accessory', label: 'ของเสริม', title: 'ของเสริม', Icon: IconBag },
   { key: 'pose', label: 'ท่าโพสต์', title: 'ท่าโพสต์', Icon: IconPose },
   { key: 'scene', label: 'ฉากหลัง', title: 'ฉากหลัง', Icon: IconScene },
-  { key: 'settings', label: 'ตั้งค่าภาพ', title: 'ตั้งค่าภาพ', Icon: IconSettings },
+  { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconSettings },
   { key: 'retouch', label: 'แต่งรูป', title: 'แต่งรูป', Icon: IconRetouch },
 ];
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
@@ -82,7 +82,7 @@ export default function TryOn() {
   const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
   const [aiModel, setAiModel] = useState('');
-  const [presetId, setPresetId] = useState(PRESETS[0].id); // ชุดถ่ายภาพ (แสง + เลนส์ + มุม + ระยะ + โทนสี)
+  const [presetId, setPresetId] = useState(PRESETS[0].id); // สไตล์ถ่ายภาพ (แสง + เลนส์ + มุม + ระยะ + โทนสี)
   const [quality, setQuality] = useState('medium');
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
@@ -104,7 +104,7 @@ export default function TryOn() {
   const aiPose = pick.pose === AI_POSE;
   const pose = aiPose ? undefined : find(lists.pose, pick.pose);
   const scene = find(lists.scene, pick.scene);
-  // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้ชุดถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
+  // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
   const shot = Boolean(pose) && poseMode !== 'pose';
   const shotScene = Boolean(pose) && poseMode === 'shot-scene';
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
@@ -339,7 +339,7 @@ export default function TryOn() {
         quality,
         extra: extra.trim(),
         look: shot ? null : presetPrompt(preset), // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ
-        // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของชุดถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
+        // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของสไตล์ถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
         full_body: set ? SET_SHOTS[0].fullBody : preset.fullBody,
         framing: shot ? null : set ? SET_SHOTS[0].framing : preset.framing.prompt,
         gaze: gaze?.prompt ?? null,
@@ -513,8 +513,8 @@ export default function TryOn() {
     });
   } else if (cur.key === 'settings') {
     panel = <>
-      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ ชุดถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
-      <Section title="ชุดถ่ายภาพ">
+      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ สไตล์ถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
+      <Section title="สไตล์ถ่ายภาพ">
         <div className="options">
           {PRESETS.map((p) => (
             <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot} onClick={() => setPresetId(p.id)}>
@@ -607,7 +607,7 @@ export default function TryOn() {
     inspector = <>
       <Section title="ฉากที่เลือก"><p className="big">{sceneName}</p></Section>
       <Section title="รูปแบบไหนได้ผลดี">
-        {tips(['ฉากว่าง ไม่มีคน', 'แนวตั้ง', 'เห็นพื้นตรงที่จะให้นางแบบยืน', 'แสงในฉากเข้ากับชุดถ่ายภาพที่จะเลือกในขั้นถัดไป'])}
+        {tips(['ฉากว่าง ไม่มีคน', 'แนวตั้ง', 'เห็นพื้นตรงที่จะให้นางแบบยืน', 'แสงในฉากเข้ากับสไตล์ถ่ายภาพที่จะเลือกในขั้นถัดไป'])}
       </Section>
     </>;
   } else if (cur.key === 'settings') {

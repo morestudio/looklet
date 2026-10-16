@@ -129,7 +129,7 @@ export const SCENES: Item[] = [
   { name: 'รันเวย์', emoji: '✨', prompt: 'a high-end fashion show runway with spotlights and an audience' },
 ];
 
-// ---------- ชุดถ่ายภาพ (preset): แสง + เลนส์ + มุมกล้อง + ระยะ + โทนสี ที่เข้ากันเป็นชุดเดียว ----------
+// ---------- สไตล์ถ่ายภาพ (preset): แสง + เลนส์ + มุมกล้อง + ระยะ + โทนสี ที่เข้ากันเป็นชุดเดียว ----------
 // แต่ละส่วนมี label = ที่โชว์ในหน้าเว็บ, prompt = ที่ส่งให้ AI จริง (ภาษาอังกฤษ) -> หน้าเว็บโชว์ตรงกับที่ส่งเสมอ
 // แยกตัวเลือกแสง/กล้อง/ระยะเองเคยขัดกัน (แสงบอกเลนส์ สไตล์ภาพบอกเลนส์อีกที) AI ต้องเลือกครึ่งๆ กลางๆ รูปเลยดูปลอม
 // แสง: บอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน" ดูจากรูปตัวอย่างของ notamodel.studio
@@ -191,7 +191,7 @@ export const PRESETS: Preset[] = [
 
 // ---------- ชุดภาพ 4 มุม: กดครั้งเดียวได้หลายรูปเหมือนถ่ายช็อตเดียวกัน ----------
 // รูปแรก (หน้าตรง) สร้างตามที่เลือกทุกอย่าง แล้วส่งรูปนั้นไปเป็นต้นแบบให้รูปที่เหลือ (คน ชุด ฉาก แสง ตรงกันทั้งชุด)
-// framing = ระยะ (แทนระยะของชุดถ่ายภาพ), angle = มุมกล้อง + ท่า สำหรับรูปที่ 2 เป็นต้นไป (รูปแรกใช้ท่าที่เลือกไว้)
+// framing = ระยะ (แทนระยะของสไตล์ถ่ายภาพ), angle = มุมกล้อง + ท่า สำหรับรูปที่ 2 เป็นต้นไป (รูปแรกใช้ท่าที่เลือกไว้)
 export type SetShot = { id: string; name: string; fullBody: boolean; framing: string; angle: string };
 export const SET_SHOTS: SetShot[] = [
   { id: 'front', name: 'หน้าตรง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
@@ -205,7 +205,7 @@ export const SET_SHOTS: SetShot[] = [
     angle: 'Camera angle: close, at chest height, straight on, focused on the fabric, details and accessories.' },
 ];
 
-// รวมส่วนของชุดถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
+// รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
 export const presetPrompt = (p: Preset) =>
   `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
 
