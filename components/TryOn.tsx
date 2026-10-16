@@ -513,17 +513,19 @@ export default function TryOn() {
     });
   } else if (cur.key === 'settings') {
     panel = <>
-      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ สไตล์ถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
-      <Section title="สไตล์ถ่ายภาพ">
-        <div className="options">
-          {PRESETS.map((p) => (
-            <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot} onClick={() => setPresetId(p.id)}>
-              <b>{p.name}</b><small>{p.hint}</small>
-            </button>
-          ))}
-        </div>
-      </Section>
-      {/* รายละเอียดติดขอบล่างของแผง: เลื่อนรายการสไตล์ได้ รายละเอียดยังเห็นตลอด */}
+      <div className="split-scroll">
+        {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ สไตล์ถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
+        <Section title="สไตล์ถ่ายภาพ">
+          <div className="options">
+            {PRESETS.map((p) => (
+              <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot} onClick={() => setPresetId(p.id)}>
+                <b>{p.name}</b><small>{p.hint}</small>
+              </button>
+            ))}
+          </div>
+        </Section>
+      </div>
+      {/* รายละเอียดอยู่นอกส่วนที่เลื่อน: เลื่อนรายการสไตล์ได้ กล่องนี้อยู่กับที่ตลอด */}
       {!shot && (
         <div className="preset-detail">
           <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
@@ -746,7 +748,7 @@ export default function TryOn() {
           ))}
         </nav>
 
-        <aside className="panel">
+        <aside className={'panel' + (cur.key === 'settings' ? ' split' : '')}>
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
