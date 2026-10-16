@@ -1,7 +1,10 @@
+import { signedIn } from '@/lib/route';
 import { KINDS, listImages } from '@/lib/storage';
 
 // เปิดหน้าเว็บ -> รูปที่เคยสร้าง + รูปที่เคยเพิ่มเอง (แยกตามประเภท)
 export async function GET() {
+  const denied = await signedIn();
+  if (denied) return denied;
   const [results, ...uploads] = await Promise.all([
     listImages({ area: 'results' }),
     ...KINDS.map((kind) => listImages({ area: 'uploads', kind })),

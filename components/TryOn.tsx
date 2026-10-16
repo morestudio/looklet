@@ -4,11 +4,13 @@
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
+import { signOut } from './AuthForm';
 import {
   IconBag, IconCompare, IconDownload, IconModel, IconPose, IconRetouch, IconScene, IconSearch, IconSettings, IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
+import { authEnabled } from '@/lib/auth';
 import { api, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ASPECTS, GAZES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS, PRESETS, PROPS,
@@ -730,6 +732,12 @@ export default function TryOn() {
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
         </div>
         <div className="top-actions">
+          {authEnabled && (
+            <>
+              <a className="btn btn-tertiary hide-sm" href="/account">เปลี่ยนรหัสผ่าน</a>
+              <button className="btn btn-tertiary" onClick={() => void signOut()}>ออกจากระบบ</button>
+            </>
+          )}
           <button className="btn btn-secondary" onClick={save}><IconDownload /> <span className="hide-sm">ดาวน์โหลด</span></button>
           <button className="btn btn-secondary" disabled={busy !== null || !aiModels?.length} title={SET_SHOTS.map((s) => s.name).join(' · ')}
             onClick={() => void generate(true)}>

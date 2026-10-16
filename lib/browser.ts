@@ -4,6 +4,9 @@ import type { AccessoryInfo } from './catalog';
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ตั้งใจโหลดทั้งหน้า
+  if (res.status === 401) window.location.assign('/login');
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
   return out;
