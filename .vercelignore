@@ -1,0 +1,7 @@
+# ไม่อัปขึ้น Vercel: key (ตั้งใน Vercel env แทน), รูปและ log ในเครื่อง, ไฟล์ build
+.env*
+results
+logs
+images/uploads
+.next
+node_modules
