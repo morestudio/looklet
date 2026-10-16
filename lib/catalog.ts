@@ -187,6 +187,41 @@ export const PRESETS: Preset[] = [
     angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
     framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet' },
     color: { label: 'อุ่น สีสดแต่เป็นธรรมชาติ', prompt: 'Warm, rich but natural colors, mixed daylight and tungsten white balance.' } },
+  { id: 'flash', name: 'Flash editorial', hint: 'แฟลชตรงแบบนิตยสาร เงาคมหลังตัว ฉากมืดกว่าคน', fullBody: true,
+    light: { label: 'แฟลชติดกล้อง แสงแข็งตรงหน้า เงาคมด้านหลัง', prompt:
+      'A direct on-camera flash: hard frontal light, bright skin with crisp specular highlights on the forehead, nose and cheekbones, '
+      + 'and a sharp-edged dark shadow cast right behind the person onto the wall or floor, offset slightly to one side. '
+      + 'The flash falls off quickly, so the background is noticeably darker than the person.' },
+    lens: { label: '35mm ชัดทั้งภาพ', prompt: 'shot on a full-frame camera with a 35mm lens, everything in focus' },
+    angle: { label: 'ต่ำกว่าระดับสายตาเล็กน้อย', prompt: "camera slightly below the model's eye level" },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
+    color: { label: 'คอนทราสต์จัด สีสด ขอบภาพมืดนิดๆ', prompt: 'Punchy contrast, saturated colors, slight vignette.' } },
+  { id: 'golden', name: 'Golden hour', hint: 'แดดเย็นย้อนแสง ขอบผมเรืองทอง เหมาะกับฉากกลางแจ้ง ทะเล สวน', fullBody: true,
+    light: { label: 'แดดเย็นย้อนหลัง ขอบตัวเรืองทอง', prompt:
+      'The low sun just before sunset is behind the person and slightly to one side: a warm golden rim light outlines the hair, '
+      + 'shoulders and arms, while the front of the face and body is lit by soft light bounced from the surroundings, so it is not dark. '
+      + 'Long, soft shadows stretch across the ground toward the camera, with a little natural haze and lens flare from the sun.' },
+    lens: { label: '85mm f/2 หลังเบลอนุ่ม', prompt: 'shot on a full-frame camera with an 85mm lens at f/2, the background softly out of focus' },
+    angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet' },
+    color: { label: 'โทนทองอุ่น คอนทราสต์นุ่ม', prompt: 'Warm golden tones, soft contrast, slightly lifted shadows.' } },
+  { id: 'phone', name: 'Phone candid (IG)', hint: 'เหมือนเพื่อนถ่ายด้วยมือถือ ลงไอจี ดูเป็นกันเอง ใช้ได้ทุกฉาก', fullBody: true,
+    light: { label: 'แสงที่มีอยู่ในฉาก ไม่มีไฟเสริม', prompt:
+      'Only the natural light that is already at the location, with no extra lighting equipment: the light direction, shadows and '
+      + 'brightness on the person match the place exactly, including slightly uneven light where it would really be uneven.' },
+    lens: { label: 'กล้องหลักมือถือ ~26mm ชัดทั้งภาพ', prompt: 'taken on a smartphone main camera (about 26mm), everything in focus' },
+    angle: { label: 'ระดับอก เพื่อนถือถ่าย', prompt: 'phone held by a friend at chest height' },
+    framing: { label: 'เต็มตัว จัดเฟรมสบายๆ ไม่เป๊ะ', prompt: 'framed full body with casual, slightly imperfect framing and a little space around the model' },
+    color: { label: 'สีมือถือธรรมชาติ HDR นิดๆ', prompt: 'Natural smartphone colors with mild HDR and phone-style sharpening, as posted on Instagram without filters.' } },
+  { id: 'night', name: 'Night city', hint: 'กลางคืน ไฟถนน/นีออนตกกระทบตัว เหมาะกับฉากถนนกลางคืน', fullBody: true,
+    light: { label: 'ไฟถนน/ป้ายนีออน + แฟลชอ่อนๆ', prompt:
+      'Night: the person is lit by the lights of the location (street lamps, shop windows and neon signs), with colored light '
+      + 'falling on the skin and clothes from the side and deep shadows between the lights, plus a weak on-camera fill flash so the '
+      + 'face and outfit stay readable. Wet or shiny surfaces reflect the lights.' },
+    lens: { label: '35mm f/1.8 ไฟหลังเป็นโบเก้', prompt: 'shot on a full-frame camera with a 35mm lens at f/1.8, the background lights blurred into soft bokeh' },
+    angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet' },
+    color: { label: 'เงาฟ้าเย็น ไฟอุ่น เกรนกลางคืน', prompt: 'Rich night colors with cool blue shadows and warm highlights, fine high-ISO grain.' } },
 ];
 
 // ---------- ชุดภาพ 4 มุม: กดครั้งเดียวได้หลายรูปเหมือนถ่ายช็อตเดียวกัน ----------
