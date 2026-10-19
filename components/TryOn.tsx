@@ -59,14 +59,15 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
 // คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
-// ค่าเริ่มต้นของ 2.5 = max: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ แต่ max เห็นลายทอผ้าชัด medium ผ้าเรียบลื่นเหมือนผ้าปลอม
+// ค่าเริ่มต้นของ 2.5 = high: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ, medium ผ้าเรียบลื่นเหมือนผ้าปลอม,
+// high เริ่มเห็นเนื้อผ้าในราคา ~฿1.8 (max ลายทอชัดสุดแต่ ~฿5.9 และช้ากว่า 3 เท่า เลือกเองได้)
 // ราคาในวงเล็บ = ที่จ่ายจริงตอนทดสอบ (1024×1536, รูปเข้า 2 รูป)
 const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
 const QUALITIES_25 = [
   { id: 'medium', name: 'กลาง ~฿0.8' }, { id: 'high', name: 'สูง ~฿1.8' }, { id: 'xhigh', name: 'สูงมาก ~฿2.9' }, { id: 'max', name: 'สูงสุด ~฿5.9' },
 ];
 const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
-const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'max' : 'medium');
+const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
 const splitLabel = (label: string) => {
   const m = label.match(/^(.*?)\s*\((.*)\)$/);
