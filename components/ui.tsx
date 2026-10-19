@@ -45,7 +45,7 @@ export function AddCard({ onFile }: { onFile: (f: File) => void }) {
     <label className="card add">
       <div className="tile">+</div>
       <span>เพิ่มรูป</span>
-      <input type="file" accept="image/*" onChange={(e) => {
+      <input type="file" accept="image/*,.heic,.heif" onChange={(e) => {
         const f = e.target.files?.[0];
         e.target.value = ''; // เลือกไฟล์เดิมซ้ำได้
         if (f) onFile(f);

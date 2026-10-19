@@ -23,6 +23,8 @@ export const isKind = (k: unknown): k is Kind => KINDS.includes(k as Kind);
 export type Where = { area: 'results' } | { area: 'uploads'; kind: Kind };
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+// ชนิดรูปที่เก็บได้ — ชนิดอื่น (เช่น HEIC) หน้าเว็บแปลงเป็น JPEG ก่อน (toWebImage/uploadImage ใน lib/browser.ts)
+export const isStorable = (mime: unknown) => typeof mime === 'string' && mime in EXT;
 const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
 const URL_PREFIX = '/api/files/';
 

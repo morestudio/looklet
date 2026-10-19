@@ -12,7 +12,7 @@ import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film } from '@/lib/film';
-import { api, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize, uploadImage } from '@/lib/browser';
+import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS,
   PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
@@ -219,7 +219,19 @@ export default function TryOn() {
     else select(key, src);
   }
 
-  function onFile(key: Key, file: File) {
+  // HEIC (รูปจาก iPhone) แปลงเป็น JPEG ก่อน ไม่งั้น browser ส่วนใหญ่เปิดรูปไม่ได้ ย่อ/ส่งให้ AI ไม่ได้
+  async function onFile(key: Key, picked: File) {
+    let file = picked;
+    if (isHeic(picked)) {
+      setStatus('กำลังแปลงรูป HEIC เป็น JPG...');
+      try {
+        file = await toWebImage(picked);
+        setStatus('');
+      } catch (err) {
+        console.error('แปลงรูป HEIC ไม่สำเร็จ', err);
+        return setStatus('เปิดรูป HEIC นี้ไม่ได้ — ลองส่งออกเป็น JPG จากแอปรูปภาพก่อน แล้วอัปโหลดใหม่');
+      }
+    }
     if (key !== 'accessory') return void addUpload(key, file, file.name.replace(/\.[^.]+$/, ''));
     void addAccessory(file);
   }

@@ -42,8 +42,21 @@ export async function jpegBase64(src: string, maxSide = 1024) {
 
 // รูปที่ "+ เพิ่มรูป": เล็กพอ -> ส่งไฟล์เดิม, ใหญ่ (เช่นรูปจากมือถือ) -> ย่อด้านยาวเหลือ 2048 ก่อน
 // Vercel รับ request ได้ไม่เกิน 4.5 MB (base64 ใหญ่กว่าไฟล์ ~1/3) — PNG ใช้ WebP เก็บพื้นใสไว้ browser ทำ WebP ไม่ได้ค่อยใช้ JPEG
+// ชนิดรูปที่เก็บได้ (ตรงกับ EXT ใน lib/storage.ts) — ชนิดอื่นแปลงเป็น JPEG/WebP ก่อนส่ง
+const STORABLE = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// รูปจาก iPhone เป็น HEIC: Chrome/Edge/Firefox เปิดไม่ได้ (Safari ได้) -> แปลงเป็น JPEG ในเครื่องก่อนทำอย่างอื่น
+// ตัวแปลง (heic-to, libheif) ใหญ่ ~3 MB -> โหลดเฉพาะตอนเจอไฟล์ HEIC
+export const isHeic = (f: File) => /^image\/hei[cf]/i.test(f.type) || /\.(heic|heif)$/i.test(f.name);
+export async function toWebImage(file: File): Promise<File> {
+  if (!isHeic(file)) return file;
+  const { heicTo } = await import('heic-to');
+  const jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
+  return new File([jpeg], file.name.replace(/\.(heic|heif)$/i, '') + '.jpg', { type: 'image/jpeg' });
+}
+
 export async function uploadImage(file: File, maxBytes = 2_500_000, maxSide = 2048) {
-  if (file.size <= maxBytes) return { data: await fileToBase64(file), mime: file.type };
+  if (file.size <= maxBytes && STORABLE.includes(file.type)) return { data: await fileToBase64(file), mime: file.type };
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImg(url);
