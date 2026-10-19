@@ -58,7 +58,15 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
 ];
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
+// คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
+// ค่าเริ่มต้นของ 2.5 = max: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ แต่ max เห็นลายทอผ้าชัด medium ผ้าเรียบลื่นเหมือนผ้าปลอม
+// ราคาในวงเล็บ = ที่จ่ายจริงตอนทดสอบ (1024×1536, รูปเข้า 2 รูป)
 const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
+const QUALITIES_25 = [
+  { id: 'medium', name: 'กลาง ~฿0.8' }, { id: 'high', name: 'สูง ~฿1.8' }, { id: 'xhigh', name: 'สูงมาก ~฿2.9' }, { id: 'max', name: 'สูงสุด ~฿5.9' },
+];
+const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
+const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'max' : 'medium');
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
 const splitLabel = (label: string) => {
   const m = label.match(/^(.*?)\s*\((.*)\)$/);
@@ -149,7 +157,7 @@ export default function TryOn() {
       .catch(() => [] as AiModel[])
       .then((list) => {
         setAiModels(list);
-        if (list.length) setAiModel(list[0].id);
+        if (list.length) chooseModel(list[0].id);
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
@@ -161,6 +169,12 @@ export default function TryOn() {
     }, 500);
     return () => clearTimeout(id);
   }, []);
+
+  // เปลี่ยนโมเดล AI -> คุณภาพกลับเป็นค่าเริ่มต้นของโมเดลนั้น (ระดับที่รุ่นหนึ่งมี อีกรุ่นอาจไม่มี)
+  function chooseModel(id: string) {
+    setAiModel(id);
+    setQuality(defaultQuality(id));
+  }
 
   function select(key: Exclude<Key, 'accessory'>, id: string | null) {
     setPick((p) => ({ ...p, [key]: id }));
@@ -298,10 +312,12 @@ export default function TryOn() {
       shot ? 'แสงจากรูปต้นแบบ' : preset.name,
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
-    ].join(' · ') + ` — ${choice.label}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
+    ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
     setBusy(set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
-      : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)' : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
+      : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
+        : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
+          : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
     try {
       // ย่อรูปทุกรูปก่อน (ได้ขนาดจริงที่ส่งไว้ทำ log ด้วย)
       const person = await jpegBase64(model.src!);
@@ -635,7 +651,7 @@ export default function TryOn() {
             {(aiModels ?? []).map((m) => {
               const [name, detail] = splitLabel(m.label);
               return (
-                <button key={m.id} type="button" className={'option' + (aiModel === m.id ? ' active' : '')} onClick={() => setAiModel(m.id)}>
+                <button key={m.id} type="button" className={'option' + (aiModel === m.id ? ' active' : '')} onClick={() => chooseModel(m.id)}>
                   <b>{name}</b>{detail && <small>{detail}</small>}
                 </button>
               );
@@ -643,7 +659,11 @@ export default function TryOn() {
             {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
           </div>
         </Section>
-        {aiModel.startsWith('openai:') && <Section title="คุณภาพ (OpenAI)"><ChipGroup options={QUALITIES} value={quality} onChange={setQuality} /></Section>}
+        {aiModel.startsWith('openai:') && (
+          <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
+          </Section>
+        )}
         <Section title="สัดส่วนภาพ" note={aspect && aspect !== '2:3' && aiModel.startsWith('openai:') ? 'OpenAI ได้แค่ 2:3' : undefined}>
           <ChipGroup value={aspect} onChange={setAspect} options={[
             { id: '', name: 'ตามรูปนางแบบ' },
