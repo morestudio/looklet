@@ -29,24 +29,23 @@ export type PromptInput = {
   hasSceneImage: boolean;
   sceneText?: string | null;
   extra?: string | null;
-  look?: string | null; // prompt ของ "แสงสี" ที่เลือก (null = ไม่สั่งเรื่องแสงสี)
+  look?: string | null; // แสง/เลนส์/มุมกล้อง/โทนสีของสไตล์ถ่ายภาพที่เลือก (presetPrompt ใน catalog) null = ไม่สั่ง
   fullBody?: boolean;
   accessories?: string[]; // คำบรรยายของเสริมแต่ละชิ้น เรียงตามรูปที่ส่ง
   hasPose?: boolean; // มีรูปท่าโพสต์ (ส่งต่อจากของเสริม ก่อนฉาก)
   autoPose?: boolean; // "AI เลือกท่าให้": ไม่มีรูปท่า ให้ AI จัดท่าเองให้สินค้าเด่น
   poseHints?: string[]; // ท่าที่ทำให้ของเสริมแต่ละชิ้นเด่น (show ใน ACCESSORY_TYPES) ใช้คู่กับ autoPose
   poseMode?: PoseMode; // เอาอะไรจากรูปท่าโพสต์ (POSE_MODES) ใช้คู่กับ hasPose
-  framing?: string | null; // ระยะ/การวางคน (FRAMINGS) ใส่ในบรรทัดแรก
-  camera?: string[]; // สไตล์ภาพ / มุมกล้อง (SHOT_STYLES, CAMERA_ANGLES)
+  framing?: string | null; // ระยะของสไตล์ถ่ายภาพ (framing ใน PRESETS) ใส่ในบรรทัดแรก
   gaze?: string | null; // การมอง (GAZES)
   props?: string[]; // พร็อพในมือ (PROPS)
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, camera = [], gaze = null, props = [],
+  poseMode = 'pose', framing = null, gaze = null, props = [],
 }: PromptInput) {
-  // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/camera/look ที่เลือก (คำสั่งจะขัดกัน)
+  // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
   const shotScene = hasPose && poseMode === 'shot-scene';
   let first: string;
@@ -155,10 +154,45 @@ export function buildPrompt({
   }
   if (shot) lines.push(REALISM); // แสง/โทนสีเอาจากรูปต้นแบบ ไม่ใส่ look
   else if (look) lines.push(REALISM, look);
-  if (!shot) lines.push(...camera); // หลัง look: สไตล์ภาพสั่งแทนเลนส์ที่ look บอกไว้
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
-  if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // แสงแบบถ่ายใกล้ (เน้นสินค้า) บอกการครอปเองใน look
+  if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false
+  if (extra) lines.push('Additional instruction: ' + extra);
+  return lines.join(' ');
+}
+
+// ชุดภาพหลายมุม: รูปที่ 2 เป็นต้นไป — รูปที่ส่งเรียงเป็น: 1 รูปหลักของชุด, 2 นางแบบ, (ชุด), (ของเสริม...)
+// รูปหลักมีคน ชุด ฉาก แสงครบแล้ว ให้ AI ลอกทุกอย่างจากรูปนั้น เปลี่ยนแค่มุมกล้อง/ระยะ/ท่า
+// ไม่ใส่ REALISM/แสงของสไตล์ถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
+export type SetPromptInput = {
+  framing: string; angle: string; fullBody: boolean; hasOutfit: boolean; accessories?: string[]; extra?: string | null;
+};
+
+export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessories = [], extra }: SetPromptInput) {
+  const lines = [
+    `Create one fashion photograph, ${framing}.`,
+    'Image 1 is a photo from the same photo shoot. Keep everything from image 1 the same: the same person (face, hairstyle, '
+      + 'body shape and skin), the same outfit and accessories, the same location and background, the same light direction, '
+      + 'color grading, lens look and image quality.',
+    'Image 2 shows the same model: use it to keep the face identical.',
+  ];
+  let n = 3;
+  if (hasOutfit) {
+    lines.push(`Image ${n} is the outfit: use it to keep the garments accurate, including parts that are not visible in image 1. `
+      + `Ignore the face, body and background of image ${n}.`);
+    n += 1;
+  }
+  if (accessories.length) {
+    for (const what of accessories) {
+      lines.push(`Image ${n} is a product photo of ${what}.`);
+      n += 1;
+    }
+    lines.push(ACCESSORY_RULES);
+  }
+  lines.push(`Only the camera angle, framing and pose change. ${angle} Choose a natural, relaxed fashion pose that suits this angle.`);
+  lines.push('It must look like the next frame from the same real photo shoot, not a new composite. '
+    + 'Keep the existing skin texture; do not smooth it.');
+  if (fullBody) lines.push('Show the full body from head to feet.');
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }

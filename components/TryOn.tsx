@@ -1,18 +1,20 @@
 'use client';
-// ห้องลองชุด AI: เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
+// Looklet: เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
+import { signOut } from './AuthForm';
 import {
   IconBag, IconCompare, IconDownload, IconModel, IconPose, IconRetouch, IconScene, IconSearch, IconSettings, IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
-import { api, fileToBase64, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize } from '@/lib/browser';
+import { authEnabled } from '@/lib/auth';
+import { api, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize, uploadImage } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, CAMERA_ANGLES, FRAMINGS, GAZES, LOOKS, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PROPS,
-  SCENES, SHOT_STYLES, SKIN_TONES, type AccessoryInfo, type Item, type PoseMode,
+  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, GAZES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS, PRESETS, PROPS,
+  SCENES, SET_SHOTS, SKIN_TONES, presetPrompt, type AccessoryInfo, type Item, type PoseMode,
 } from '@/lib/catalog';
 
 type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
@@ -36,9 +38,11 @@ const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
 const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'หน้าเรียว'], ['acne', 'ลบสิว/จุดด่าง'], ['smooth', 'หน้าเนียน'], ['white', 'ผิวขาว']];
 
-type Result = { src: string; caption: string };
+type Result = { src: string; caption: string; set?: SetTag }; // set = อยู่ในชุดภาพหลายมุม
 type AiModel = { id: string; label: string };
-type Stored = { src: string; name?: string; caption?: string; type?: string };
+const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
+type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
@@ -49,12 +53,21 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   { key: 'accessory', label: 'ของเสริม', title: 'ของเสริม', Icon: IconBag },
   { key: 'pose', label: 'ท่าโพสต์', title: 'ท่าโพสต์', Icon: IconPose },
   { key: 'scene', label: 'ฉากหลัง', title: 'ฉากหลัง', Icon: IconScene },
-  { key: 'settings', label: 'ตั้งค่าภาพ', title: 'ตั้งค่าภาพ', Icon: IconSettings },
+  { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconSettings },
   { key: 'retouch', label: 'แต่งรูป', title: 'แต่งรูป', Icon: IconRetouch },
 ];
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
+// คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
+// ค่าเริ่มต้นของ 2.5 = high: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ, medium ผ้าเรียบลื่นเหมือนผ้าปลอม,
+// high เริ่มเห็นเนื้อผ้าในราคา ~฿1.8 (max ลายทอชัดสุดแต่ ~฿5.9 และช้ากว่า 3 เท่า เลือกเองได้)
+// ราคาในวงเล็บ = ที่จ่ายจริงตอนทดสอบ (1024×1536, รูปเข้า 2 รูป)
 const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
+const QUALITIES_25 = [
+  { id: 'medium', name: 'กลาง ~฿0.8' }, { id: 'high', name: 'สูง ~฿1.8' }, { id: 'xhigh', name: 'สูงมาก ~฿2.9' }, { id: 'max', name: 'สูงสุด ~฿5.9' },
+];
+const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
+const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
 const splitLabel = (label: string) => {
   const m = label.match(/^(.*?)\s*\((.*)\)$/);
@@ -76,14 +89,16 @@ export default function TryOn() {
   const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
   const [busy, setBusy] = useState<string | null>(null);
+  // ชุดภาพที่กำลังสร้างมุมที่เหลือ: รูปหลักโชว์แล้ว ดูได้ระหว่างรอ (ไม่บังรูป) ประวัติรูปโชว์ช่องรอ left ช่อง
+  const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
   const [aiModel, setAiModel] = useState('');
-  const [look, setLook] = useState(() => Math.max(0, LOOKS.findIndex((l) => l.isDefault)));
+  const [presetId, setPresetId] = useState(PRESETS[0].id); // สไตล์ถ่ายภาพ (แสง + เลนส์ + มุม + ระยะ + โทนสี)
   const [quality, setQuality] = useState('medium');
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
   const [poseMode, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์
-  const [cam, setCam] = useState({ style: '', angle: '', framing: '', gaze: '' }); // กล้องและสไตล์ ('' = ไม่กำหนด)
+  const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
   const [aspect, setAspect] = useState(''); // '' = ตามรูปนางแบบ
   const [heldProps, setHeldProps] = useState<string[]>([]); // พร็อพในมือ (id ใน PROPS)
   // ของเสริมที่ AI กำลังดูว่าเป็นอะไร (URL รูปชั่วคราว) ขึ้นเป็นการ์ดรอในรายการ
@@ -100,13 +115,11 @@ export default function TryOn() {
   const aiPose = pick.pose === AI_POSE;
   const pose = aiPose ? undefined : find(lists.pose, pick.pose);
   const scene = find(lists.scene, pick.scene);
-  // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ล็อกตัวเลือกพวกนั้น), + ฉาก = ไม่ใช้ฉากที่เลือก
+  // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
   const shot = Boolean(pose) && poseMode !== 'pose';
   const shotScene = Boolean(pose) && poseMode === 'shot-scene';
-  const style = SHOT_STYLES.find((c) => c.id === cam.style);
-  const angle = CAMERA_ANGLES.find((c) => c.id === cam.angle);
-  const framing = FRAMINGS.find((c) => c.id === cam.framing);
-  const gaze = GAZES.find((c) => c.id === cam.gaze);
+  const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
+  const gaze = shot ? undefined : GAZES.find((c) => c.id === gazeId);
   const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
   const accs = pick.accessory.map((id) => find(lists.accessory, id)).filter((a): a is Item => a !== undefined);
   const shown = current === null ? null : results[current];
@@ -123,7 +136,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้' })));
+        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -145,7 +158,7 @@ export default function TryOn() {
       .catch(() => [] as AiModel[])
       .then((list) => {
         setAiModels(list);
-        if (list.length) setAiModel(list[0].id);
+        if (list.length) chooseModel(list[0].id);
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
@@ -157,6 +170,12 @@ export default function TryOn() {
     }, 500);
     return () => clearTimeout(id);
   }, []);
+
+  // เปลี่ยนโมเดล AI -> คุณภาพกลับเป็นค่าเริ่มต้นของโมเดลนั้น (ระดับที่รุ่นหนึ่งมี อีกรุ่นอาจไม่มี)
+  function chooseModel(id: string) {
+    setAiModel(id);
+    setQuality(defaultQuality(id));
+  }
 
   function select(key: Exclude<Key, 'accessory'>, id: string | null) {
     setPick((p) => ({ ...p, [key]: id }));
@@ -179,7 +198,7 @@ export default function TryOn() {
   async function addUpload(key: Key, file: File, name: string, type?: string) {
     let src: string;
     try {
-      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, data: await fileToBase64(file), mime: file.type }));
+      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...(await uploadImage(file)) }));
     } catch (err) {
       src = URL.createObjectURL(file); // เซฟไม่ได้ -> ใช้ชั่วคราวไปก่อน
       setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh`);
@@ -279,24 +298,27 @@ export default function TryOn() {
     }
   }
 
-  async function generate() {
+  // set = ชุดภาพ 4 มุม (SET_SHOTS): รูปหลักสร้างตามที่เลือก แล้วส่งรูปหลักเป็นต้นแบบให้อีก 3 มุมพร้อมกัน
+  async function generate(set = false) {
     if (!outfit && !accs.length && !pose && !aiPose && !scene) return setStatus('เลือกชุด ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
     setStatus('');
-    const lk = LOOKS[look];
     const modeName = POSE_MODES.find((m) => m.id === poseMode)!.name;
-    const camNames = shot ? [] : [style, angle, framing, gaze].filter((c) => c !== undefined).map((c) => c.name);
     const caption = [
       model.name,
       (outfit?.name ?? 'ชุดเดิม') + accs.map((a) => ' + ' + a.name).join(''),
       ...(pose ? ['ท่า' + pose.name + (shot ? ` (${modeName})` : '')] : aiPose ? ['ท่าที่ AI เลือก'] : []),
       shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม',
-      shot ? 'แสงจากรูปต้นแบบ' : lk.name,
-      ...camNames,
+      shot ? 'แสงจากรูปต้นแบบ' : preset.name,
+      ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
-    ].join(' · ') + ` — ${choice.label}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
-    setBusy(harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)' : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
+    ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
+    const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
+    setBusy(set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
+      : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
+        : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
+          : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
     try {
       // ย่อรูปทุกรูปก่อน (ได้ขนาดจริงที่ส่งไว้ทำ log ด้วย)
       const person = await jpegBase64(model.src!);
@@ -306,7 +328,7 @@ export default function TryOn() {
       const sceneImg = !shotScene && scene?.src ? await jpegBase64(scene.src) : null;
       // ที่มาของแต่ละรูป: server เก็บลง log ว่าส่งรูปไหนไปเป็น Image อะไร (ไม่ได้ส่งให้ AI)
       const ref = (item: Item | undefined, img: { w: number; h: number } | null) => (item && img ? { name: item.name, src: item.src, w: img.w, h: img.h } : null);
-      const out = await api('/api/generate', {
+      const body = {
         model: choice.id,
         person: person.data,
         outfit: outfitImg?.data ?? null,
@@ -324,9 +346,9 @@ export default function TryOn() {
           // ชื่อตัวเลือกภาษาไทย ไว้ทำ log ให้อ่านง่าย (คำสั่งจริงที่ส่ง AI อยู่ใน prompt)
           choices: {
             poseMode: pose ? POSE_MODES.find((m) => m.id === poseMode)!.name : aiPose ? 'AI เลือกท่าให้' : 'ท่าเดิม',
-            light: shot ? 'ใช้แสงจากรูปท่าโพสต์' : lk.name,
-            camera: shot ? null : style?.name ?? null, angle: shot ? null : angle?.name ?? null,
-            framing: shot ? null : framing?.name ?? null, gaze: shot ? null : gaze?.name ?? null,
+            preset: shot ? 'ใช้แสงและกล้องจากรูปท่าโพสต์' : preset.name,
+            ...(shot ? {} : Object.fromEntries(PRESET_PARTS.map(({ key }) => [key, preset[key].label]))),
+            gaze: gaze?.name ?? null,
             props: propChoices.map((p) => p.name), aspect: aspect || 'ตามรูปนางแบบ', harmonize,
           },
         },
@@ -335,22 +357,23 @@ export default function TryOn() {
         size: aspect ? '1024x1536' : openaiSize(person.w, person.h),
         quality,
         extra: extra.trim(),
-        look: shot ? null : lk.prompt, // ลอกทั้งช็อต: แสงเอาจากรูปต้นแบบ
-        full_body: framing ? framing.fullBody : !lk.closeup,
-        framing: framing?.prompt ?? null,
-        camera: [style, angle].filter((c) => c !== undefined).map((c) => c.prompt),
+        look: shot ? null : presetPrompt(preset), // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ
+        // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของสไตล์ถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
+        full_body: set ? SET_SHOTS[0].fullBody : preset.fullBody,
+        framing: shot ? null : set ? SET_SHOTS[0].framing : preset.framing.prompt,
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
         harmonize,
-        caption,
-      });
-
-      const made: Result[] = [{ src: out.src, caption }]; // server เซฟไว้ใน results/ แล้ว
+      };
+      const setId = set ? newSetId() : null;
+      const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
+      const out = await api('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
+      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0) }]; // server เซฟไว้ใน results/ แล้ว
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
-      if (!REAL_FACE) {
-        // ปิดอยู่ -> ใช้รูปจาก AI ตามเดิม
+      if (!REAL_FACE || set) {
+        // ปิดอยู่ / ชุดภาพ (หลายมุม หน้าหันต่างกัน) -> ใช้รูปจาก AI ตามเดิม
       } else if (onFace) {
         setStatus(`ใส่${onFace}อยู่บนหน้า เลยใช้หน้าจาก AI (ถ้าใส่หน้าจริง ${onFace}จะหายไป)`);
       } else {
@@ -363,10 +386,32 @@ export default function TryOn() {
       // เตรียมไว้ก่อน แตะสไลเดอร์แล้วจะไม่ต้องรอ
       prepare(made[0].src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message} — ลองเลื่อนสไลเดอร์อีกครั้ง`));
       frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // จอแคบ: เลื่อนมาให้เห็นรูปที่ได้
+      if (setId) {
+        // มุมที่เหลือ: ส่งรูปหลักไปเป็นรูปแรก ไม่ส่งรูปท่า/ฉาก (server ใช้ buildSetPrompt) — เสร็จรูปไหนขึ้นประวัติรูปนั้นเลย พังบางรูปยังเก็บรูปที่ได้
+        setPendingSet({ id: setId, left: SET_SHOTS.length - 1 });
+        setBusy(`AI กำลังสร้างอีก ${SET_SHOTS.length - 1} มุมพร้อมกัน...`);
+        const hero = await jpegBase64(out.src);
+        const rest = await Promise.allSettled(SET_SHOTS.slice(1).map((s, j) => api('/api/generate', {
+          ...body,
+          set_ref: hero.data,
+          set_shot: { name: s.name, framing: s.framing, angle: s.angle, full_body: s.fullBody },
+          refs: { ...body.refs, set_ref: { name: setCaption(0), src: out.src, w: hero.w, h: hero.h } },
+          caption: setCaption(j + 1),
+          set: setTag(j + 1),
+        }).then(({ src }) => {
+          setResults((r) => [{ src, caption: setCaption(j + 1), set: setTag(j + 1) }, ...r]);
+          setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
+        }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
+        const failed = rest.filter((x) => x.status === 'rejected');
+        if (failed.length) {
+          setStatus(`ชุดภาพได้ ${SET_SHOTS.length - failed.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
+        }
+      }
     } catch (err) {
       setStatus('สร้างรูปไม่สำเร็จ: ' + (err as Error).message);
     } finally {
       setBusy(null);
+      setPendingSet(null);
     }
   }
 
@@ -401,20 +446,19 @@ export default function TryOn() {
     model: model.name,
     outfit: outfitName,
     accessory: accNames.join(', ') || 'ไม่ใส่',
-    pose: poseName + (shot ? ` (${POSE_MODES.find((m) => m.id === poseMode)!.name})` : '')
-      + [framing?.name, gaze?.name].filter((x) => x && !shot).map((x) => ' · ' + x).join(''),
-    scene: sceneName + (shot ? '' : ' · ' + LOOKS[look].name.split(' — ')[0]),
-    settings: [aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, style?.name, angle?.name, ...propChoices.map((p) => 'ถือ' + p.name)]
-      .filter(Boolean).join(' · '),
+    pose: poseName + (shot ? ` (${POSE_MODES.find((m) => m.id === poseMode)!.name})` : ''),
+    scene: sceneName,
+    settings: [shot ? 'ตามรูปต้นแบบ' : preset.name, aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, gaze?.name,
+      ...propChoices.map((p) => 'ถือ' + p.name)].filter(Boolean).join(' · '),
     retouch: retouched ? 'แต่งแล้ว' : 'ยังไม่แต่ง',
   };
   const stepDone: Record<StepKey, boolean> = {
     model: true,
     outfit: Boolean(outfit),
     accessory: accs.length > 0,
-    pose: Boolean(pose || aiPose || framing || gaze),
+    pose: Boolean(pose || aiPose),
     scene: Boolean(scene) || shotScene,
-    settings: Boolean(aspect || style || angle || propChoices.length || extra.trim()),
+    settings: Boolean(presetId !== PRESETS[0].id || aspect || gaze || propChoices.length || extra.trim() || harmonize),
     retouch: retouched,
   };
 
@@ -487,34 +531,34 @@ export default function TryOn() {
       muted: shotScene,
     });
   } else if (cur.key === 'settings') {
-    const fromShot = shot ? 'ใช้จากรูปต้นแบบ' : undefined;
     panel = <>
-      <Section title="โมเดล AI">
-        <div className="options">
-          {(aiModels ?? []).map((m) => {
-            const [name, detail] = splitLabel(m.label);
-            return (
-              <button key={m.id} type="button" className={'option' + (aiModel === m.id ? ' active' : '')} onClick={() => setAiModel(m.id)}>
-                <b>{name}</b>{detail && <small>{detail}</small>}
+      <div className="split-scroll">
+        {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ สไตล์ถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
+        <Section title="สไตล์ถ่ายภาพ">
+          <div className="options">
+            {PRESETS.map((p) => (
+              <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot} onClick={() => setPresetId(p.id)}>
+                <b>{p.name}</b><small>{p.hint}</small>
               </button>
-            );
-          })}
-          {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
+            ))}
+          </div>
+        </Section>
+      </div>
+      {/* รายละเอียดอยู่นอกส่วนที่เลื่อน: เลื่อนรายการสไตล์ได้ กล่องนี้อยู่กับที่ตลอด */}
+      {!shot && (
+        // วาดรายละเอียดทุกสไตล์ซ้อนกันในช่องเดียว โชว์แค่อันที่เลือก -> กล่องสูงเท่าอันที่ยาวสุดเสมอ เปลี่ยนสไตล์แล้วไม่กระโดด
+        <div className="preset-detail">
+          {PRESETS.map((p) => (
+            <div key={p.id} className={p.id === preset.id ? '' : 'stack-hidden'} aria-hidden={p.id !== preset.id}>
+              <Section title={`ใน ${p.name} มีอะไรบ้าง`}>
+                <dl className="preset-parts">
+                  {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{p[key].label}</dd></div>)}
+                </dl>
+              </Section>
+            </div>
+          ))}
         </div>
-      </Section>
-      {aiModel.startsWith('openai:') && <Section title="คุณภาพ (OpenAI)"><ChipGroup options={QUALITIES} value={quality} onChange={setQuality} /></Section>}
-      <Section title="สัดส่วนภาพ" note={aspect && aspect !== '2:3' && aiModel.startsWith('openai:') ? 'OpenAI ได้แค่ 2:3' : undefined}>
-        <ChipGroup value={aspect} onChange={setAspect} options={[
-          { id: '', name: 'ตามรูปนางแบบ' },
-          ...ASPECTS.map((a) => ({ id: a.id, name: <><i className="ratio" style={{ aspectRatio: a.id.replace(':', ' / ') }} />{a.name}</> })),
-        ]} />
-      </Section>
-      <Section title="สไตล์ภาพ" note={fromShot}>
-        <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...SHOT_STYLES]} value={cam.style} disabled={shot} onChange={(v) => setCam((c) => ({ ...c, style: v }))} />
-      </Section>
-      <Section title="มุมกล้อง" note={fromShot}>
-        <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...CAMERA_ANGLES]} value={cam.angle} disabled={shot} onChange={(v) => setCam((c) => ({ ...c, angle: v }))} />
-      </Section>
+      )}
     </>;
   } else {
     panel = <>
@@ -570,7 +614,6 @@ export default function TryOn() {
       </Section>
     </>;
   } else if (cur.key === 'pose') {
-    const fromShot = shot ? 'ใช้จากรูปต้นแบบ' : undefined;
     inspector = <>
       {pose && (
         <Section title="ใช้รูปท่าแบบไหน">
@@ -583,48 +626,72 @@ export default function TryOn() {
           <p className="muted-text">AI จัดท่าให้สินค้าเด่นเอง ตามของเสริมที่เลือก เช่น ใส่แว่นอาจแตะแว่น ใส่กระเป๋าอาจยกกระเป๋าขึ้นโชว์</p>
         </Section>
       )}
-      <Section title="ระยะ" note={fromShot}>
-        <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...FRAMINGS]} value={cam.framing} disabled={shot} onChange={(v) => setCam((c) => ({ ...c, framing: v }))} />
-      </Section>
-      <Section title="การมอง" note={fromShot}>
-        <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={cam.gaze} disabled={shot} onChange={(v) => setCam((c) => ({ ...c, gaze: v }))} />
-      </Section>
+      {!pose && !aiPose && (
+        <Section title="รูปแบบไหนได้ผลดี">
+          {tips(['คนเดียวเต็มตัว เห็นแขนขาชัด', 'ไม่มีตัวอักษร/ไอคอนแอปทับ', 'แคปจากมือถือ ตัดขอบแอปออกก่อน'])}
+        </Section>
+      )}
     </>;
   } else if (cur.key === 'scene') {
     inspector = <>
-      <Section title="แสงสี" note={shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
-        <div className="options">
-          {LOOKS.map((l, i) => {
-            const [name, detail] = l.name.split(' — ');
-            return (
-              <button key={l.name} type="button" className={'option' + (look === i ? ' active' : '')} disabled={shot} onClick={() => setLook(i)}>
-                <b>{name}</b>{detail && <small>{detail}</small>}
-              </button>
-            );
-          })}
-        </div>
+      <Section title="ฉากที่เลือก"><p className="big">{sceneName}</p></Section>
+      <Section title="รูปแบบไหนได้ผลดี">
+        {tips(['ฉากว่าง ไม่มีคน', 'แนวตั้ง', 'เห็นพื้นตรงที่จะให้นางแบบยืน', 'แสงในฉากเข้ากับสไตล์ถ่ายภาพที่จะเลือกในขั้นถัดไป'])}
       </Section>
-      <label className="check">
-        <input type="checkbox" checked={harmonize} onChange={(e) => setHarmonize(e.target.checked)} />
-        <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
-      </label>
     </>;
   } else if (cur.key === 'settings') {
     inspector = <>
-      <Section title="พร็อพในมือ" note="เลือกได้หลายอย่าง">
-        <div className="chips">
-          {PROPS.map((p) => (
-            <button key={p.id} type="button" className={'chip' + (heldProps.includes(p.id) ? ' active' : '')}
-              onClick={() => setHeldProps((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}>
-              {p.name}
-            </button>
-          ))}
-        </div>
-      </Section>
-      <Section title="สั่งเพิ่มเติม">
-        <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว" />
-      </Section>
       <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>สร้างรูป</button>
+      <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}>
+        ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI {SET_SHOTS.length} เท่า</small>
+      </button>
+      <details className="advanced">
+        <summary>ขั้นสูง <small>โมเดล AI · สัดส่วน · การมอง · พร็อพ · สั่งเพิ่ม</small></summary>
+        <Section title="โมเดล AI">
+          <div className="options">
+            {(aiModels ?? []).map((m) => {
+              const [name, detail] = splitLabel(m.label);
+              return (
+                <button key={m.id} type="button" className={'option' + (aiModel === m.id ? ' active' : '')} onClick={() => chooseModel(m.id)}>
+                  <b>{name}</b>{detail && <small>{detail}</small>}
+                </button>
+              );
+            })}
+            {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
+          </div>
+        </Section>
+        {aiModel.startsWith('openai:') && (
+          <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
+          </Section>
+        )}
+        <Section title="สัดส่วนภาพ" note={aspect && aspect !== '2:3' && aiModel.startsWith('openai:') ? 'OpenAI ได้แค่ 2:3' : undefined}>
+          <ChipGroup value={aspect} onChange={setAspect} options={[
+            { id: '', name: 'ตามรูปนางแบบ' },
+            ...ASPECTS.map((a) => ({ id: a.id, name: <><i className="ratio" style={{ aspectRatio: a.id.replace(':', ' / ') }} />{a.name}</> })),
+          ]} />
+        </Section>
+        <Section title="การมอง" note={shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
+          <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={shot ? '' : gazeId} disabled={shot} onChange={setGazeId} />
+        </Section>
+        <Section title="พร็อพในมือ" note="เลือกได้หลายอย่าง">
+          <div className="chips">
+            {PROPS.map((p) => (
+              <button key={p.id} type="button" className={'chip' + (heldProps.includes(p.id) ? ' active' : '')}
+                onClick={() => setHeldProps((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}>
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </Section>
+        <Section title="สั่งเพิ่มเติม">
+          <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว" />
+        </Section>
+        <label className="check">
+          <input type="checkbox" checked={harmonize} onChange={(e) => setHarmonize(e.target.checked)} />
+          <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
+        </label>
+      </details>
     </>;
   } else {
     inspector = <>
@@ -648,15 +715,50 @@ export default function TryOn() {
     </>;
   }
 
+  // ---------- ประวัติรูป: รูปในชุดภาพเดียวกันอยู่ในกรอบเดียว เรียงตามมุม (SET_SHOTS) ----------
+  const thumb = (i: number, label?: string) => (
+    <div className="deletable" key={results[i].src}>
+      <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
+        <img src={results[i].src} alt={results[i].caption} />
+      </button>
+      <DeleteButton onClick={() => void deleteResult(i)} />
+      {label && <span className="set-label">{label}</span>}
+    </div>
+  );
+  const historyItems: ReactNode[] = [];
+  const seenSets = new Set<string>();
+  results.forEach((r, i) => {
+    if (!r.set) return void historyItems.push(thumb(i));
+    const id = r.set.id;
+    if (seenSets.has(id)) return; // กลุ่มนี้วาดไปแล้วตอนเจอรูปแรกของชุด
+    seenSets.add(id);
+    const members = results.map((x, j) => ({ x, j })).filter(({ x }) => x.set?.id === id).sort((a, b) => a.x.set!.index - b.x.set!.index);
+    const left = pendingSet?.id === id ? pendingSet.left : 0;
+    historyItems.push(
+      <div className="set-group" key={'set-' + id}>
+        <div className="set-head">ชุดภาพ <span>{left ? 'กำลังสร้าง...' : `${members.length}/${SET_SHOTS.length} มุม`}</span></div>
+        <div className="set-items">
+          {members.map(({ x, j }) => thumb(j, SET_SHOTS[x.set!.index]?.name))}
+          {Array.from({ length: left }, (_, k) => <div className="set-pending" key={k}><div className="spinner" /></div>)}
+        </div>
+      </div>,
+    );
+  });
+
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">ห้องลองชุด <span className="beta">Beta</span></div>
+        <div className="brand">Looklet <span className="beta">Beta</span></div>
         <div className="status" role="status" title={status}>
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
         </div>
         <div className="top-actions">
+          {authEnabled && <button className="btn btn-tertiary" onClick={() => void signOut()}>ออกจากระบบ</button>}
           <button className="btn btn-secondary" onClick={save}><IconDownload /> <span className="hide-sm">ดาวน์โหลด</span></button>
+          <button className="btn btn-secondary" disabled={busy !== null || !aiModels?.length} title={SET_SHOTS.map((s) => s.name).join(' · ')}
+            onClick={() => void generate(true)}>
+            ชุดภาพ {SET_SHOTS.length} มุม
+          </button>
           <button className="btn btn-primary" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>
             {busy !== null ? 'กำลังสร้าง...' : 'สร้างรูป'}
           </button>
@@ -675,7 +777,7 @@ export default function TryOn() {
           ))}
         </nav>
 
-        <aside className="panel">
+        <aside className={'panel' + (cur.key === 'settings' ? ' split' : '')}>
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
@@ -688,7 +790,7 @@ export default function TryOn() {
         </aside>
 
         <section className="stage">
-          <div className={'frame' + (busy !== null ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
+          <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
             {compare && <figure><img src={displaySrc} alt="ก่อนแต่ง" /><figcaption>ก่อนแต่ง</figcaption></figure>}
             <figure><canvas ref={canvasRef} />{compare && <figcaption>หลังแต่ง</figcaption>}</figure>
             {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
@@ -707,14 +809,7 @@ export default function TryOn() {
           </div>
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
-            {results.map((r, i) => (
-              <div className="deletable" key={r.src}>
-                <button className={current === i ? 'active' : ''} title={r.caption} onClick={() => setCurrent(i)}>
-                  <img src={r.src} alt={r.caption} />
-                </button>
-                <DeleteButton onClick={() => void deleteResult(i)} />
-              </div>
-            ))}
+            {historyItems}
             {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; มุมขวาบน</p>}
           </div>
         </section>

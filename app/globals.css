@@ -202,3 +202,52 @@ dialog .retouch-actions { justify-content: flex-end; }
   .stage { padding: 12px 16px; }
   .frame { flex: none; height: 70vh; }
 }
+
+/* ---------- สไตล์ถ่ายภาพ: แสง/เลนส์/มุม/ระยะ/โทนสี ของชุดที่เลือก ---------- */
+.preset-parts { display: grid; gap: 0; margin: 0; }
+.preset-parts div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--hairline-soft); font-size: 13px; }
+.preset-parts div:last-child { border-bottom: 0; }
+.preset-parts dt { color: var(--mute); }
+.preset-parts dd { margin: 0; color: var(--ink-soft); font-weight: 600; }
+/* ขั้นสูง: ตัวเลือกที่ไม่ค่อยต้องแตะ พับไว้ */
+.advanced { margin-bottom: 14px; }
+.advanced summary { padding: 8px 0; color: var(--ink-soft); font-size: 14px; font-weight: 700; cursor: pointer; }
+.advanced summary small { margin-left: 6px; color: var(--mute); font-size: 12px; font-weight: 400; }
+.advanced[open] summary { margin-bottom: 8px; }
+/* ปุ่มชุดภาพหลายมุม: บรรทัดล่างบอกว่าได้มุมไหนบ้าง */
+.set-btn { flex-direction: column; gap: 4px; height: auto; min-height: 52px; margin-top: -8px; white-space: normal; }
+.set-btn small { color: var(--mute); font-size: 11px; font-weight: 400; }
+/* ชุดภาพหลายมุม: รูปในชุดเดียวกันอยู่ในกรอบเดียว มีชื่อมุมใต้รูป */
+.set-group { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface-card); }
+.set-head { display: flex; gap: 6px; color: var(--ink-soft); font-size: 11px; font-weight: 700; }
+.set-head span { color: var(--ash); font-weight: 500; }
+.set-items { display: flex; gap: 6px; }
+.set-label { display: block; width: 60px; margin-top: 2px; color: var(--mute); font-size: 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-pending { display: grid; place-items: center; width: 60px; aspect-ratio: 2 / 3; border-radius: var(--r-sm); background: var(--canvas); }
+.set-pending .spinner { width: 18px; height: 18px; border-width: 2px; }
+/* ขั้นสไตล์ถ่ายภาพ: แผงไม่เลื่อนทั้งแผง เลื่อนเฉพาะรายการสไตล์ — กล่องรายละเอียด + ปุ่มถัดไปอยู่กับที่ด้านล่าง */
+.panel.split { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 16px; }
+.panel.split .panel-head { flex: none; }
+.split-scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -16px; padding: 0 16px 8px; }
+.preset-detail { flex: none; margin: 0 -16px; padding: 14px 16px 0; background: var(--canvas); border-top: 1px solid var(--hairline-soft); box-shadow: 0 -8px 16px -12px rgba(0, 0, 0, .25); }
+.preset-detail { display: grid; }
+.preset-detail > * { grid-area: 1 / 1; }
+.preset-detail .stack-hidden { visibility: hidden; }
+.preset-detail .sec { margin-bottom: 0; }
+.panel.split .next { flex: none; margin-top: 14px; }
+/* จอแคบ: ทั้งหน้าเลื่อนอยู่แล้ว ไม่แยกส่วนเลื่อน */
+@media (max-width: 860px) {
+  .panel.split { display: block; overflow: visible; }
+  .split-scroll { overflow: visible; }
+}
+
+/* ---------- เข้าสู่ระบบ / เปลี่ยนรหัสผ่าน ---------- */
+.auth-page { display: grid; place-items: center; min-height: 100vh; padding: 16px; }
+.auth-card { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 360px; padding: 28px 24px; border-radius: var(--r-lg); background: var(--canvas); box-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .06); }
+.auth-card h1 { margin: 0 0 4px; color: var(--ink-soft); font-size: 22px; }
+.auth-card label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-soft); font-size: 13px; font-weight: 600; }
+.auth-card .btn { height: 44px; }
+.field { height: 44px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--ink); font-size: 15px; }
+.auth-error, .auth-ok { margin: 0; padding: 8px 12px; border-radius: var(--r-md); font-size: 13px; }
+.auth-error { background: var(--primary-soft); color: var(--primary-pressed); }
+.auth-ok { background: #e7f6ec; color: #1d6b38; }

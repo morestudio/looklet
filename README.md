@@ -1,6 +1,6 @@
-# clotheson
+# Looklet
 
-ห้องลองชุด AI — เลือกนางแบบ + ชุด + ของเสริม + ฉาก ให้ AI สร้างรูป แล้วแต่งหน้า/สีผิวต่อได้ในเครื่อง ไม่เสียเงิน
+Looklet ห้องลองชุด AI — เลือกนางแบบ + ชุด + ของเสริม + ฉาก ให้ AI สร้างรูป แล้วแต่งหน้า/สีผิวต่อได้ในเครื่อง ไม่เสียเงิน
 
 ## รันในเครื่อง
 
@@ -21,6 +21,17 @@ GEMINI_API_KEY=...
 OPENAI_API_KEY=...
 ```
 
+## Supabase + เข้าสู่ระบบ
+
+ถ้ามีค่า Supabase ใน env (ดึงด้วย `vercel env pull` ได้ไฟล์ `.env.local`) เว็บจะ
+- เก็บรูปบน Supabase แทนโฟลเดอร์ในเครื่อง (`lib/storage-supabase.ts`) — ตาราง/bucket สร้างด้วย `supabase/schema.sql`
+- ต้องเข้าสู่ระบบด้วยอีเมล + รหัสผ่านก่อนใช้ทุกหน้า (`proxy.ts`, `lib/auth.ts`) ไม่มีหน้าสมัครเอง
+
+ไม่มีค่า Supabase = ทำงานแบบเดิม เก็บรูปในเครื่อง ไม่ต้องเข้าสู่ระบบ
+
+**เพิ่มคนเข้าเว็บ:** `node --env-file=.env.local scripts/add-user.mjs someone@morestudio.co.th`
+(สุ่มรหัสผ่านให้ เจ้าของบัญชีเปลี่ยนเองได้ที่หน้า `/account`)
+
 ## โครงสร้าง
 
 | ที่ | คืออะไร |
@@ -30,7 +41,7 @@ OPENAI_API_KEY=...
 | `lib/catalog.ts` | รายการนางแบบ/ชุด/ของเสริม/ฉาก/แสงสี (เพิ่มรูปใน `public/images` แล้วเพิ่มบรรทัดที่นี่) |
 | `lib/prompts.ts` | คำสั่งที่ส่งให้ AI |
 | `lib/ai.ts` | เรียก Gemini / OpenAI (ฝั่ง server ถือ key) |
-| `lib/storage.ts` | เก็บรูปลงเครื่อง — ย้ายไป Supabase แก้ไฟล์นี้ไฟล์เดียว |
+| `lib/storage.ts` | เก็บรูป: มี Supabase ใน env -> `lib/storage-supabase.ts`, ไม่มี -> เก็บลงเครื่อง |
 | `lib/genlog.ts` | บันทึกสิ่งที่ส่งให้ AI ทุกครั้งที่เจนรูป ลง `logs/` (1 รูป = 1 ไฟล์) |
 | `lib/vision.js`, `lib/beauty.js` | แต่งหน้า/ใส่หน้าจริง ด้วย MediaPipe ทำใน browser |
 | `app/api/*` | API: สร้างรูป, อัปโหลด, ลบ, คลังรูป, เปิดไฟล์รูป |
@@ -49,4 +60,4 @@ npm run build
 npm start
 ```
 
-ตอนนี้เก็บรูปเป็นไฟล์ในเครื่อง จึงรันได้บนเครื่องหรือ server ของเราเอง ขึ้น Vercel ต้องย้ายที่เก็บรูปไป Supabase ก่อน (`lib/storage.ts`)
+ขึ้น Vercel แล้ว (โปรเจกต์ `looklet`) ใช้ Supabase เก็บรูปและเข้าสู่ระบบ — deploy ด้วย `vercel deploy --prod` (key อยู่ใน Vercel env ไม่ได้อัปขึ้นไปกับโค้ด ดู `.vercelignore`)

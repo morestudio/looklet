@@ -4,6 +4,9 @@ import type { AccessoryInfo } from './catalog';
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ตั้งใจโหลดทั้งหน้า
+  if (res.status === 401) window.location.assign('/login');
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
   return out;
@@ -35,6 +38,27 @@ export async function jpegBase64(src: string, maxSide = 1024) {
   c.fillRect(0, 0, cv.width, cv.height);
   c.drawImage(img, 0, 0, cv.width, cv.height);
   return { data: cv.toDataURL('image/jpeg', 0.9).split(',')[1], w: cv.width, h: cv.height };
+}
+
+// รูปที่ "+ เพิ่มรูป": เล็กพอ -> ส่งไฟล์เดิม, ใหญ่ (เช่นรูปจากมือถือ) -> ย่อด้านยาวเหลือ 2048 ก่อน
+// Vercel รับ request ได้ไม่เกิน 4.5 MB (base64 ใหญ่กว่าไฟล์ ~1/3) — PNG ใช้ WebP เก็บพื้นใสไว้ browser ทำ WebP ไม่ได้ค่อยใช้ JPEG
+export async function uploadImage(file: File, maxBytes = 2_500_000, maxSide = 2048) {
+  if (file.size <= maxBytes) return { data: await fileToBase64(file), mime: file.type };
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * s);
+    cv.height = Math.round(img.height * s);
+    cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
+    let mime = file.type === 'image/png' ? 'image/webp' : 'image/jpeg';
+    let out = cv.toDataURL(mime, 0.9);
+    if (!out.startsWith(`data:${mime}`)) out = cv.toDataURL((mime = 'image/jpeg'), 0.9);
+    return { data: out.split(',')[1], mime };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 // สัดส่วนรูปที่แต่ละเจ้ารับได้ เลือกอันที่ใกล้รูปนางแบบที่สุด
