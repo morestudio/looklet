@@ -1,4 +1,4 @@
-import { availableModels, generateImage, type Img } from '@/lib/ai';
+import { availableModels, describeLighting, generateImage, type Img } from '@/lib/ai';
 import { MAX_ACCESSORIES, POSE_MODES, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
@@ -50,6 +50,10 @@ export const POST = post(async (req) => {
   ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string' && x.data.length > 0);
   const images: Img[] = inputs.map((x) => ({ data: x.data, mime: 'image/jpeg' }));
   const look: string | null = req.look ?? null;
+  // ลอกทั้งช็อต + ลอกแสงจากรูปต้นแบบ: ให้ AI อ่านแสงในรูปท่าโพสต์ก่อน (ไม่ถึงสตางค์ 2–5 วินาที) อ่านไม่ได้ = ใช้คำสั่งลอกแสงแบบเดิม
+  const refLight = !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref
+    ? await describeLighting({ data: req.pose, mime: 'image/jpeg' })
+    : null;
   const prompt = setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -72,6 +76,9 @@ export const POST = post(async (req) => {
     framing: text(req.framing),
     gaze: text(req.gaze),
     props: texts(req.props),
+    face: text(req.face),
+    faceFromRef: Boolean(req.face_from_ref),
+    refLight,
   });
   const opt = { aspect: req.aspect ?? '2:3', size: req.size ?? '1024x1536', quality: req.quality ?? 'medium' };
 
@@ -97,12 +104,13 @@ export const POST = post(async (req) => {
   const byRole = (role: string) => imgs.filter((x) => x.role === role).map((x) => x.log);
   const choices = (refs.choices && typeof refs.choices === 'object' ? refs.choices : {}) as Record<string, unknown>;
   const style: GenerateLog['style'] = {};
-  for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'gaze', 'aspect'] as const) {
+  for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'face', 'lightSource', 'gaze', 'aspect'] as const) {
     const v = text(choices[k]);
     if (v) style[k] = v;
   }
   if (texts(choices.props).length) style.props = texts(choices.props);
   if (harmonizeText) style.harmonize = true;
+  if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
   if (text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')

@@ -103,6 +103,19 @@ export const GAZES: Choice[] = [
     + 'with a relaxed natural expression, as if not posing.' },
 ];
 
+// สีหน้า: auto = มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปนั้น, ไม่มี -> ตามรูปนางแบบ (ไม่สั่ง)
+// คำที่ใช้ได้ผลจากการทดสอบ 19 ต.ค.: "นิ่ง" เฉยๆ หน้าแข็งไม่มีอารมณ์, "อบอุ่น" AI กลับไปยิ้มกว้างแบบรูปนางแบบ
+//   ที่ได้ผล = "no big smile; lips softly parted; real life in the eyes" — prompts.ts สั่งเพิ่มว่าไม่ต้องลอกสีหน้าจากรูปนางแบบ
+export const FACE_MOODS: (Choice & { hint: string })[] = [
+  { id: 'auto', name: 'อัตโนมัติ', hint: 'มีรูปท่าโพสต์ = ลอกสีหน้าจากรูปนั้น · ไม่มี = ตามรูปนางแบบ', prompt: '' },
+  { id: 'calm', name: 'นิ่ง มั่นใจ', hint: 'ไม่ยิ้มกว้าง ปากเผยอ สายตามีชีวิต',
+    prompt: 'Expression: no big smile; lips softly parted; a calm, confident gaze into the lens with real life in the eyes, not blank.' },
+  { id: 'soft', name: 'ยิ้มบางๆ', hint: 'ยิ้มมุมปาก ตาอบอุ่น',
+    prompt: 'Expression: a soft, natural half-smile with relaxed lips and warm, lively eyes.' },
+  { id: 'bright', name: 'ยิ้มสดใส', hint: 'ยิ้มเห็นฟันนิดๆ ดูมีความสุข',
+    prompt: 'Expression: a bright, natural smile showing a little of the teeth, with happy, lively eyes.' },
+];
+
 // พร็อพในมือ (เลือกได้หลายอย่าง)
 export const PROPS: Choice[] = [
   { id: 'coffee', name: 'กาแฟ', prompt: 'holding an iced coffee' },
@@ -243,6 +256,16 @@ export const SET_SHOTS: SetShot[] = [
 // รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
 export const presetPrompt = (p: Preset) =>
   `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
+// ลอกทั้งช็อตแต่เลือกใช้แสงของสไตล์ถ่ายภาพ: เอาแค่แสง + โทนสี (เลนส์/มุม/ระยะยังตามรูปต้นแบบ)
+export const presetLightPrompt = (p: Preset) => `Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
+
+// แสงตอนลอกทั้งช็อต: ref = ให้ AI อ่านแสงในรูปต้นแบบแล้วบรรยายเป็นคำให้ (lib/ai.ts describeLighting), preset = ใช้แสงของสไตล์ถ่ายภาพ
+// ทดสอบ 19 ต.ค.: สั่งแค่ "recreate its lighting" AI ทำแสงนุ่มลงเสมอ พอบรรยายแสงจริงๆ (แฟลชตรง เงาคมด้านหลัง) แสงตรงรูปต้นแบบขึ้นชัด
+export const LIGHT_SOURCES = [
+  { id: 'ref', name: 'ลอกจากรูปต้นแบบ', hint: 'AI อ่านแสงในรูปต้นแบบแล้วบรรยายให้ละเอียด (ใช้เวลาเพิ่ม 2–5 วินาที ไม่ถึงสตางค์)' },
+  { id: 'preset', name: 'ใช้แสงของสไตล์ถ่ายภาพ', hint: 'เลือกสไตล์ในขั้นถัดไป ใช้แค่แสงและโทนสี มุมกล้อง/ระยะยังตามรูปต้นแบบ' },
+] as const;
+export type LightSource = (typeof LIGHT_SOURCES)[number]['id'];
 
 export const SKIN_TONES = [
   { name: 'ขาวอมชมพู', color: '#f3d3c3' },

@@ -39,11 +39,14 @@ export type PromptInput = {
   framing?: string | null; // ระยะของสไตล์ถ่ายภาพ (framing ใน PRESETS) ใส่ในบรรทัดแรก
   gaze?: string | null; // การมอง (GAZES)
   props?: string[]; // พร็อพในมือ (PROPS)
+  face?: string | null; // สีหน้าที่เลือก (FACE_MOODS) null = ไม่สั่ง
+  faceFromRef?: boolean; // สีหน้าแบบ "อัตโนมัติ" + มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปท่า
+  refLight?: string | null; // ลอกทั้งช็อต: แสงในรูปต้นแบบที่ AI อ่านมาแล้ว (describeLighting) — ใช้เมื่อไม่ได้ส่ง look
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, gaze = null, props = [],
+  poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -101,13 +104,34 @@ export function buildPrompt({
         + `Copy only the pose. Do not copy anything else from image ${n}: not the face, hair, body shape, clothes, `
         + 'accessories such as sunglasses, jewelry or bags, or the background.');
     } else {
-      lines.push(`Image ${n} is a reference photo for the whole shot: recreate its pose, camera angle and height, lens and framing, `
-        + 'how large the person is and where they stand in the frame, gaze direction, expression, lighting and color grading. '
+      // เลือกสีหน้าเอง -> ไม่ลอกสีหน้า, เลือกแสงของสไตล์ถ่ายภาพ (look) -> ไม่ลอกแสง/โทนสี (คำสั่งจะขัดกัน)
+      const copy = ['its pose', 'camera angle and height', 'lens and framing', 'how large the person is and where they stand in the frame',
+        'gaze direction', ...(face ? [] : ['expression']), ...(look ? [] : ['lighting and color grading'])];
+      lines.push(`Image ${n} is a reference photo for the whole shot: recreate ${copy.slice(0, -1).join(', ')}, and ${copy.at(-1)}. `
         + `Use only the shot from image ${n}: do not copy that person's face, hair, body shape, clothes or accessories.`
         + (shotScene
-          ? ` Place the model in the same location as image ${n}: same background, setting, time of day and light.`
-          : ` Do not copy the background of image ${n}.`));
+          ? ` Place the model in the same location as image ${n}: same background, setting, time of day${look ? '' : ' and light'}.`
+          : ` Do not copy the background of image ${n}.`)
+        + (look ? ` Use the lighting described below instead of the lighting of image ${n}.` : ''));
+      // สั่งแค่ "recreate its lighting" AI ทำแสงนุ่ม/มืดลงเสมอ -> ส่งคำบรรยายแสงจริงที่ AI อ่านจากรูปต้นแบบมาด้วย (ทดสอบ 19 ต.ค.)
+      if (!look && refLight) {
+        lines.push(`Lighting exactly like image ${n}: ${refLight} Match this lighting closely; do not make it softer, dimmer or flatter than in image ${n}.`);
+      }
     }
+    // หน้าตรงแปะบนตัว: รูปนางแบบมักหันหน้าตรงกล้อง AI เลยวาดหน้าตรงบนตัวที่หัน/เอียง ดูไม่เป็นธรรมชาติ
+    // ต้องบอกตรงๆ ว่าห้ามลอกมุมหน้าจากรูปนางแบบ (ทดสอบ 19 ต.ค.: ใส่บรรทัดนี้แล้วมุมหัว/หน้าเป็นธรรมชาติทันที)
+    lines.push(`Image 1 may show the model facing the camera straight on; do not copy that head angle. Turn and tilt her head exactly like `
+      + `the person in image ${n}, and show her face naturally from that angle as seen by the camera, with natural foreshortening and `
+      + 'the neck and shoulders connecting naturally to the head. It must not look like a front-facing face placed on a turned or tilted body.');
+    if (faceFromRef && !face) {
+      lines.push(`Expression: copy the facial expression of the person in image ${n} (how much she smiles, how open the mouth is and `
+        + 'the mood of the eyes), not the expression in image 1.');
+    }
+    // เสื้อผ้าคนในรูปท่าติดมา: ทดสอบ 19 ต.ค. ชายกระโปรงลูกไม้ยาวในรูปท่าที่ตกลงพื้นข้างสุนัข AI นึกว่าเป็นของในฉาก โผล่มาทุกรอบ
+    // บอกกว้างๆ ว่าห้ามติดมายังไม่พอ ต้องบอกว่าส่วนที่ห้อยลงพื้น/เฟอร์นิเจอร์ก็เป็นเสื้อผ้า ไม่ใช่ของในฉาก
+    lines.push(`None of the clothing, fabric or accessories of the person in image ${n} (for example a dress, lace or straps) `
+      + `may appear anywhere in the image. Any part of that person's clothing that drapes onto the furniture or hangs down to the floor `
+      + '(for example the hem of a long dress beside an animal or a chair) belongs to her outfit, not to the location: leave it out completely.');
     // ท่าต้องตรงเป๊ะ: ฉากที่เลือกไม่มีที่นั่ง/ที่พิง AI มักเปลี่ยนเป็นท่ายืน -> สั่งให้เติมของที่เข้ากับฉากแทน (ไม่ต้องเหมือนในรูปท่า)
     // ต้องเป็นของชนิดเดียวกัน: ทดสอบ 15 ต.ค. ท่านั่งโซฟาแขนพาดพนัก ในสตูดิโอโล่ง AI ให้นั่งพื้นแทน แขนเลยลอยพาดอากาศ
     lines.push('The pose must match exactly, including whether the person is standing, walking, sitting, leaning or crouching; '
@@ -152,8 +176,10 @@ export function buildPrompt({
       + 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. '
       + "Keep the model's natural skin tone, only as affected by the scene lighting.");
   }
-  if (shot) lines.push(REALISM); // แสง/โทนสีเอาจากรูปต้นแบบ ไม่ใส่ look
+  if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
   else if (look) lines.push(REALISM, look);
+  // สีหน้าที่เลือก: ต้องบอกว่าไม่เอาสีหน้าจากรูปนางแบบ ไม่งั้น AI ยึดรอยยิ้มในรูปนางแบบ
+  if (face) lines.push(face, 'Do not keep the expression of image 1.');
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
   if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false

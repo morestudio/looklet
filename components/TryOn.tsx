@@ -14,8 +14,8 @@ import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize, uploadImage } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, GAZES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS, PRESETS, PROPS,
-  SCENES, SET_SHOTS, SKIN_TONES, presetPrompt, type AccessoryInfo, type Item, type PoseMode,
+  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS,
+  PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
 type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
@@ -102,6 +102,8 @@ export default function TryOn() {
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
   const [poseMode, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์
+  const [lightSource, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
+  const [faceMood, setFaceMood] = useState('auto'); // สีหน้า (FACE_MOODS)
   const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
   const [aspect, setAspect] = useState(''); // '' = ตามรูปนางแบบ
   const [heldProps, setHeldProps] = useState<string[]>([]); // พร็อพในมือ (id ใน PROPS)
@@ -122,6 +124,9 @@ export default function TryOn() {
   // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
   const shot = Boolean(pose) && poseMode !== 'pose';
   const shotScene = Boolean(pose) && poseMode === 'shot-scene';
+  const shotPresetLight = shot && lightSource === 'preset'; // ลอกทั้งช็อตแต่ใช้แสง/โทนสีของสไตล์ถ่ายภาพ
+  const mood = FACE_MOODS.find((m) => m.id === faceMood) ?? FACE_MOODS[0];
+  const moodName = mood.id !== 'auto' ? mood.name : pose ? 'สีหน้าตามรูปท่า' : null; // null = ตามรูปนางแบบ ไม่ต้องบอก
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
   const gaze = shot ? undefined : GAZES.find((c) => c.id === gazeId);
   const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
@@ -314,7 +319,8 @@ export default function TryOn() {
       (outfit?.name ?? 'ชุดเดิม') + accs.map((a) => ' + ' + a.name).join(''),
       ...(pose ? ['ท่า' + pose.name + (shot ? ` (${modeName})` : '')] : aiPose ? ['ท่าที่ AI เลือก'] : []),
       shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม',
-      shot ? 'แสงจากรูปต้นแบบ' : preset.name,
+      shot ? (shotPresetLight ? 'แสง ' + preset.name : 'แสงจากรูปต้นแบบ') : preset.name,
+      ...(moodName ? [moodName] : []),
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
     ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
@@ -350,8 +356,11 @@ export default function TryOn() {
           // ชื่อตัวเลือกภาษาไทย ไว้ทำ log ให้อ่านง่าย (คำสั่งจริงที่ส่ง AI อยู่ใน prompt)
           choices: {
             poseMode: pose ? POSE_MODES.find((m) => m.id === poseMode)!.name : aiPose ? 'AI เลือกท่าให้' : 'ท่าเดิม',
-            preset: shot ? 'ใช้แสงและกล้องจากรูปท่าโพสต์' : preset.name,
-            ...(shot ? {} : Object.fromEntries(PRESET_PARTS.map(({ key }) => [key, preset[key].label]))),
+            preset: shot ? (shotPresetLight ? `แสง ${preset.name} · กล้องจากรูปท่าโพสต์` : 'ใช้แสงและกล้องจากรูปท่าโพสต์') : preset.name,
+            ...(shot && !shotPresetLight ? {} : Object.fromEntries(PRESET_PARTS
+              .filter(({ key }) => !shot || key === 'light' || key === 'color').map(({ key }) => [key, preset[key].label]))),
+            face: moodName ?? 'ตามรูปนางแบบ',
+            lightSource: shot ? LIGHT_SOURCES.find((l) => l.id === lightSource)!.name : null,
             gaze: gaze?.name ?? null,
             props: propChoices.map((p) => p.name), aspect: aspect || 'ตามรูปนางแบบ', harmonize,
           },
@@ -361,7 +370,11 @@ export default function TryOn() {
         size: aspect ? '1024x1536' : openaiSize(person.w, person.h),
         quality,
         extra: extra.trim(),
-        look: shot ? null : presetPrompt(preset), // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ
+        // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ (server ให้ AI อ่านแสงให้) หรือใช้แค่แสง/โทนสีของสไตล์ที่เลือก
+        look: shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset),
+        light_from_ref: shot && !shotPresetLight,
+        face: mood.prompt || null,
+        face_from_ref: mood.id === 'auto' && Boolean(pose),
         // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของสไตล์ถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
         full_body: set ? SET_SHOTS[0].fullBody : preset.fullBody,
         framing: shot ? null : set ? SET_SHOTS[0].framing : preset.framing.prompt,
@@ -450,9 +463,9 @@ export default function TryOn() {
     model: model.name,
     outfit: outfitName,
     accessory: accNames.join(', ') || 'ไม่ใส่',
-    pose: poseName + (shot ? ` (${POSE_MODES.find((m) => m.id === poseMode)!.name})` : ''),
+    pose: poseName + (shot ? ` (${POSE_MODES.find((m) => m.id === poseMode)!.name})` : '') + (mood.id !== 'auto' ? ' · ' + mood.name : ''),
     scene: sceneName,
-    settings: [shot ? 'ตามรูปต้นแบบ' : preset.name, aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, gaze?.name,
+    settings: [shot ? (shotPresetLight ? 'แสง ' + preset.name : 'ตามรูปต้นแบบ') : preset.name, aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, gaze?.name,
       ...propChoices.map((p) => 'ถือ' + p.name)].filter(Boolean).join(' · '),
     retouch: retouched ? 'แต่งแล้ว' : 'ยังไม่แต่ง',
   };
@@ -460,7 +473,7 @@ export default function TryOn() {
     model: true,
     outfit: Boolean(outfit),
     accessory: accs.length > 0,
-    pose: Boolean(pose || aiPose),
+    pose: Boolean(pose || aiPose || mood.id !== 'auto'),
     scene: Boolean(scene) || shotScene,
     settings: Boolean(presetId !== PRESETS[0].id || aspect || gaze || propChoices.length || extra.trim() || harmonize),
     retouch: retouched,
@@ -537,11 +550,15 @@ export default function TryOn() {
   } else if (cur.key === 'settings') {
     panel = <>
       <div className="split-scroll">
-        {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่ แสงและกล้องจะใช้ตามรูปต้นแบบ สไตล์ถ่ายภาพตรงนี้จะไม่ถูกใช้</p>}
+        {shot && (
+          <p className="note">{shotPresetLight
+            ? 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ใช้แค่แสงและโทนสีของสไตล์ที่เลือก มุมกล้องและระยะตามรูปต้นแบบ'
+            : 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: แสงและกล้องตามรูปต้นแบบ — อยากใช้แสงของสไตล์ด้านล่าง เลือก "ใช้แสงของสไตล์ถ่ายภาพ" ในขั้นท่าโพสต์'}</p>
+        )}
         <Section title="สไตล์ถ่ายภาพ">
           <div className="options">
             {PRESETS.map((p) => (
-              <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot} onClick={() => setPresetId(p.id)}>
+              <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot && !shotPresetLight} onClick={() => setPresetId(p.id)}>
                 <b>{p.name}</b><small>{p.hint}</small>
               </button>
             ))}
@@ -549,7 +566,7 @@ export default function TryOn() {
         </Section>
       </div>
       {/* รายละเอียดอยู่นอกส่วนที่เลื่อน: เลื่อนรายการสไตล์ได้ กล่องนี้อยู่กับที่ตลอด */}
-      {!shot && (
+      {(!shot || shotPresetLight) && (
         // วาดรายละเอียดทุกสไตล์ซ้อนกันในช่องเดียว โชว์แค่อันที่เลือก -> กล่องสูงเท่าอันที่ยาวสุดเสมอ เปลี่ยนสไตล์แล้วไม่กระโดด
         <div className="preset-detail">
           {PRESETS.map((p) => (
@@ -637,6 +654,16 @@ export default function TryOn() {
           <p className="muted-text">{POSE_MODES.find((m) => m.id === poseMode)!.hint}</p>
         </Section>
       )}
+      {shot && (
+        <Section title="แสง">
+          <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
+          <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
+        </Section>
+      )}
+      <Section title="สีหน้า">
+        <ChipGroup options={FACE_MOODS} value={faceMood} onChange={setFaceMood} />
+        <p className="muted-text">{mood.hint}</p>
+      </Section>
       {aiPose && (
         <Section title="AI เลือกท่าให้">
           <p className="muted-text">AI จัดท่าให้สินค้าเด่นเอง ตามของเสริมที่เลือก เช่น ใส่แว่นอาจแตะแว่น ใส่กระเป๋าอาจยกกระเป๋าขึ้นโชว์</p>
