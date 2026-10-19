@@ -11,6 +11,7 @@ import {
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { authEnabled } from '@/lib/auth';
+import { FILM_DEFAULT, NO_FILM, type Film } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, jpegBase64, loadTools, openaiSize, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ASPECTS, GAZES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS, PRESETS, PROPS,
@@ -37,6 +38,8 @@ const REAL_FACE = false;
 const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
 const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'หน้าเรียว'], ['acne', 'ลบสิว/จุดด่าง'], ['smooth', 'หน้าเนียน'], ['white', 'ผิวขาว']];
+// ให้ดูเป็นรูปถ่ายจริง (lib/film.ts): ใส่ให้ทุกรูปที่สร้างอัตโนมัติตามค่า FILM_DEFAULT
+const FILM_SLIDERS: [keyof Film, string][] = [['grain', 'เกรนฟิล์ม'], ['soften', 'ลดความคม']];
 
 type Result = { src: string; caption: string; set?: SetTag }; // set = อยู่ในชุดภาพหลายมุม
 type AiModel = { id: string; label: string };
@@ -82,6 +85,7 @@ export default function TryOn() {
   });
   const [tone, setTone] = useState<string | null>(null); // สีผิว null = สีเดิม
   const [amounts, setAmounts] = useState(NO_RETOUCH);
+  const [film, setFilm] = useState<Film>(FILM_DEFAULT);
   const [results, setResults] = useState<Result[]>([]); // รูปที่สร้างแล้ว ใหม่สุดอยู่หน้า
   const [current, setCurrent] = useState<number | null>(null); // กำลังแสดง: null = รูปนางแบบ (ตัวอย่าง), ตัวเลข = results[current]
   const [zoomed, setZoomed] = useState(false);
@@ -125,7 +129,7 @@ export default function TryOn() {
   const shown = current === null ? null : results[current];
 
   const { canvasRef, fullRef, prepare } = useRetouchCanvas(
-    { src: shown?.src ?? model.src!, tone, amounts, zoomed, original },
+    { src: shown?.src ?? model.src!, tone, amounts, zoomed, original, film: shown ? film : NO_FILM }, // เกรนเฉพาะรูปที่สร้าง ไม่ใส่รูปนางแบบตัวอย่าง
     setRetouchStatus,
   );
 
@@ -574,8 +578,20 @@ export default function TryOn() {
         </div>
         <div className="retouch-actions">
           <button className="btn btn-secondary" onClick={() => setAmounts(AUTO)}><IconSparkle /> แต่งอัตโนมัติ</button>
-          <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); }}>รีเซ็ต</button>
+          <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
         </div>
+      </Section>
+      <Section title="ให้ดูเป็นรูปถ่ายจริง" note="ใส่ให้ทุกรูปอัตโนมัติ">
+        <div className="sliders">
+          {FILM_SLIDERS.map(([id, label]) => (
+            <div className="slider" key={id}>
+              <label htmlFor={id}>{label} <output>{film[id]}</output></label>
+              <input type="range" id={id} min={0} max={100} value={film[id]}
+                onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
+            </div>
+          ))}
+        </div>
+        <p className="muted-text">รูปจาก AI มักคมจัดเกินกล้องจริง ลดความคมนิดๆ + ใส่เกรนให้ดูเป็นรูปถ่าย · ดาวน์โหลดได้รูปที่ใส่แล้ว · ตั้ง 0 ทั้งคู่ = ปิด</p>
       </Section>
     </>;
   }

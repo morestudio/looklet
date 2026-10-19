@@ -2,6 +2,7 @@
 // แสดงรูปบน canvas พร้อมแต่งรูปตามสไลเดอร์ (ทำในเครื่อง ไม่เสียเงิน) — ใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js
 import { useCallback, useEffect, useRef } from 'react';
 import { loadImg, loadTools, type Tools } from '@/lib/browser';
+import { applyFilm, filmOn, type Film } from '@/lib/film';
 
 export const RETOUCH = ['eye', 'slim', 'acne', 'smooth', 'white'] as const;
 export type RetouchId = (typeof RETOUCH)[number];
@@ -17,6 +18,7 @@ export type View = {
   amounts: Amounts;
   zoomed: boolean;
   original: boolean; // กดค้าง "ดูก่อนแต่ง"
+  film: Film; // เกรนฟิล์ม + ลดความคม (lib/film.ts) ใส่ทีหลังสุด ไม่ต้องโหลดเครื่องมือหาหน้า
 };
 
 // กรอบรอบหน้า (รวมผมและไหล่) สำหรับซูม — ไม่เจอหน้าก็แสดงทั้งรูป
@@ -70,7 +72,7 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
     return prepared.get(src)!;
   }, [setStatus]);
 
-  const display = useCallback(async ({ src, tone, amounts, zoomed, original }: View) => {
+  const display = useCallback(async ({ src, tone, amounts, zoomed, original, film }: View) => {
     const mine = ++showingRef.current;
     const retouched = tone !== null || Object.values(amounts).some((v) => v > 0);
     try {
@@ -105,6 +107,11 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
       const fullCtx = full.getContext('2d')!;
       if (image instanceof ImageData) fullCtx.putImageData(image, 0, 0);
       else fullCtx.drawImage(image, 0, 0);
+      // เกรน/ลดความคมใส่บนรูปเต็มขนาด (รูปที่ดาวน์โหลดได้ด้วย) — "ดูก่อนแต่ง" = รูปจาก AI ล้วน
+      if (!original && filmOn(film)) {
+        fullCtx.putImageData(applyFilm(fullCtx.getImageData(0, 0, full.width, full.height), film), 0, 0);
+        if (mine !== showingRef.current) return;
+      }
       const { x, y, w, h } = rect ?? { x: 0, y: 0, w: full.width, h: full.height };
       // ตอนซูม ส่วนที่ตัดมาเล็ก -> ขยายให้สูงเท่ารูปเต็ม จะได้แสดงเต็มกรอบ
       const s = rect ? Math.min(4, full.height / h) : 1;
@@ -120,11 +127,12 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
   }, [prepare, setStatus]);
 
   // เลื่อนสไลเดอร์หลายครั้งต่อเฟรม -> วาดแค่ครั้งเดียวต่อเฟรม (ค่าล่าสุด)
-  const { src, tone, amounts, zoomed, original } = view;
+  const { src, tone, amounts, zoomed, original, film } = view;
+  const { grain, soften } = film;
   useEffect(() => {
-    const id = requestAnimationFrame(() => void display({ src, tone, amounts, zoomed, original }));
+    const id = requestAnimationFrame(() => void display({ src, tone, amounts, zoomed, original, film: { grain, soften } }));
     return () => cancelAnimationFrame(id);
-  }, [display, src, tone, amounts, zoomed, original]);
+  }, [display, src, tone, amounts, zoomed, original, grain, soften]);
 
   return { canvasRef, fullRef, prepare };
 }
