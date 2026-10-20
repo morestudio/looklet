@@ -78,6 +78,8 @@ const QUALITIES_25 = [
   { id: 'medium', name: 'กลาง ~฿0.8' }, { id: 'high', name: 'สูง ~฿1.8' }, { id: 'xhigh', name: 'สูงมาก ~฿2.9' }, { id: 'max', name: 'สูงสุด ~฿5.9' },
 ];
 const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
+// โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
+const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
 const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
 const splitLabel = (label: string) => {
@@ -177,7 +179,8 @@ export default function TryOn() {
       .catch(() => [] as AiModel[])
       .then((list) => {
         setAiModels(list);
-        if (list.length) chooseModel(list[0].id);
+        // ค่าเริ่มต้น GPT Image 2.5 Sunburst (คุณภาพ high) — ไม่มี key OpenAI ใช้ตัวแรกที่มี
+        if (list.length) chooseModel((list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id);
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
