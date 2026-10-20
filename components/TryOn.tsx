@@ -14,7 +14,7 @@ import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
+  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
   PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
@@ -27,7 +27,7 @@ const idOf = (item: Item) => item.src ?? item.name;
 const find = (list: Item[], id: string | null) => (id === null ? undefined : list.find((i) => idOf(i) === id));
 // ท่าสำเร็จรูป (ไม่มีรูปท่า ให้ AI ตัววางแผนคิดท่าจากฉาก) — id = "preset:<id ใน POSE_PRESETS หรือ auto>" ไม่ชนกับรูป (src ขึ้นต้นด้วย /)
 const PRESET_POSE = 'preset:';
-const POSE_CHOICES = [POSE_AUTO, ...POSE_PRESETS];
+const POSE_CHOICES = POSE_PRESETS; // "AI เลือกให้" (POSE_AUTO) เอาออกจากหน้าเว็บ 20 ต.ค. — server ยังรับ id auto ได้
 // ของเสริมรูปเก่าที่ไม่มีประเภท -> ถือเป็น "อื่นๆ"
 const accessoryType = (a: Item) => ACCESSORY_TYPES.find((t) => t.id === a.type) ?? ACCESSORY_TYPES.find((t) => t.id === 'other')!;
 
@@ -568,7 +568,7 @@ export default function TryOn() {
   } else if (cur.key === 'pose') {
     // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
     panel = <>
-      <Section title="ท่าสำเร็จรูป" note="AI คิดท่าให้ ไม่ต้องมีรูป">
+      <Section title="ท่าสำเร็จรูป">
         <div className="options pose-presets">
           <button type="button" className={'option' + (!pose && !posePreset ? ' active' : '')} onClick={() => select('pose', null)}>
             <b>ท่าเดิม</b><small>ท่าเดียวกับรูปนางแบบ</small>
