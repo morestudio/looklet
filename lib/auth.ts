@@ -5,7 +5,11 @@ import type { JwtPayload } from '@supabase/supabase-js';
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 export const SUPABASE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-export const authEnabled = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+// ทดสอบในเครื่องไม่ต้องเข้าสู่ระบบ: NEXT_PUBLIC_LOOKLET_DEV_NO_LOGIN=1 ใน .env.development.local (next โหลดไฟล์นี้เฉพาะตอน npm run dev
+// และ vercel env pull ไม่เขียนทับ) — มีผลเฉพาะ NODE_ENV=development บน Vercel (production/preview) ต้องเข้าสู่ระบบเสมอ
+// dev server เปิดแค่ 127.0.0.1 คนอื่นในเครือข่ายเข้าไม่ได้ · ยังเก็บรูปบน Supabase ชุดเดียวกับเว็บจริง
+const devNoLogin = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_LOOKLET_DEV_NO_LOGIN === '1';
+export const authEnabled = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) && !devNoLogin;
 
 // สมาชิก = บัญชีที่ admin เปิดสิทธิ์ให้ (app_metadata.looklet = true ตั้งด้วย secret key เท่านั้น)
 // สมัครเองผ่าน Supabase API ได้บัญชีก็จริง แต่ไม่มีสิทธิ์นี้ เข้าเว็บไม่ได้ — ห้ามใช้ user_metadata (ผู้ใช้แก้เองได้)

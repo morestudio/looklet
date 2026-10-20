@@ -29,6 +29,8 @@ OPENAI_API_KEY=...
 
 ไม่มีค่า Supabase = ทำงานแบบเดิม เก็บรูปในเครื่อง ไม่ต้องเข้าสู่ระบบ
 
+**ทดสอบในเครื่องไม่ต้องเข้าสู่ระบบ:** ใส่ `NEXT_PUBLIC_LOOKLET_DEV_NO_LOGIN=1` ในไฟล์ `.env.development.local` (มีผลเฉพาะ `npm run dev` บน Vercel ต้องเข้าสู่ระบบเสมอ) — ยังเก็บรูปบน Supabase ชุดเดียวกับเว็บจริง
+
 **เพิ่มคนเข้าเว็บ:** `node --env-file=.env.local scripts/add-user.mjs someone@morestudio.co.th`
 (สุ่มรหัสผ่านให้ เจ้าของบัญชีเปลี่ยนเองได้ที่หน้า `/account`)
 
