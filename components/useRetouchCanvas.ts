@@ -128,11 +128,11 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
 
   // เลื่อนสไลเดอร์หลายครั้งต่อเฟรม -> วาดแค่ครั้งเดียวต่อเฟรม (ค่าล่าสุด)
   const { src, tone, amounts, zoomed, original, film } = view;
-  const { grain, soften } = film;
+  const { look, grain, soften, phone } = film;
   useEffect(() => {
-    const id = requestAnimationFrame(() => void display({ src, tone, amounts, zoomed, original, film: { grain, soften } }));
+    const id = requestAnimationFrame(() => void display({ src, tone, amounts, zoomed, original, film: { look, grain, soften, phone } }));
     return () => cancelAnimationFrame(id);
-  }, [display, src, tone, amounts, zoomed, original, grain, soften]);
+  }, [display, src, tone, amounts, zoomed, original, look, grain, soften, phone]);
 
   return { canvasRef, fullRef, prepare };
 }

@@ -5,15 +5,19 @@ import type { PoseMode } from './catalog';
 
 // ใช้เมื่อเลือก "แสงสี" — คำว่า photorealistic มักได้ผิวพลาสติกแบบ CG เลยบรรยายสิ่งที่กล้องจริงเห็นแทน
 export const REALISM =
-  'It must look like an unretouched photo of a real person from a professional shoot, not a CGI render or an AI image. '
+  'It must look like an unretouched photo of a real person taken with a real camera, not a CGI render or an AI image. '
   + 'Skin: real texture with visible pores and fine facial hair, a little natural unevenness and a subtle sheen; '
   + 'not sweaty or oily, no airbrushing, no beauty filter, no plastic or waxy skin. '
   + 'Hair: individual strands and a few flyaway hairs, not a smooth solid mass. '
   + 'Clothes: real fabric texture and weight, wrinkles and creases where the body bends, visible seams and stitching. '
-  + 'Light: one consistent light setup from a clear direction falls on both the person and the surroundings: real shadows and '
-  + 'highlights on the face, body and clothes with natural falloff; the person casts a shadow on the floor or nearby walls in '
-  + 'the same direction and softness as the other shadows in the scene, with dark contact shadows where they touch the ground; '
-  + 'nearby surfaces bounce a little of their color onto the skin and clothes. Not flat or evenly lit, no blown-out white areas. '
+  // เงา: เดิมสั่ง "dark contact shadows" + "not flat or evenly lit" ทุกรูป -> ในห้องแสงนุ่ม (ออฟฟิศ) AI ใส่เงาเข้มเกินของจริง
+  // เทียบกับรูป iPhone จริง 20 ต.ค.: ของจริงเงาจางมาก หน้าต่างเกือบขาวจ้า -> ให้เงา/ความสว่างเป็นไปตามแสงในฉาก
+  + 'Light: one consistent light setup falls on both the person and the surroundings: real shadows and highlights on the face, body '
+  + 'and clothes with natural falloff; the person casts a shadow on the floor or nearby walls in the same direction and softness as '
+  + 'the other shadows in the scene, with contact shadows where they touch the ground that are only as dark as the other contact '
+  + 'shadows in the scene; nearby surfaces bounce a little of their color onto the skin and clothes. Shadows are only as dark and '
+  + 'sharp as the scene\'s light would really make them: under soft, diffuse light they stay soft and faint. Very bright areas such '
+  + 'as windows may clip to white as on a real camera, while white clothes keep their texture. '
   + 'Color: natural, slightly muted color like a real camera, true-to-life skin tones, subtle grain; '
   + 'not oversaturated, not over-sharpened, no glow.';
 
@@ -42,11 +46,12 @@ export type PromptInput = {
   face?: string | null; // สีหน้าที่เลือก (FACE_MOODS) null = ไม่สั่ง
   faceFromRef?: boolean; // สีหน้าแบบ "อัตโนมัติ" + มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปท่า
   refLight?: string | null; // ลอกทั้งช็อต: แสงในรูปต้นแบบที่ AI อ่านมาแล้ว (describeLighting) — ใช้เมื่อไม่ได้ส่ง look
+  sceneLight?: string | null; // แสงในรูปฉากที่อัปโหลด ที่ AI อ่านมาแล้ว (describeLighting)
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null,
+  poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -161,6 +166,11 @@ export function buildPrompt({
     // ฉากมาจากรูปต้นแบบ (บอกไว้แล้วด้านบน)
   } else if (hasSceneImage) {
     lines.push(`Image ${n} is the location: place the model in this scene. Ignore any people in image ${n}.`);
+    // แสงในรูปฉากจริง: ไม่บอก AI ใส่แสง/เงาแบบช่างภาพเอง (เทียบกับรูป iPhone จริง 20 ต.ค. ห้องแสงนุ่ม แต่ AI ใส่เงาเข้ม)
+    if (sceneLight) {
+      lines.push(`The light in image ${n}: ${sceneLight} Light the model with this same light so she belongs in the scene; `
+        + 'do not add stronger, darker or sharper shadows than this light would make.');
+    }
   } else if (sceneText) {
     lines.push(`Place the model in this location: ${sceneText}.`);
   } else {

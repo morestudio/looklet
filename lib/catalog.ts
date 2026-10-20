@@ -218,14 +218,21 @@ export const PRESETS: Preset[] = [
     angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
     framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet' },
     color: { label: 'โทนทองอุ่น คอนทราสต์นุ่ม', prompt: 'Warm golden tones, soft contrast, slightly lifted shadows.' } },
-  { id: 'phone', name: 'Phone candid (IG)', hint: 'เหมือนเพื่อนถ่ายด้วยมือถือ ลงไอจี ดูเป็นกันเอง ใช้ได้ทุกฉาก', fullBody: true,
-    light: { label: 'แสงที่มีอยู่ในฉาก ไม่มีไฟเสริม', prompt:
-      'Only the natural light that is already at the location, with no extra lighting equipment: the light direction, shadows and '
-      + 'brightness on the person match the place exactly, including slightly uneven light where it would really be uneven.' },
-    lens: { label: 'กล้องหลักมือถือ ~26mm ชัดทั้งภาพ', prompt: 'taken on a smartphone main camera (about 26mm), everything in focus' },
-    angle: { label: 'ระดับอก เพื่อนถือถ่าย', prompt: 'phone held by a friend at chest height' },
-    framing: { label: 'เต็มตัว จัดเฟรมสบายๆ ไม่เป๊ะ', prompt: 'framed full body with casual, slightly imperfect framing and a little space around the model' },
-    color: { label: 'สีมือถือธรรมชาติ HDR นิดๆ', prompt: 'Natural smartphone colors with mild HDR and phone-style sharpening, as posted on Instagram without filters.' } },
+  // เขียนใหม่ 20 ต.ค. จากการเทียบกับรูป iPhone จริงในฉากเดียวกัน: มือถือจริงถ่ายใกล้ เลนส์กว้าง ก้มกล้องนิดๆ จัดเฟรมไม่เป๊ะ
+  // แสงในอาคารแบนๆ เงาจาง สีจืดกว่า — แบบเดิม ("ใช้แสงที่มีในฉาก") AI ยังจัดเฟรมสวยตรงกลาง กล้องตรง เงาเข้ม เหมือนช่างภาพถ่าย
+  // fullBody = false: ให้ตัดปลายเท้าได้แบบรูปมือถือจริง (ไม่สั่ง "เห็นทั้งตัวหัวจรดเท้า")
+  { id: 'phone', name: 'Phone candid (IG)', hint: 'เหมือนเพื่อนถ่ายด้วยมือถือ ลงไอจี ดูเป็นกันเอง ใช้ได้ทุกฉาก (ได้ลุคมือถือในขั้นแต่งรูป)', fullBody: false,
+    light: { label: 'แสงที่มีในฉาก ไม่มีแฟลช/ไฟเสริม เงาจาง', prompt:
+      'Only the light that is already at the location, with no flash and no extra lighting equipment. Indoors this usually means flat '
+      + 'overhead ceiling light mixed with daylight from the windows: soft, low-contrast light with faint shadows. Outdoors it is the real '
+      + 'daylight of the place. The light on the person matches the place exactly, and bright windows may be close to blown out.' },
+    lens: { label: 'กล้องหลักมือถือ ~26mm ระยะใกล้ ชัดทั้งภาพ', prompt: 'taken on a smartphone main camera (about 26mm wide angle) from close range, '
+      + 'everything in focus, with the slight wide-angle perspective of a phone: parts of the body closer to the camera look a little larger' },
+    angle: { label: 'ระดับอก ก้มกล้องลงนิดๆ', prompt: 'phone held by a friend at chest height and tilted slightly down, so vertical lines lean in slightly' },
+    framing: { label: 'จัดเฟรมสบายๆ แบบถ่ายเร็วๆ', prompt: 'framed casually like a quick snapshot, showing most or all of the body: '
+      + 'the person slightly off-center with uneven space around them, and the feet may be cut off by the bottom edge' },
+    color: { label: 'สีมือถือธรรมชาติ จืดๆ ไม่อุ่น', prompt: 'Natural iPhone colors as posted without filters: neutral white balance, muted true-to-life colors, '
+      + 'bright exposure and phone-style sharpening; not warm, not saturated, no film look.' } },
   { id: 'night', name: 'Night city', hint: 'กลางคืน ไฟถนน/นีออนตกกระทบตัว เหมาะกับฉากถนนกลางคืน', fullBody: true,
     light: { label: 'ไฟถนน/ป้ายนีออน + แฟลชอ่อนๆ', prompt:
       'Night: the person is lit by the lights of the location (street lamps, shop windows and neon signs), with colored light '

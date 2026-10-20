@@ -11,7 +11,7 @@ import {
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { authEnabled } from '@/lib/auth';
-import { FILM_DEFAULT, NO_FILM, type Film } from '@/lib/film';
+import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS,
@@ -39,13 +39,21 @@ const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
 const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'หน้าเรียว'], ['acne', 'ลบสิว/จุดด่าง'], ['smooth', 'หน้าเนียน'], ['white', 'ผิวขาว']];
 // ให้ดูเป็นรูปถ่ายจริง (lib/film.ts): ใส่ให้ทุกรูปที่สร้างอัตโนมัติตามค่า FILM_DEFAULT
-const FILM_SLIDERS: [keyof Film, string][] = [['grain', 'เกรนฟิล์ม'], ['soften', 'ลดความคม']];
+const FILM_SLIDERS: ['grain' | 'soften', string][] = [['grain', 'เกรนฟิล์ม'], ['soften', 'ลดความคม']];
+// ลุคภาพ: อัตโนมัติ = ตามที่รูปนั้นสร้างมา (Phone candid -> มือถือ, อื่นๆ -> ฟิล์ม) เก็บไว้กับรูป (finish)
+const FINISH_LOOKS = [
+  { id: 'auto', name: 'อัตโนมัติ', hint: 'รูปจากสไตล์ Phone candid ได้ลุคมือถือ รูปอื่นได้ลุคฟิล์ม' },
+  { id: 'film', name: 'ฟิล์ม', hint: 'ลดความคม + เกรนฟิล์ม แบบรูปนิตยสาร' },
+  { id: 'phone', name: 'มือถือ', hint: 'คมแบบมือถือ สีจืดลง ดำ/ขาวชัดขึ้น noise เบาๆ ในเงา (จูนจากรูป iPhone จริง)' },
+  { id: 'off', name: 'ไม่ใส่', hint: 'รูปจาก AI ล้วน' },
+] as const;
+type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
-type Result = { src: string; caption: string; set?: SetTag }; // set = อยู่ในชุดภาพหลายมุม
+type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook }; // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
 type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag };
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
@@ -85,7 +93,8 @@ export default function TryOn() {
   });
   const [tone, setTone] = useState<string | null>(null); // สีผิว null = สีเดิม
   const [amounts, setAmounts] = useState(NO_RETOUCH);
-  const [film, setFilm] = useState<Film>(FILM_DEFAULT);
+  const [finish, setFinish] = useState<FinishChoice>('auto');
+  const [film, setFilm] = useState<Film>(FILM_DEFAULT); // ค่าสไลเดอร์ของแต่ละลุค (look ใน state นี้ไม่ใช้ ใช้ finish แทน)
   const [results, setResults] = useState<Result[]>([]); // รูปที่สร้างแล้ว ใหม่สุดอยู่หน้า
   const [current, setCurrent] = useState<number | null>(null); // กำลังแสดง: null = รูปนางแบบ (ตัวอย่าง), ตัวเลข = results[current]
   const [zoomed, setZoomed] = useState(false);
@@ -132,9 +141,10 @@ export default function TryOn() {
   const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
   const accs = pick.accessory.map((id) => find(lists.accessory, id)).filter((a): a is Item => a !== undefined);
   const shown = current === null ? null : results[current];
+  const finishLook: FilmLook = finish === 'auto' ? shown?.finish ?? 'film' : finish; // รูปเก่าที่ไม่ได้เก็บลุคไว้ = ฟิล์ม
 
   const { canvasRef, fullRef, prepare } = useRetouchCanvas(
-    { src: shown?.src ?? model.src!, tone, amounts, zoomed, original, film: shown ? film : NO_FILM }, // เกรนเฉพาะรูปที่สร้าง ไม่ใส่รูปนางแบบตัวอย่าง
+    { src: shown?.src ?? model.src!, tone, amounts, zoomed, original, film: shown ? { ...film, look: finishLook } : NO_FILM }, // ใส่เฉพาะรูปที่สร้าง ไม่ใส่รูปนางแบบตัวอย่าง
     setRetouchStatus,
   );
 
@@ -145,7 +155,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set })));
+        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -386,6 +396,8 @@ export default function TryOn() {
         look: shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset),
         light_from_ref: shot && !shotPresetLight,
         face: mood.prompt || null,
+        // ลุคที่เหมาะกับรูปนี้ (เก็บกับรูป ขั้นแต่งรูป "อัตโนมัติ" ใช้ค่านี้): ใช้สไตล์ Phone candid -> มือถือ
+        finish: ((!shot || shotPresetLight) && preset.id === 'phone' ? 'phone' : 'film') as FilmLook,
         face_from_ref: mood.id === 'auto' && Boolean(pose),
         // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของสไตล์ถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
         full_body: set ? SET_SHOTS[0].fullBody : preset.fullBody,
@@ -397,7 +409,7 @@ export default function TryOn() {
       const setId = set ? newSetId() : null;
       const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
       const out = await api('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
-      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0) }]; // server เซฟไว้ใน results/ แล้ว
+      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish }]; // server เซฟไว้ใน results/ แล้ว
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
@@ -428,7 +440,7 @@ export default function TryOn() {
           caption: setCaption(j + 1),
           set: setTag(j + 1),
         }).then(({ src }) => {
-          setResults((r) => [{ src, caption: setCaption(j + 1), set: setTag(j + 1) }, ...r]);
+          setResults((r) => [{ src, caption: setCaption(j + 1), set: setTag(j + 1), finish: body.finish }, ...r]);
           setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
         }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
         const failed = rest.filter((x) => x.status === 'rejected');
@@ -607,20 +619,28 @@ export default function TryOn() {
         </div>
         <div className="retouch-actions">
           <button className="btn btn-secondary" onClick={() => setAmounts(AUTO)}><IconSparkle /> แต่งอัตโนมัติ</button>
-          <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
+          <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFinish('auto'); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
         </div>
       </Section>
       <Section title="ให้ดูเป็นรูปถ่ายจริง" note="ใส่ให้ทุกรูปอัตโนมัติ">
+        <ChipGroup options={[...FINISH_LOOKS]} value={finish} onChange={(v) => setFinish(v as FinishChoice)} />
+        <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
         <div className="sliders">
-          {FILM_SLIDERS.map(([id, label]) => (
+          {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
             <div className="slider" key={id}>
               <label htmlFor={id}>{label} <output>{film[id]}</output></label>
               <input type="range" id={id} min={0} max={100} value={film[id]}
                 onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
             </div>
           ))}
+          {finishLook === 'phone' && (
+            <div className="slider">
+              <label htmlFor="phone">ความแรงลุคมือถือ <output>{film.phone}</output></label>
+              <input type="range" id="phone" min={0} max={100} value={film.phone} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
+            </div>
+          )}
         </div>
-        <p className="muted-text">รูปจาก AI มักคมจัดเกินกล้องจริง ลดความคมนิดๆ + ใส่เกรนให้ดูเป็นรูปถ่าย · ดาวน์โหลดได้รูปที่ใส่แล้ว · ตั้ง 0 ทั้งคู่ = ปิด</p>
+        <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
       </Section>
     </>;
   }

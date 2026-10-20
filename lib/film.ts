@@ -1,12 +1,16 @@
-// film.ts — ให้รูปจาก AI ดูเป็นรูปถ่ายจริง: ลดความคม + เกรนฟิล์ม (ทำใน browser ไม่ใช้ AI ไม่เสียเงิน)
-// ใส่ให้ทุกรูปที่สร้างอัตโนมัติ (FILM_DEFAULT) ปรับ/ปิดได้ที่ขั้น "แต่งรูป"
-// ทดสอบ 19 ต.ค.: รูปจาก GPT Image 2.5 คมจัดเกินกล้องจริง พอเบลอนิดๆ + ใส่เกรนแล้วดูเป็นรูปถ่ายขึ้นชัด
-//   เกรนเบา = เบลอ 0.6px เกรน 5 (สไลเดอร์ ~35/45), เกรนแรงแบบนิตยสาร = เบลอ 0.9px เกรน 9 (~65/65)
+// film.ts — ให้รูปจาก AI ดูเป็นรูปถ่ายจริง (ทำใน browser ไม่ใช้ AI ไม่เสียเงิน) ใส่ให้ทุกรูปที่สร้างอัตโนมัติ ปรับ/ปิดได้ที่ขั้น "แต่งรูป"
+// มี 2 ลุค เพราะรูปจริงสองแบบต่างกันคนละทาง:
+//   film  = ลดความคม + เกรนฟิล์ม — ทดสอบ 19 ต.ค. กับรูปแฟลชบนโซฟา (ลุคนิตยสาร) GPT Image 2.5 คมจัดเกิน พอเบลอนิดๆ + เกรนแล้วดูเป็นรูปถ่าย
+//          เกรนเบา = เบลอ 0.6px เกรน 5 (สไลเดอร์ ~35/45), เกรนแรงแบบนิตยสาร = เบลอ 0.9px เกรน 9 (~65/65)
+//   phone = ลุคมือถือ — เทียบกับรูปจริงจาก iPhone ในฉากเดียวกัน (19 ต.ค.): มือถือคมกว่ารูป AI (ไม่ใช่นุ่มกว่า), ผนังเรียบไม่มีเกรน
+//          (มือถือลด noise ให้ เหลือแค่ในเงา), สีจืดกว่า ~20%, เย็นกว่านิด, ยอมให้หน้าต่างขาวจ้า/ส่วนมืดดำสนิท
+//          -> เพิ่มความคมนิดๆ ลดความอิ่มสี เพิ่มคอนทราสต์นิดๆ ใส่ noise เบามากเฉพาะในเงา (ลองปรับเย็นแล้วเย็นเกินรูปจริง ตัดออก)
 
-export type Film = { grain: number; soften: number }; // 0..100 ตามสไลเดอร์
-export const FILM_DEFAULT: Film = { grain: 35, soften: 45 };
-export const NO_FILM: Film = { grain: 0, soften: 0 };
-export const filmOn = (f: Film) => f.grain > 0 || f.soften > 0;
+export type FilmLook = 'film' | 'phone' | 'off';
+export type Film = { look: FilmLook; grain: number; soften: number; phone: number }; // grain/soften/phone 0..100 ตามสไลเดอร์
+export const FILM_DEFAULT: Film = { look: 'film', grain: 35, soften: 45, phone: 50 };
+export const NO_FILM: Film = { look: 'off', grain: 0, soften: 0, phone: 0 };
+export const filmOn = (f: Film) => (f.look === 'film' ? f.grain > 0 || f.soften > 0 : f.look === 'phone' && f.phone > 0);
 
 const GRAIN_MAX = 14; // ความแรงเกรน (ระดับสว่าง 0..255) ที่สไลเดอร์ 100
 const SOFTEN_MAX = 1.4; // รัศมีเบลอ (px) ที่สไลเดอร์ 100
@@ -75,6 +79,8 @@ function grainField(w: number, h: number) {
 
 // แก้ ImageData ในที่ (RGBA)
 export function applyFilm(img: ImageData, film: Film) {
+  if (film.look === 'phone') return applyPhone(img, film.phone / 50);
+  if (film.look === 'off') return img;
   const { width: w, height: h, data } = img;
   const sigma = (film.soften / 100) * SOFTEN_MAX;
   const amount = (film.grain / 100) * GRAIN_MAX;
@@ -94,6 +100,37 @@ export function applyFilm(img: ImageData, film: Film) {
       r += n; g += n; b += n;
     }
     data[i] = r; data[i + 1] = g; data[i + 2] = b; // Uint8ClampedArray ปัด/ตัดให้เอง
+  }
+  return img;
+}
+
+// ลุคมือถือ: k = 1 ที่สไลเดอร์ 50 — จูนกับรูปจากสไตล์ Phone candid แบบใหม่ เทียบกับรูป iPhone จริงในฉากเดียวกัน (20 ต.ค.)
+// ได้ใกล้รูปจริง: ความอิ่มสี คอนทราสต์ ส่วนขาวจ้า/ดำสนิท — ยังเย็นกว่ารูปจริงนิดหน่อย (รูปจริงใส่เสื้อเบจ วัดเทียบได้คร่าวๆ)
+function applyPhone(img: ImageData, k: number) {
+  const { width: w, height: h, data } = img;
+  const sharpen = 0.05 * k; // แทบไม่เพิ่มความคม: สไตล์ Phone candid แบบใหม่ได้รูปคมเท่ามือถือจริงอยู่แล้ว (วัด 20 ต.ค.)
+  const sat = Math.max(0, 1 - 0.15 * k); // สีจืดลงอีกนิดให้ใกล้รูป iPhone จริง
+  const contrast = 1 + 0.06 * k; // ดำให้ดำ ขาวให้ขาว (รูป AI แทบไม่มีส่วนไหนขาวจ้า/ดำสนิท)
+  const noiseAmt = 2.4 * k; // noise จาง และอยู่ในเงาเป็นหลัก (ส่วนสว่างมือถือลบ noise ออกหมด)
+  const soft = sharpen > 0 ? blur(data, w, h, 1.0, 4, 3) : null;
+  const noise = noiseAmt > 0 ? grainField(w, h) : null;
+  for (let p = 0, i = 0; p < w * h; p++, i += 4) {
+    let r = data[i], g = data[i + 1], b = data[i + 2];
+    if (soft) {
+      r += (r - soft[i]) * sharpen;
+      g += (g - soft[i + 1]) * sharpen;
+      b += (b - soft[i + 2]) * sharpen;
+    }
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = 128 + (lum + (r - lum) * sat - 128) * contrast;
+    g = 128 + (lum + (g - lum) * sat - 128) * contrast;
+    b = 128 + (lum + (b - lum) * sat - 128) * contrast;
+    if (noise) {
+      const dark = 1 - Math.min(1, Math.max(0, lum / 255));
+      const n = noise[p] * noiseAmt * (0.2 + dark * dark * 1.6);
+      r += n; g += n; b += n;
+    }
+    data[i] = r; data[i + 1] = g; data[i + 2] = b;
   }
   return img;
 }

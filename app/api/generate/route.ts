@@ -34,6 +34,7 @@ export const POST = post(async (req) => {
   // ป้ายชุดภาพ (ทุกรูปในชุด รวมรูปหลัก) เก็บใน .json คู่รูป ให้ประวัติรูปจัดกลุ่มได้หลัง refresh
   const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
     ? { id: req.set.id, index: req.set.index } : null;
+  const finish = req.finish === 'phone' || req.finish === 'film' ? req.finish : null; // ลุคที่เหมาะกับรูปนี้ (lib/film.ts) เก็บกับรูป
   if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
 
   // รูปที่ส่งให้ AI: นางแบบ (ต้องมี) + ชุด + ของเสริม + ท่าโพสต์ + ฉาก (ถ้าเลือก) — ลำดับต้องตรงกับ buildPrompt
@@ -51,9 +52,11 @@ export const POST = post(async (req) => {
   const images: Img[] = inputs.map((x) => ({ data: x.data, mime: 'image/jpeg' }));
   const look: string | null = req.look ?? null;
   // ลอกทั้งช็อต + ลอกแสงจากรูปต้นแบบ: ให้ AI อ่านแสงในรูปท่าโพสต์ก่อน (ไม่ถึงสตางค์ 2–5 วินาที) อ่านไม่ได้ = ใช้คำสั่งลอกแสงแบบเดิม
-  const refLight = !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref
-    ? await describeLighting({ data: req.pose, mime: 'image/jpeg' })
-    : null;
+  // รูปฉากที่อัปโหลด: อ่านแสงในฉากด้วย ให้แสง/เงาบนตัวนางแบบตรงกับห้องจริง (อ่านพร้อมกับรูปท่า ไม่ต้องรอต่อกัน)
+  const [refLight, sceneLight] = await Promise.all([
+    !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
+    !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
+  ]);
   const prompt = setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -79,6 +82,7 @@ export const POST = post(async (req) => {
     face: text(req.face),
     faceFromRef: Boolean(req.face_from_ref),
     refLight,
+    sceneLight,
   });
   const opt = { aspect: req.aspect ?? '2:3', size: req.size ?? '1024x1536', quality: req.quality ?? 'medium' };
 
@@ -111,6 +115,7 @@ export const POST = post(async (req) => {
   if (texts(choices.props).length) style.props = texts(choices.props);
   if (harmonizeText) style.harmonize = true;
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
+  if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
   if (text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
@@ -137,7 +142,7 @@ export const POST = post(async (req) => {
     if (harmonizeText) image = await generateImage(req.model, [image], harmonizeText, opt);
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const src = await saveImage({ area: 'results' }, image.data, image.mime,
-      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}) });
+      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}) });
     await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
     return json(200, { src });
   } catch (e) {
