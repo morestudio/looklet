@@ -1,6 +1,6 @@
 // ai.ts — เรียก AI เจนรูป + ดูรูปของเสริม (ใช้ฝั่ง server เท่านั้น: อ่าน API key จาก .env หน้าเว็บไม่เคยเห็น key)
 import 'server-only';
-import { ACCESSORY_TYPES, type AccessoryInfo } from './catalog';
+import { ACCESSORY_TYPES, POSE_PRESETS, type AccessoryInfo } from './catalog';
 
 // โมเดลที่ให้เลือก — ราคา Gemini ประมาณจากหน้า pricing ของ Google (ต.ค. 2026)
 const AI_MODELS = [
@@ -187,6 +187,104 @@ export async function describeLighting(img: Img): Promise<string | null> {
       if (text.length > 40) return text.slice(0, 900);
     } catch (e) {
       console.error('อ่านแสงในรูปต้นแบบไม่สำเร็จ', (e as Error).message);
+    }
+  }
+  return null;
+}
+
+// ---------- วางแผนท่า (ท่าสำเร็จรูป POSE_PRESETS): AI ตัวเล็กดูฉาก + ชุด + ของเสริม แล้วเขียนท่าที่เข้ากับฉากนั้นเป็นคำ ----------
+// ไม่ต้องมีรูปท่า — ทดสอบ 20 ต.ค. ได้ท่าที่ใช้เฟอร์นิเจอร์จริงในฉากและดูไม่ได้โพส ~9 วินาที ไม่ถึง 5 สตางค์ต่อครั้ง
+// ใช้ GPT-6 Luna (ผู้ใช้เลือก 20 ต.ค. — รับรูป + JSON ได้ ~5 วินาที ราว ฿0.02 ต่อครั้ง) พัง/ไม่มี key -> Gemini Flash -> null
+// (null = route ใช้คำสั่ง "AI เลือกท่าให้" แบบเดิมแทน ยังได้รูป)
+export type PosePlan = { preset: string | null; en: string; th: string };
+export type PlanInput = {
+  location: Img | null; // รูปฉากที่อัปโหลด หรือรูปนางแบบ (ฉากเดิม = พื้นหลังของรูปนางแบบ)
+  locationIsModelPhoto: boolean;
+  locationText: string | null; // ฉากแบบคำบรรยาย (ไม่มีรูป)
+  outfit: Img | null;
+  accessories: { img: Img; what: string }[];
+  preset: string; // id ใน POSE_PRESETS หรือ 'auto'
+};
+
+function planRequest({ location, locationIsModelPhoto, locationText, outfit, accessories, preset }: PlanInput) {
+  const images: Img[] = [];
+  const said: string[] = [];
+  if (location) {
+    images.push(location);
+    said.push(locationIsModelPhoto
+      ? `Image ${images.length} shows the model; the location is the background of this photo (ignore her current pose).`
+      : `Image ${images.length} is the location.`);
+  } else if (locationText) {
+    said.push(`The location: ${locationText}.`);
+  }
+  if (outfit) {
+    images.push(outfit);
+    said.push(`Image ${images.length} is her outfit.`);
+  }
+  for (const a of accessories) {
+    images.push(a.img);
+    said.push(`Image ${images.length} is ${a.what}, which she has with her.`);
+  }
+  const auto = preset === 'auto';
+  const brief = auto
+    ? 'First choose which of these pose types suits this location, outfit and accessories best, then plan it: '
+      + POSE_PRESETS.map((p) => `"${p.id}": ${p.brief}`).join(' ')
+    : POSE_PRESETS.find((p) => p.id === preset)!.brief;
+  const text = 'You are a photographer directing one real-life photo of one young woman. ' + said.join(' ')
+    + ` Pose brief: ${brief} Plan ONE posture for this exact location: use the real furniture, surfaces and open space that are there, `
+    + 'with believable weight and balance. Her face and the outfit must stay clearly visible'
+    + (accessories.length ? ', and the accessories are handled naturally' : '') + '. Plan her gaze and expression too. '
+    + 'Reply in JSON: ' + (auto ? '"preset" = the id of the pose type you chose; ' : '')
+    + '"pose_en" = 3 to 5 concrete English sentences (where she is in the scene, what she sits or leans on or how she stands or moves, '
+    + 'legs, arms and hands, torso, head, gaze, expression); "pose_th" = the same idea in 1 to 2 short Thai sentences.';
+  return { images, text, auto };
+}
+
+async function planWithGemini(req: ReturnType<typeof planRequest>) {
+  const props: Record<string, unknown> = { pose_en: { type: 'STRING' }, pose_th: { type: 'STRING' } };
+  if (req.auto) props.preset = { type: 'STRING', enum: POSE_PRESETS.map((p) => p.id) };
+  const d = await post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: req.text }, ...req.images.map((i) => ({ inline_data: { mime_type: i.mime, data: i.data } }))] }],
+      generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: props, required: Object.keys(props) } },
+    }),
+  }, 'Gemini', 45_000);
+  return (d.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
+}
+
+async function planWithOpenAI(req: ReturnType<typeof planRequest>) {
+  const props: Record<string, unknown> = { pose_en: { type: 'string' }, pose_th: { type: 'string' } };
+  if (req.auto) props.preset = { type: 'string', enum: POSE_PRESETS.map((p) => p.id) };
+  const d = await post('https://api.openai.com/v1/chat/completions', {
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
+    body: JSON.stringify({
+      model: 'gpt-6-luna',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: req.text },
+        ...req.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } })),
+      ] }],
+      response_format: { type: 'json_schema', json_schema: { name: 'pose', strict: true, schema: {
+        type: 'object', properties: props, required: Object.keys(props), additionalProperties: false,
+      } } },
+    }),
+  }, 'OpenAI', 45_000);
+  return d.choices?.[0]?.message?.content ?? '';
+}
+
+export async function planPose(input: PlanInput): Promise<PosePlan | null> {
+  const req = planRequest(input);
+  const tries = [process.env.OPENAI_API_KEY && planWithOpenAI, process.env.GEMINI_API_KEY && planWithGemini];
+  for (const plan of tries) {
+    if (!plan) continue;
+    try {
+      const g = JSON.parse(await plan(req));
+      if (typeof g.pose_en === 'string' && g.pose_en.trim().length > 40) {
+        const preset = req.auto ? (POSE_PRESETS.some((p) => p.id === g.preset) ? g.preset : null) : input.preset;
+        return { preset, en: g.pose_en.trim().slice(0, 1200), th: String(g.pose_th ?? '').trim().slice(0, 400) };
+      }
+    } catch (e) {
+      console.error('วางแผนท่าไม่สำเร็จ', (e as Error).message);
     }
   }
   return null;

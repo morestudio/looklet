@@ -14,7 +14,7 @@ import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSES, PRESET_PARTS,
+  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
   PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
@@ -25,8 +25,9 @@ const CATALOG: Record<Key, Item[]> = { model: MODELS, outfit: OUTFITS, accessory
 // อ้างถึงรายการด้วย id (ไม่ใช้ตำแหน่ง ลบ/เพิ่มแล้วไม่ต้องไล่แก้): รูป = src, ฉากแบบคำบรรยาย = ชื่อ
 const idOf = (item: Item) => item.src ?? item.name;
 const find = (list: Item[], id: string | null) => (id === null ? undefined : list.find((i) => idOf(i) === id));
-// ท่าโพสต์ "AI เลือกท่าให้" (ไม่มีรูปท่า ให้ AI จัดท่าเองให้สินค้าเด่น) — id ไม่ชนกับรูป (src ขึ้นต้นด้วย /) หรือชื่อภาษาไทย
-const AI_POSE = 'ai';
+// ท่าสำเร็จรูป (ไม่มีรูปท่า ให้ AI ตัววางแผนคิดท่าจากฉาก) — id = "preset:<id ใน POSE_PRESETS หรือ auto>" ไม่ชนกับรูป (src ขึ้นต้นด้วย /)
+const PRESET_POSE = 'preset:';
+const POSE_CHOICES = [POSE_AUTO, ...POSE_PRESETS];
 // ของเสริมรูปเก่าที่ไม่มีประเภท -> ถือเป็น "อื่นๆ"
 const accessoryType = (a: Item) => ACCESSORY_TYPES.find((t) => t.id === a.type) ?? ACCESSORY_TYPES.find((t) => t.id === 'other')!;
 
@@ -49,11 +50,13 @@ const FINISH_LOOKS = [
 ] as const;
 type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
-type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook }; // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้
+type PosePlan = { name: string; th: string }; // ท่าที่ AI ตัววางแผนคิดให้ (ท่าสำเร็จรูป)
+// set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
+type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; posePlan?: PosePlan };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
 type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook };
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; posePlan?: PosePlan };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
@@ -129,8 +132,8 @@ export default function TryOn() {
 
   const model = find(lists.model, pick.model) ?? lists.model[0];
   const outfit = find(lists.outfit, pick.outfit);
-  const aiPose = pick.pose === AI_POSE;
-  const pose = aiPose ? undefined : find(lists.pose, pick.pose);
+  const posePreset = pick.pose?.startsWith(PRESET_POSE) ? POSE_CHOICES.find((p) => PRESET_POSE + p.id === pick.pose) : undefined;
+  const pose = posePreset ? undefined : find(lists.pose, pick.pose);
   const scene = find(lists.scene, pick.scene);
   // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
   const shot = Boolean(pose) && poseMode !== 'pose';
@@ -157,7 +160,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish })));
+        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, posePlan: r.posePlan })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -334,7 +337,7 @@ export default function TryOn() {
 
   // set = ชุดภาพ 4 มุม (SET_SHOTS): รูปหลักสร้างตามที่เลือก แล้วส่งรูปหลักเป็นต้นแบบให้อีก 3 มุมพร้อมกัน
   async function generate(set = false) {
-    if (!outfit && !accs.length && !pose && !aiPose && !scene) return setStatus('เลือกชุด ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
+    if (!outfit && !accs.length && !pose && !posePreset && !scene) return setStatus('เลือกชุด ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
     setStatus('');
@@ -342,7 +345,7 @@ export default function TryOn() {
     const caption = [
       model.name,
       (outfit?.name ?? 'ชุดเดิม') + accs.map((a) => ' + ' + a.name).join(''),
-      ...(pose ? ['ท่า' + pose.name + (shot ? ` (${modeName})` : '')] : aiPose ? ['ท่าที่ AI เลือก'] : []),
+      ...(pose ? ['ท่า' + pose.name + (shot ? ` (${modeName})` : '')] : posePreset ? ['ท่า AI: ' + posePreset.name] : []),
       shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม',
       shot ? (shotPresetLight ? 'แสง ' + preset.name : 'แสงจากรูปต้นแบบ') : preset.name,
       ...(moodName ? [moodName] : []),
@@ -369,7 +372,7 @@ export default function TryOn() {
         outfit: outfitImg?.data ?? null,
         accessories: accs.map((a, i) => ({ data: accImgs[i].data, what: accessoryType(a).prompt, show: accessoryType(a).show })),
         pose: poseImg?.data ?? null,
-        auto_pose: aiPose,
+        pose_preset: posePreset?.id ?? null, // server ให้ AI ตัววางแผนคิดท่าจากฉาก
         pose_mode: poseMode,
         scene_image: sceneImg?.data ?? null,
         scene_text: shotScene ? null : scene?.prompt ?? null,
@@ -380,7 +383,7 @@ export default function TryOn() {
           scene: sceneImg ? ref(scene, sceneImg) : scene && !shotScene ? { name: scene.name } : null, // ฉากแบบคำบรรยาย: ส่งแค่ชื่อ
           // ชื่อตัวเลือกภาษาไทย ไว้ทำ log ให้อ่านง่าย (คำสั่งจริงที่ส่ง AI อยู่ใน prompt)
           choices: {
-            poseMode: pose ? POSE_MODES.find((m) => m.id === poseMode)!.name : aiPose ? 'AI เลือกท่าให้' : 'ท่าเดิม',
+            poseMode: pose ? POSE_MODES.find((m) => m.id === poseMode)!.name : posePreset ? 'ท่าสำเร็จรูป: ' + posePreset.name : 'ท่าเดิม',
             preset: shot ? (shotPresetLight ? `แสง ${preset.name} · กล้องจากรูปท่าโพสต์` : 'ใช้แสงและกล้องจากรูปท่าโพสต์') : preset.name,
             ...(shot && !shotPresetLight ? {} : Object.fromEntries(PRESET_PARTS
               .filter(({ key }) => !shot || key === 'light' || key === 'color').map(({ key }) => [key, preset[key].label]))),
@@ -411,8 +414,9 @@ export default function TryOn() {
       };
       const setId = set ? newSetId() : null;
       const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
-      const out = await api('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
-      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish }]; // server เซฟไว้ใน results/ แล้ว
+      const out = await api<{ src: string; posePlan: PosePlan | null }>('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
+      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined }]; // server เซฟไว้ใน results/ แล้ว
+      if (out.posePlan) setStatus(`ท่าที่ AI คิดให้ (${out.posePlan.name}): ${out.posePlan.th}`);
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
@@ -477,7 +481,7 @@ export default function TryOn() {
 
   const cur = STEPS[step];
   const outfitName = outfit?.name ?? 'ชุดเดิม';
-  const poseName = aiPose ? 'AI เลือกท่าให้' : pose?.name ?? 'ท่าเดิม';
+  const poseName = posePreset ? posePreset.name : pose?.name ?? 'ท่าเดิม';
   const sceneName = shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม';
   const accNames = accs.map((a) => a.name);
   const aiLabel = splitLabel(aiModels?.find((m) => m.id === aiModel)?.label ?? 'ยังไม่มีโมเดล AI')[0];
@@ -500,7 +504,7 @@ export default function TryOn() {
     model: true,
     outfit: Boolean(outfit),
     accessory: accs.length > 0,
-    pose: Boolean(pose || aiPose || mood.id !== 'auto'),
+    pose: Boolean(pose || posePreset || mood.id !== 'auto'),
     scene: Boolean(scene) || shotScene,
     settings: Boolean(presetId !== PRESETS[0].id || aspect || gaze || propChoices.length || extra.trim() || harmonize),
     retouch: retouched,
@@ -562,12 +566,24 @@ export default function TryOn() {
       filters: accTypeFilters,
     });
   } else if (cur.key === 'pose') {
-    panel = picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))), {
-      special: <>
-        <Card item={{ name: 'ท่าเดิม' }} active={!pose && !aiPose} onClick={() => select('pose', null)} />
-        <Card item={{ name: 'AI เลือกท่าให้', emoji: '✨' }} active={aiPose} onClick={() => select('pose', AI_POSE)} />
-      </>,
-    });
+    // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
+    panel = <>
+      <Section title="ท่าสำเร็จรูป" note="AI คิดท่าให้ ไม่ต้องมีรูป">
+        <div className="options pose-presets">
+          <button type="button" className={'option' + (!pose && !posePreset ? ' active' : '')} onClick={() => select('pose', null)}>
+            <b>ท่าเดิม</b><small>ท่าเดียวกับรูปนางแบบ</small>
+          </button>
+          {POSE_CHOICES.map((p) => (
+            <button key={p.id} type="button" className={'option' + (posePreset?.id === p.id ? ' active' : '')} onClick={() => select('pose', PRESET_POSE + p.id)}>
+              <b>{p.name}</b><small>{p.hint}</small>
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section title="ใช้รูปท่าของฉัน" note="อัปโหลด หรือเลือกจากตัวอย่าง">
+        {picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))))}
+      </Section>
+    </>;
   } else if (cur.key === 'scene') {
     panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
       special: <Card item={{ name: 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
@@ -699,12 +715,17 @@ export default function TryOn() {
         <ChipGroup options={FACE_MOODS} value={faceMood} onChange={setFaceMood} />
         <p className="muted-text">{mood.hint}</p>
       </Section>
-      {aiPose && (
-        <Section title="AI เลือกท่าให้">
-          <p className="muted-text">AI จัดท่าให้สินค้าเด่นเอง ตามของเสริมที่เลือก เช่น ใส่แว่นอาจแตะแว่น ใส่กระเป๋าอาจยกกระเป๋าขึ้นโชว์</p>
+      {posePreset && (
+        <Section title={posePreset.name}>
+          <p className="muted-text">{posePreset.hint} · AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้ (ใช้เวลาเพิ่มราว 10 วินาที ไม่ถึง 5 สตางค์) — ทุกครั้งที่สร้างได้ท่าใหม่</p>
         </Section>
       )}
-      {!pose && !aiPose && (
+      {shown?.posePlan && (
+        <Section title="ท่าที่ AI คิดให้ (รูปที่ดูอยู่)" note={shown.posePlan.name}>
+          <p className="muted-text">{shown.posePlan.th}</p>
+        </Section>
+      )}
+      {!pose && !posePreset && (
         <Section title="รูปแบบไหนได้ผลดี">
           {tips(['คนเดียวเต็มตัว เห็นแขนขาชัด', 'ไม่มีตัวอักษร/ไอคอนแอปทับ', 'แคปจากมือถือ ตัดขอบแอปออกก่อน'])}
         </Section>

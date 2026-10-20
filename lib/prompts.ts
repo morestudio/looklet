@@ -47,11 +47,13 @@ export type PromptInput = {
   faceFromRef?: boolean; // สีหน้าแบบ "อัตโนมัติ" + มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปท่า
   refLight?: string | null; // ลอกทั้งช็อต: แสงในรูปต้นแบบที่ AI อ่านมาแล้ว (describeLighting) — ใช้เมื่อไม่ได้ส่ง look
   sceneLight?: string | null; // แสงในรูปฉากที่อัปโหลด ที่ AI อ่านมาแล้ว (describeLighting)
+  posePlan?: string | null; // ท่าสำเร็จรูป: ท่าที่ AI ตัววางแผนเขียนให้ (planPose) ใช้แทน autoPose เมื่อไม่มีรูปท่า
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
+  posePlan = null,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -70,7 +72,7 @@ export function buildPrompt({
   const smallPoseChange = !shot && (gaze || props.length);
   const lines = [
     first,
-    hasPose || autoPose
+    hasPose || autoPose || posePlan
       ? 'Image 1 is the model. Keep the same person: identical face, facial features, hairstyle and body shape.'
       : smallPoseChange
         ? 'Image 1 is the model. Keep the same person: identical face, facial features, hairstyle and body shape, '
@@ -151,6 +153,11 @@ export function buildPrompt({
     // รูปท่ามักแคปจากมือถือ (IG/Pinterest) ติดแถบแอป ชื่อบัญชี ปุ่มไลก์มาด้วย
     lines.push(`Image ${n} may be a phone screenshot: ignore any app interface, text, icons or buttons in it.`);
     n += 1;
+  } else if (posePlan) {
+    // ท่าที่วางแผนจากฉากจริง (ท่าสำเร็จรูป) — รูปนางแบบมักยืนตรงหน้าตรงในสตูดิโอ ต้องบอกว่าห้ามลอกท่า/มุมหัว/สีหน้าจากรูปนั้น
+    lines.push(`Pose and body language, planned for this location: ${posePlan} `
+      + 'Image 1 may show the model in a straight studio pose facing the camera; do not copy her pose, head angle or expression from image 1. '
+      + 'Keep the face clearly visible: hands must not cover the eyes, nose or mouth.');
   } else if (autoPose) {
     // ให้ AI คิดท่าเอง แต่บอกไอเดียตามของที่ใส่ (แว่น -> จับแว่น, กระเป๋า -> ถือขึ้นมา) ไม่งั้นมักยืนตรงเฉยๆ
     // ให้เลือกแค่ 1–2 อย่าง: ใส่ของ 3 ชิ้นแล้วสั่งทำทุกท่าพร้อมกัน มือไม่พอ ท่าจะดูฝืน
@@ -189,7 +196,7 @@ export function buildPrompt({
   if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
   else if (look) lines.push(REALISM, look);
   // สีหน้าที่เลือก: ต้องบอกว่าไม่เอาสีหน้าจากรูปนางแบบ ไม่งั้น AI ยึดรอยยิ้มในรูปนางแบบ
-  if (face) lines.push(face, 'Do not keep the expression of image 1.');
+  if (face) lines.push(face, posePlan ? 'This expression replaces any expression in the pose plan.' : 'Do not keep the expression of image 1.');
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
   if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false

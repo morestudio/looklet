@@ -85,6 +85,34 @@ export const POSES: Item[] = [
   { name: 'เซลฟี่กระจก ถือแก้วกาแฟ', src: '/images/poses/pose-20.jpg' },
 ];
 
+// ---------- ท่าสำเร็จรูป: ไม่ต้องมีรูปท่า ให้ AI ตัววางแผนท่า (planPose ใน lib/ai.ts) ดูฉาก + ชุด + ของเสริม แล้วคิดท่าที่เข้ากับฉากนั้น ----------
+// brief = โจทย์ที่ส่งให้ตัววางแผน (อังกฤษ) — ตัววางแผนเลือกเฟอร์นิเจอร์/ผนัง/บันไดจริงในฉากเอง แล้วเขียนท่าเป็นคำให้ AI สร้างรูป
+// ทดสอบ 20 ต.ค. (สบายๆ ตามฉาก ในฉากออฟฟิศ): ได้ท่านั่งเอนพิงม้านั่งจริง ยืดขามาทางกล้อง ดูไม่ได้โพส ต่างจากลอกท่าจากรูปที่ได้ท่านางแบบ
+// "AI เลือกให้" (id auto) = ตัววางแผนเลือกเองว่าแบบไหนเข้ากับฉากที่สุด
+export type PosePreset = { id: string; name: string; hint: string; brief: string };
+export const POSE_PRESETS: PosePreset[] = [
+  { id: 'relaxed', name: 'สบายๆ ตามฉาก', hint: 'ท่าผ่อนคลายแบบคนทั่วไป ใช้เฟอร์นิเจอร์ในฉาก',
+    brief: 'A relaxed, natural, unposed moment of a real person, using the real furniture and surfaces of the place: relaxed shoulders, '
+      + 'natural asymmetry, loose hands, a slight slouch is fine. Expression: a soft, genuine smile.' },
+  { id: 'sit', name: 'นั่งชิล', hint: 'นั่งบนม้านั่ง เก้าอี้ บันได หรือขอบที่มีในฉาก',
+    brief: 'Sitting casually on something that is really in the location (a bench, chair, steps, ledge or low wall); if there is nothing '
+      + 'to sit on, sit naturally on a step or the ground. Legs relaxed or loosely crossed. Expression: natural and easy.' },
+  { id: 'lean', name: 'พิงผนัง / เสา', hint: 'พิงผนัง ขอบประตู เสา หรือราวที่มีในฉาก',
+    brief: 'Leaning casually against a wall, door frame, pillar or railing that is really in the location, weight on one leg, a shoulder '
+      + 'or the back touching the surface. Expression: calm and confident.' },
+  { id: 'product', name: 'โชว์สินค้า', hint: 'ของเสริม (หรือจุดเด่นของชุด) เป็นพระเอกของรูป',
+    brief: 'Showing the product naturally so it is the hero of the photo: the accessory (or, without one, the key detail of the outfit) '
+      + 'is clearly in view and the hands interact with it, for a bag holding it up near the body or by the handles. The pose stays natural, '
+      + 'not stiff, and the outfit stays visible. Expression: a soft smile.' },
+  { id: 'fashion', name: 'ยืนแฟชั่นมั่นใจ', hint: 'ยืนแบบลุคบุ๊ก เห็นชุดทั้งตัวชัด',
+    brief: 'A confident fashion stance for a lookbook: standing, weight on one leg, shoulders open, one hand relaxed or lightly on the hip, '
+      + 'the whole outfit and its silhouette clearly visible. Polished but not stiff. Expression: calm and confident, looking at the camera.' },
+  { id: 'laugh', name: 'ถ่ายเผลอ หัวเราะ', hint: 'จังหวะหัวเราะจริง มองไปทางอื่น จับผม',
+    brief: 'A candid caught moment: she laughs genuinely mid-movement, for example looking away or down, tucking her hair behind an ear '
+      + 'or adjusting an accessory, as if the friend taking the photo just made her laugh. Expression: a real laugh with crinkled eyes.' },
+];
+export const POSE_AUTO = { id: 'auto', name: 'AI เลือกให้', hint: 'AI ดูฉาก ชุด ของเสริม แล้วเลือกแบบที่เข้ากันที่สุดให้' };
+
 // เอาอะไรจากรูปท่าโพสต์: shot = ท่า + มุมกล้อง + ระยะ + การมอง + แสง/โทนสี (ล็อกตัวเลือกกล้องกับแสงสี), shot-scene = รวมฉากในรูปด้วย
 export const POSE_MODES = [
   { id: 'pose', name: 'ลอกแค่ท่า', hint: 'เอาแค่ท่าทาง มุมกล้อง แสง และฉากใช้ตามที่เลือก' },

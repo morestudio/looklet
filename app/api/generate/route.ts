@@ -1,5 +1,5 @@
-import { availableModels, describeLighting, generateImage, type Img } from '@/lib/ai';
-import { MAX_ACCESSORIES, POSE_MODES, type PoseMode } from '@/lib/catalog';
+import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
+import { MAX_ACCESSORIES, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
@@ -53,10 +53,24 @@ export const POST = post(async (req) => {
   const look: string | null = req.look ?? null;
   // ลอกทั้งช็อต + ลอกแสงจากรูปต้นแบบ: ให้ AI อ่านแสงในรูปท่าโพสต์ก่อน (ไม่ถึงสตางค์ 2–5 วินาที) อ่านไม่ได้ = ใช้คำสั่งลอกแสงแบบเดิม
   // รูปฉากที่อัปโหลด: อ่านแสงในฉากด้วย ให้แสง/เงาบนตัวนางแบบตรงกับห้องจริง (อ่านพร้อมกับรูปท่า ไม่ต้องรอต่อกัน)
-  const [refLight, sceneLight] = await Promise.all([
+  // ท่าสำเร็จรูป (ไม่มีรูปท่า): ให้ AI ตัววางแผนดูฉาก + ชุด + ของเสริม แล้วคิดท่า — ทำพร้อมกับอ่านแสง ไม่ต้องรอต่อกัน
+  // ที่อยู่ของฉาก: รูปฉากที่อัปโหลด > คำบรรยายฉาก > พื้นหลังของรูปนางแบบ (ฉากเดิม)
+  const posePreset = !setRef && !req.pose && (req.pose_preset === POSE_AUTO.id || POSE_PRESETS.some((p) => p.id === req.pose_preset))
+    ? String(req.pose_preset) : null;
+  const sceneText0 = text(req.scene_text);
+  const [refLight, sceneLight, plan] = await Promise.all([
     !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
     !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
+    posePreset ? planPose({
+      location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
+      locationIsModelPhoto: !req.scene_image && !sceneText0,
+      locationText: req.scene_image ? null : sceneText0,
+      outfit: req.outfit ? { data: req.outfit, mime: 'image/jpeg' } : null,
+      accessories: accessories.map((a) => ({ img: { data: a.data, mime: 'image/jpeg' }, what: String(a.what || 'an accessory').slice(0, 200) })),
+      preset: posePreset,
+    }) : null,
   ]);
+  const planName = plan ? (POSE_PRESETS.find((p) => p.id === plan.preset)?.name ?? POSE_AUTO.name) : null;
   const prompt = setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -73,7 +87,9 @@ export const POST = post(async (req) => {
     fullBody: req.full_body ?? true,
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
     hasPose: Boolean(req.pose),
-    autoPose: !req.pose && Boolean(req.auto_pose), // มีรูปท่าแล้ว ใช้รูปท่า
+    // ท่าสำเร็จรูปวางแผนไม่สำเร็จ -> ใช้คำสั่ง "AI เลือกท่าให้" แบบเดิม (ยังได้รูป)
+    autoPose: !req.pose && (Boolean(req.auto_pose) || (Boolean(posePreset) && !plan)),
+    posePlan: plan?.en ?? null,
     poseHints: accessories.map((a) => String(a.show ?? '').slice(0, 200)).filter(Boolean),
     poseMode,
     framing: text(req.framing),
@@ -129,7 +145,12 @@ export const POST = post(async (req) => {
       accessories: byRole('ของเสริม'),
       scene: setRef ? 'ใช้ฉากจากรูปหลักของชุด' : shotScene ? 'ใช้ฉากจากรูปท่าโพสต์' : byRole('ฉาก')[0] ?? (sceneText ? { name: toRef(refs.scene).name, text: sceneText } : 'ฉากเดิม'),
     },
-    pose: { mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'), ...byRole('ท่าโพสต์')[0] },
+    pose: {
+      mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : plan ? `AI คิดท่า: ${planName}` : posePreset ? 'AI คิดท่าไม่สำเร็จ ใช้ AI เลือกท่าแบบเดิม'
+        : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'),
+      ...(plan ? { plan_th: plan.th, plan_en: plan.en } : {}),
+      ...byRole('ท่าโพสต์')[0],
+    },
     ...(setRef ? { set: { shot: text(setShot!.name) ?? '', ...byRole('รูปหลักของชุด')[0] } } : {}),
     style,
     prompt: sentences(prompt),
@@ -142,9 +163,10 @@ export const POST = post(async (req) => {
     if (harmonizeText) image = await generateImage(req.model, [image], harmonizeText, opt);
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const src = await saveImage({ area: 'results' }, image.data, image.mime,
-      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}) });
+      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
+        ...(plan ? { posePlan: { name: planName, th: plan.th } } : {}) });
     await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
-    return json(200, { src });
+    return json(200, { src, posePlan: plan ? { name: planName, th: plan.th } : null });
   } catch (e) {
     await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
     throw e;

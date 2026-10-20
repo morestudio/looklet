@@ -58,7 +58,7 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
 
 // set = ชุดภาพหลายมุม: id เดียวกันทั้งชุด + ลำดับในชุด (SET_SHOTS) ไว้จัดกลุ่มในประวัติรูป
 export type SetTag = { id: string; index: number };
-export type Stored = { src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' };
+export type Stored = { src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone'; posePlan?: { name: string; th: string } };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
 export async function listImages(where: Where): Promise<Stored[]> {

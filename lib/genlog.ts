@@ -24,7 +24,7 @@ export type GenerateLog = {
     accessories: LogImage[];
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
-  pose: { mode: string } & Partial<LogImage>;
+  pose: { mode: string; plan_th?: string; plan_en?: string } & Partial<LogImage>; // plan = ท่าที่ AI ตัววางแผนคิด (ท่าสำเร็จรูป)
   set?: { shot: string } & Partial<LogImage>; // ชุดภาพหลายมุม: มุมของรูปนี้ + รูปหลักที่ใช้เป็นต้นแบบ
   style: Record<string, string | string[] | boolean>;
   prompt: string[];

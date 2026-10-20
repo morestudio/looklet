@@ -251,3 +251,6 @@ dialog .retouch-actions { justify-content: flex-end; }
 .auth-error, .auth-ok { margin: 0; padding: 8px 12px; border-radius: var(--r-md); font-size: 13px; }
 .auth-error { background: var(--primary-soft); color: var(--primary-pressed); }
 .auth-ok { background: #e7f6ec; color: #1d6b38; }
+/* ท่าสำเร็จรูป: 2 คอลัมน์ ชื่อ + คำอธิบายสั้น */
+.options.pose-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.options.pose-presets .option small { line-height: 1.35; }
