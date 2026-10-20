@@ -131,11 +131,12 @@ export const GAZES: Choice[] = [
     + 'with a relaxed natural expression, as if not posing.' },
 ];
 
-// สีหน้า: auto = มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปนั้น, ไม่มี -> ตามรูปนางแบบ (ไม่สั่ง)
+// สีหน้า: auto = ท่าสำเร็จรูป -> สีหน้าตาม brief ของท่านั้น (อยู่ในท่าที่ AI วางแผน), รูปท่าโพสต์ -> ลอกสีหน้าจากรูปนั้น,
+//   ท่าเดิม -> ตามรูปนางแบบ (ไม่สั่ง) · เลือกแบบอื่น = ใช้แทนสีหน้าในท่าสำเร็จรูป
 // คำที่ใช้ได้ผลจากการทดสอบ 19 ต.ค.: "นิ่ง" เฉยๆ หน้าแข็งไม่มีอารมณ์, "อบอุ่น" AI กลับไปยิ้มกว้างแบบรูปนางแบบ
 //   ที่ได้ผล = "no big smile; lips softly parted; real life in the eyes" — prompts.ts สั่งเพิ่มว่าไม่ต้องลอกสีหน้าจากรูปนางแบบ
 export const FACE_MOODS: (Choice & { hint: string })[] = [
-  { id: 'auto', name: 'อัตโนมัติ', hint: 'มีรูปท่าโพสต์ = ลอกสีหน้าจากรูปนั้น · ไม่มี = ตามรูปนางแบบ', prompt: '' },
+  { id: 'auto', name: 'อัตโนมัติ', hint: 'ท่าสำเร็จรูป = สีหน้าตามท่านั้น (เช่น หัวเราะ ยิ้มบางๆ) · รูปท่าโพสต์ = ลอกสีหน้าจากรูปนั้น · ท่าเดิม = ตามรูปนางแบบ', prompt: '' },
   { id: 'calm', name: 'นิ่ง มั่นใจ', hint: 'ไม่ยิ้มกว้าง ปากเผยอ สายตามีชีวิต',
     prompt: 'Expression: no big smile; lips softly parted; a calm, confident gaze into the lens with real life in the eyes, not blank.' },
   { id: 'soft', name: 'ยิ้มบางๆ', hint: 'ยิ้มมุมปาก ตาอบอุ่น',
