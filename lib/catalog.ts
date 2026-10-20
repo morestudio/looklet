@@ -89,28 +89,78 @@ export const POSES: Item[] = [
 // brief = โจทย์ที่ส่งให้ตัววางแผน (อังกฤษ) — ตัววางแผนเลือกเฟอร์นิเจอร์/ผนัง/บันไดจริงในฉากเอง แล้วเขียนท่าเป็นคำให้ AI สร้างรูป
 // ทดสอบ 20 ต.ค. (สบายๆ ตามฉาก ในฉากออฟฟิศ): ได้ท่านั่งเอนพิงม้านั่งจริง ยืดขามาทางกล้อง ดูไม่ได้โพส ต่างจากลอกท่าจากรูปที่ได้ท่านางแบบ
 // "AI เลือกให้" (id auto) = ตัววางแผนเลือกเองว่าแบบไหนเข้ากับฉากที่สุด
-export type PosePreset = { id: string; name: string; hint: string; brief: string };
+// moments = จังหวะของท่านั้นหลายแบบ route สุ่มมา 1 แบบทุกครั้งที่สร้าง (pickMoment) — brief อย่างเดียว AI ตัววางแผนหยิบตัวอย่างแรกใน brief
+//   ไปใช้ซ้ำทุกรูป: 20 ต.ค. "ถ่ายเผลอ หัวเราะ" 3 รูปก้มหน้าทั้ง 3 ทัดผม 2 (brief เดิมยกตัวอย่าง "looking down, tucking her hair")
+//   brief เลยเขียนกว้างๆ ไม่ยกตัวอย่าง ท่าที่เจาะจงอยู่ใน moments แทน
+export type PosePreset = { id: string; name: string; hint: string; brief: string; moments: string[] };
 export const POSE_PRESETS: PosePreset[] = [
   { id: 'relaxed', name: 'สบายๆ ตามฉาก', hint: 'ท่าผ่อนคลายแบบคนทั่วไป ใช้เฟอร์นิเจอร์ในฉาก',
     brief: 'A relaxed, natural, unposed moment of a real person, using the real furniture and surfaces of the place: relaxed shoulders, '
-      + 'natural asymmetry, loose hands, a slight slouch is fine. Expression: a soft, genuine smile.' },
+      + 'natural asymmetry, loose hands, a slight slouch is fine. Expression: a soft, genuine smile.',
+    moments: [
+      'leaning back into a seat or against a wall, one arm resting along the back or on the knee',
+      'sitting sideways with one leg pulled up, the body turned a little away from the camera and the face turned back to it',
+      'standing with the weight on one hip, hands resting loosely in pockets or holding one arm',
+      'perched on the edge of something with the elbows on the knees, leaning slightly forward',
+      'glancing back toward the camera after looking out of a window or off to the side',
+    ] },
   { id: 'sit', name: 'นั่งชิล', hint: 'นั่งบนม้านั่ง เก้าอี้ บันได หรือขอบที่มีในฉาก',
-    brief: 'Sitting casually on something that is really in the location (a bench, chair, steps, ledge or low wall); if there is nothing '
-      + 'to sit on, sit naturally on a step or the ground. Legs relaxed or loosely crossed. Expression: natural and easy.' },
+    brief: 'Sitting casually on something that is really in the location; if there is nothing to sit on, sit naturally on a step or the ground. '
+      + 'Expression: natural and easy.',
+    moments: [
+      'sitting back deep in the seat with the legs crossed at the knee',
+      'sitting near the edge with the knees together, feet apart and both hands resting on the seat edge',
+      'sitting sideways on the seat with one arm draped over the backrest',
+      'sitting with one knee pulled up and an arm resting on it',
+      'sitting low on steps or the ground with the legs stretched out and crossed at the ankles',
+    ] },
   { id: 'lean', name: 'พิงผนัง / เสา', hint: 'พิงผนัง ขอบประตู เสา หรือราวที่มีในฉาก',
-    brief: 'Leaning casually against a wall, door frame, pillar or railing that is really in the location, weight on one leg, a shoulder '
-      + 'or the back touching the surface. Expression: calm and confident.' },
+    brief: 'Leaning casually against something that is really in the location (a wall, door frame, pillar, railing, counter or table), '
+      + 'weight on one leg. Expression: calm and confident.',
+    moments: [
+      'the back flat against the wall with one foot raised and resting flat against the wall behind her',
+      'one shoulder against the wall with the arms loosely crossed',
+      'leaning on a door frame or pillar with one hand raised and resting on it',
+      'the hip leaning against the edge of a table, counter or railing, body turned three-quarters to the camera',
+      'leaning back on both hands against a ledge or counter behind her',
+    ] },
   { id: 'product', name: 'โชว์สินค้า', hint: 'ของเสริม (หรือจุดเด่นของชุด) เป็นพระเอกของรูป',
     brief: 'Showing the product naturally so it is the hero of the photo: the accessory (or, without one, the key detail of the outfit) '
-      + 'is clearly in view and the hands interact with it, for a bag holding it up near the body or by the handles. The pose stays natural, '
-      + 'not stiff, and the outfit stays visible. Expression: a soft smile.' },
+      + 'is clearly in view and the hands interact with it. The pose stays natural, not stiff, and the outfit stays visible. Expression: a soft smile.',
+    moments: [
+      'standing, holding the accessory up in front of the body with both hands',
+      'sitting, with the accessory on the lap or beside her and one hand resting on it',
+      'standing three-quarters to the camera, wearing or carrying the accessory with one hand on it',
+      'leaning against something, looking down at the accessory while adjusting it',
+      'standing, holding the accessory slightly out toward the camera',
+      'without an accessory: standing, one hand adjusting a sleeve, hem or collar of the outfit',
+    ] },
   { id: 'fashion', name: 'ยืนแฟชั่นมั่นใจ', hint: 'ยืนแบบลุคบุ๊ก เห็นชุดทั้งตัวชัด',
-    brief: 'A confident fashion stance for a lookbook: standing, weight on one leg, shoulders open, one hand relaxed or lightly on the hip, '
-      + 'the whole outfit and its silhouette clearly visible. Polished but not stiff. Expression: calm and confident, looking at the camera.' },
-  { id: 'laugh', name: 'ถ่ายเผลอ หัวเราะ', hint: 'จังหวะหัวเราะจริง มองไปทางอื่น จับผม',
-    brief: 'A candid caught moment: she laughs genuinely mid-movement, for example looking away or down, tucking her hair behind an ear '
-      + 'or adjusting an accessory, as if the friend taking the photo just made her laugh. Expression: a real laugh with crinkled eyes.' },
+    brief: 'A confident fashion stance for a lookbook: standing, shoulders open, the whole outfit and its silhouette clearly visible. '
+      + 'Polished but not stiff. Expression: calm and confident.',
+    moments: [
+      'weight on one leg with one hand lightly on the hip, looking at the camera',
+      'mid-step, walking toward the camera',
+      'a three-quarter turn, looking back over the shoulder at the camera',
+      'hands in the pockets with the chin slightly raised',
+      'one leg crossed in front of the other, arms relaxed at the sides',
+    ] },
+  { id: 'laugh', name: 'ถ่ายเผลอ หัวเราะ', hint: 'จังหวะหัวเราะจริง แต่ละรูปไม่ซ้ำกัน',
+    brief: 'A candid caught moment: she laughs genuinely, as if the friend taking the photo just made her laugh. '
+      + 'Expression: a real laugh with crinkled eyes.',
+    // แต่ละจังหวะบอกท่าตัวด้วย (นั่ง/ยืน/เดิน/พิง) ไม่งั้น AI ให้ท่าตัวแบบเดียวทุกรูป (เช็ก 20 ต.ค.: ไม่บอก = นั่งขอบม้านั่งทั้งหมด)
+    moments: [
+      'sitting back in a seat, laughing while looking straight at the camera, as if the friend taking the photo just said something funny',
+      'standing, laughing with the head tipped back and the chin raised a little',
+      'standing and turning to the side, laughing with someone just outside the frame',
+      'sitting and leaning forward while laughing, one hand resting on the knee or a table',
+      'walking, laughing mid-step while turning back to look at the camera',
+      'leaning against a wall or furniture, laughing while holding or adjusting the accessory, eyes on the camera',
+      'sitting sideways, laughing with the head dipped down and turned a little away',
+    ] },
 ];
+// สุ่มจังหวะของท่า 1 แบบ (ทุกครั้งที่สร้างได้ท่าไม่ซ้ำ)
+export const pickMoment = (p: PosePreset) => p.moments[Math.floor(Math.random() * p.moments.length)];
 export const POSE_AUTO = { id: 'auto', name: 'AI เลือกให้', hint: 'AI ดูฉาก ชุด ของเสริม แล้วเลือกแบบที่เข้ากันที่สุดให้' };
 
 // เอาอะไรจากรูปท่าโพสต์: shot = ท่า + มุมกล้อง + ระยะ + การมอง + แสง/โทนสี (ล็อกตัวเลือกกล้องกับแสงสี), shot-scene = รวมฉากในรูปด้วย

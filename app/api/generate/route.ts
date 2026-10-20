@@ -1,5 +1,5 @@
 import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
-import { MAX_ACCESSORIES, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
+import { MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
@@ -58,6 +58,9 @@ export const POST = post(async (req) => {
   const posePreset = !setRef && !req.pose && (req.pose_preset === POSE_AUTO.id || POSE_PRESETS.some((p) => p.id === req.pose_preset))
     ? String(req.pose_preset) : null;
   const sceneText0 = text(req.scene_text);
+  // สุ่มจังหวะของท่า 1 แบบ (POSE_PRESETS moments) — ไม่สุ่ม = AI ตัววางแผนให้ท่าเดิมซ้ำทุกรูป
+  const presetDef = POSE_PRESETS.find((p) => p.id === posePreset);
+  const moment = presetDef ? pickMoment(presetDef) : null;
   const [refLight, sceneLight, plan] = await Promise.all([
     !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
     !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
@@ -68,6 +71,7 @@ export const POST = post(async (req) => {
       outfit: req.outfit ? { data: req.outfit, mime: 'image/jpeg' } : null,
       accessories: accessories.map((a) => ({ img: { data: a.data, mime: 'image/jpeg' }, what: String(a.what || 'an accessory').slice(0, 200) })),
       preset: posePreset,
+      moment,
     }) : null,
   ]);
   const planName = plan ? (POSE_PRESETS.find((p) => p.id === plan.preset)?.name ?? POSE_AUTO.name) : null;
@@ -148,7 +152,7 @@ export const POST = post(async (req) => {
     pose: {
       mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : plan ? `AI คิดท่า: ${planName}` : posePreset ? 'AI คิดท่าไม่สำเร็จ ใช้ AI เลือกท่าแบบเดิม'
         : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'),
-      ...(plan ? { plan_th: plan.th, plan_en: plan.en } : {}),
+      ...(plan ? { moment: moment ?? undefined, plan_th: plan.th, plan_en: plan.en } : {}),
       ...byRole('ท่าโพสต์')[0],
     },
     ...(setRef ? { set: { shot: text(setShot!.name) ?? '', ...byRole('รูปหลักของชุด')[0] } } : {}),

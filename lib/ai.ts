@@ -204,9 +204,10 @@ export type PlanInput = {
   outfit: Img | null;
   accessories: { img: Img; what: string }[];
   preset: string; // id ใน POSE_PRESETS หรือ 'auto'
+  moment?: string | null; // จังหวะของท่าที่สุ่มมา (pickMoment) ให้แต่ละรูปได้ท่าไม่ซ้ำ
 };
 
-function planRequest({ location, locationIsModelPhoto, locationText, outfit, accessories, preset }: PlanInput) {
+function planRequest({ location, locationIsModelPhoto, locationText, outfit, accessories, preset, moment }: PlanInput) {
   const images: Img[] = [];
   const said: string[] = [];
   if (location) {
@@ -231,7 +232,12 @@ function planRequest({ location, locationIsModelPhoto, locationText, outfit, acc
       + POSE_PRESETS.map((p) => `"${p.id}": ${p.brief}`).join(' ')
     : POSE_PRESETS.find((p) => p.id === preset)!.brief;
   const text = 'You are a photographer directing one real-life photo of one young woman. ' + said.join(' ')
-    + ` Pose brief: ${brief} Plan ONE posture for this exact location: use the real furniture, surfaces and open space that are there, `
+    + ` Pose brief: ${brief}` + (moment ? ` The moment for this photo (follow it): ${moment}.` : '')
+    // ไม่บอก -> AI ตัววางแผนให้นั่งขอบม้านั่งเกือบทุกรูป (เช็ก 20 ต.ค. ถ่ายเผลอ หัวเราะ 4 ครั้ง นั่งขอบหน้าม้านั่งทั้ง 4)
+    // แต่สั่ง "อย่านั่ง" ตรงๆ กลายเป็นยืนทั้ง 4 -> ท่าตัวอยู่ใน moments แล้ว บรรทัดนี้ใช้เฉพาะตอนจังหวะไม่ได้บอก
+    + ' If the moment does not say where her body is, choose the position (standing, walking, leaning or sitting) that fits it best, '
+    + 'and do not default to sitting on the edge of a seat.'
+    + ' Plan ONE posture for this exact location: use the real furniture, surfaces and open space that are there, '
     + 'with believable weight and balance. Her face and the outfit must stay clearly visible'
     + (accessories.length ? ', and the accessories are handled naturally' : '') + '. Plan her gaze and expression too. '
     + 'Reply in JSON: ' + (auto ? '"preset" = the id of the pose type you chose; ' : '')
