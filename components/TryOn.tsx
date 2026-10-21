@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import { signOut } from './AuthForm';
 import {
-  IconBag, IconCompare, IconDownload, IconModel, IconPose, IconRetouch, IconScene, IconSearch, IconSettings, IconShirt, IconSparkle, IconZoom,
+  IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPose, IconRetouch, IconScene, IconSearch, IconSettings, IconShirt,
+  IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
@@ -14,7 +15,7 @@ import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ASPECTS, FACE_MOODS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
+  ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, FACE_MOODS, FRAMINGS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
   PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
@@ -60,13 +61,16 @@ type Stored = { src: string; name?: string; caption?: string; type?: string; set
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
-type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'settings' | 'retouch';
+type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'framing' | 'angle' | 'settings' | 'retouch';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
   { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
   { key: 'accessory', label: 'ของเสริม', title: 'ของเสริม', Icon: IconBag },
   { key: 'pose', label: 'ท่าโพสต์', title: 'ท่าโพสต์', Icon: IconPose },
   { key: 'scene', label: 'ฉากหลัง', title: 'ฉากหลัง', Icon: IconScene },
+  // ระยะ/มุมกล้องแยกออกจากสไตล์ถ่ายภาพ (สำคัญกับสินค้า: รองเท้าต้องเต็มตัว เสื้อครึ่งตัว) ไม่เลือก = ตามสไตล์
+  { key: 'framing', label: 'ระยะ', title: 'เลือกระยะ', Icon: IconFrame },
+  { key: 'angle', label: 'มุมกล้อง', title: 'เลือกมุมกล้อง', Icon: IconAngle },
   { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconSettings },
   { key: 'retouch', label: 'แต่งรูป', title: 'แต่งรูป', Icon: IconRetouch },
 ];
@@ -111,7 +115,9 @@ export default function TryOn() {
   const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
   const [aiModel, setAiModel] = useState('');
-  const [presetId, setPresetId] = useState(PRESETS[0].id); // สไตล์ถ่ายภาพ (แสง + เลนส์ + มุม + ระยะ + โทนสี)
+  const [presetId, setPresetId] = useState(PRESETS[0].id); // สไตล์ถ่ายภาพ (แสง + เลนส์ + โทนสี + ระยะ/มุมเริ่มต้น)
+  const [framingId, setFramingId] = useState('auto'); // ระยะ (FRAMINGS) 'auto' = ตามสไตล์
+  const [angleId, setAngleId] = useState('auto'); // มุมกล้อง (ANGLES) 'auto' = ตามสไตล์
   const [quality, setQuality] = useState('medium');
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
@@ -142,6 +148,9 @@ export default function TryOn() {
   const mood = FACE_MOODS.find((m) => m.id === faceMood) ?? FACE_MOODS[0];
   const moodName = mood.id !== 'auto' ? mood.name : pose ? 'สีหน้าตามรูปท่า' : null; // null = ตามรูปนางแบบ ไม่ต้องบอก
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
+  // ลอกทั้งช็อต = มุม/ระยะตามรูปต้นแบบ ไม่ใช้ที่เลือก
+  const framingChoice = shot ? undefined : FRAMINGS.find((f) => f.id === framingId);
+  const angleChoice = shot ? undefined : ANGLES.find((a) => a.id === angleId);
   const gaze = shot ? undefined : GAZES.find((c) => c.id === gazeId);
   const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
   const accs = pick.accessory.map((id) => find(lists.accessory, id)).filter((a): a is Item => a !== undefined);
@@ -348,6 +357,8 @@ export default function TryOn() {
       ...(pose ? ['ท่า' + pose.name + (shot ? ` (${modeName})` : '')] : posePreset ? ['ท่า AI: ' + posePreset.name] : []),
       shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม',
       shot ? (shotPresetLight ? 'แสง ' + preset.name : 'แสงจากรูปต้นแบบ') : preset.name,
+      ...(framingChoice && !set ? [framingChoice.name] : []),
+      ...(angleChoice && !set ? [angleChoice.name] : []),
       ...(moodName ? [moodName] : []),
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
@@ -387,6 +398,10 @@ export default function TryOn() {
             preset: shot ? (shotPresetLight ? `แสง ${preset.name} · กล้องจากรูปท่าโพสต์` : 'ใช้แสงและกล้องจากรูปท่าโพสต์') : preset.name,
             ...(shot && !shotPresetLight ? {} : Object.fromEntries(PRESET_PARTS
               .filter(({ key }) => preset[key] && (!shot || key === 'light' || key === 'color')).map(({ key }) => [key, preset[key]!.label]))),
+            ...(shot || set ? {} : {
+              framing: framingChoice ? framingChoice.name : 'ตามสไตล์: ' + preset.framing.label,
+              angle: angleChoice ? angleChoice.name : 'ตามสไตล์: ' + preset.angle.label,
+            }),
             face: moodName ?? 'ตามรูปนางแบบ',
             lightSource: shot ? LIGHT_SOURCES.find((l) => l.id === lightSource)!.name : null,
             gaze: gaze?.name ?? null,
@@ -399,15 +414,16 @@ export default function TryOn() {
         quality,
         extra: extra.trim(),
         // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ (server ให้ AI อ่านแสงให้) หรือใช้แค่แสง/โทนสีของสไตล์ที่เลือก
-        look: shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset),
+        // มุมกล้องที่เลือกแทนมุมของสไตล์ (ชุดภาพใช้มุมของแต่ละรูปในชุดเอง)
+        look: shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset, set ? undefined : angleChoice?.prompt),
         light_from_ref: shot && !shotPresetLight,
         face: mood.prompt || null,
         // ลุคที่เหมาะกับรูปนี้ (เก็บกับรูป ขั้นแต่งรูป "อัตโนมัติ" ใช้ค่านี้): ใช้สไตล์ Phone candid -> มือถือ
         finish: ((!shot || shotPresetLight) && preset.id === 'phone' ? 'phone' : 'film') as FilmLook,
         face_from_ref: mood.id === 'auto' && Boolean(pose),
         // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของสไตล์ถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
-        full_body: set ? SET_SHOTS[0].fullBody : preset.fullBody,
-        framing: shot ? null : set ? SET_SHOTS[0].framing : preset.framing.prompt,
+        full_body: set ? SET_SHOTS[0].fullBody : framingChoice?.fullBody ?? preset.fullBody,
+        framing: shot ? null : set ? SET_SHOTS[0].framing : framingChoice?.prompt ?? preset.framing.prompt,
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
         harmonize,
@@ -496,6 +512,8 @@ export default function TryOn() {
     accessory: accNames.join(', ') || 'ไม่ใส่',
     pose: poseName + (shot ? ` (${POSE_MODES.find((m) => m.id === poseMode)!.name})` : '') + (mood.id !== 'auto' ? ' · ' + mood.name : ''),
     scene: sceneName,
+    framing: shot ? 'ตามรูปต้นแบบ' : framingChoice?.name ?? 'ตามสไตล์ · ' + preset.framing.label,
+    angle: shot ? 'ตามรูปต้นแบบ' : angleChoice?.name ?? 'ตามสไตล์ · ' + preset.angle.label,
     settings: [shot ? (shotPresetLight ? 'แสง ' + preset.name : 'ตามรูปต้นแบบ') : preset.name, aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, gaze?.name,
       ...propChoices.map((p) => 'ถือ' + p.name)].filter(Boolean).join(' · '),
     retouch: retouched ? 'แต่งแล้ว' : 'ยังไม่แต่ง',
@@ -506,6 +524,8 @@ export default function TryOn() {
     accessory: accs.length > 0,
     pose: Boolean(pose || posePreset || mood.id !== 'auto'),
     scene: Boolean(scene) || shotScene,
+    framing: Boolean(framingChoice),
+    angle: Boolean(angleChoice),
     settings: Boolean(presetId !== PRESETS[0].id || aspect || gaze || propChoices.length || extra.trim() || harmonize),
     retouch: retouched,
   };
@@ -590,6 +610,27 @@ export default function TryOn() {
       note: shotScene && 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้',
       muted: shotScene,
     });
+  } else if (cur.key === 'framing' || cur.key === 'angle') {
+    // ตัวเลือกแรก = ตามสไตล์ถ่ายภาพที่เลือก (บอกว่าสไตล์นั้นใช้ระยะ/มุมอะไร)
+    const isFraming = cur.key === 'framing';
+    const choices = isFraming ? FRAMINGS : ANGLES;
+    const value = isFraming ? framingId : angleId;
+    const choose = isFraming ? setFramingId : setAngleId;
+    panel = <>
+      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: {isFraming ? 'ระยะ' : 'มุมกล้อง'}ตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
+      <Section title={isFraming ? 'ระยะ' : 'มุมกล้อง'}>
+        <div className="options">
+          <button type="button" className={'option' + (value === 'auto' ? ' active' : '')} disabled={shot} onClick={() => choose('auto')}>
+            <b>ตามสไตล์</b><small>{preset.name}: {(isFraming ? preset.framing : preset.angle).label}</small>
+          </button>
+          {choices.map((c) => (
+            <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')} disabled={shot} onClick={() => choose(c.id)}>
+              <b>{c.name}</b><small>{c.hint}</small>
+            </button>
+          ))}
+        </div>
+      </Section>
+    </>;
   } else if (cur.key === 'settings') {
     panel = <>
       <div className="split-scroll">
@@ -618,6 +659,7 @@ export default function TryOn() {
                 <dl className="preset-parts">
                   {PRESET_PARTS.map(({ key, name }) => p[key] && <div key={key}><dt>{name}</dt><dd>{p[key].label}</dd></div>)}
                 </dl>
+                <p className="muted-text">ระยะและมุมกล้องเลือกได้ในขั้นของมันเอง (ไม่เลือก = {p.framing.label} · {p.angle.label})</p>
               </Section>
             </div>
           ))}
@@ -736,6 +778,16 @@ export default function TryOn() {
       <Section title="ฉากที่เลือก"><p className="big">{sceneName}</p></Section>
       <Section title="รูปแบบไหนได้ผลดี">
         {tips(['ฉากว่าง ไม่มีคน', 'แนวตั้ง', 'เห็นพื้นตรงที่จะให้นางแบบยืน', 'แสงในฉากเข้ากับสไตล์ถ่ายภาพที่จะเลือกในขั้นถัดไป'])}
+      </Section>
+    </>;
+  } else if (cur.key === 'framing' || cur.key === 'angle') {
+    const isFraming = cur.key === 'framing';
+    inspector = <>
+      <Section title={isFraming ? 'ระยะที่เลือก' : 'มุมกล้องที่เลือก'}><p className="big">{stepValue[cur.key]}</p></Section>
+      <Section title="เลือกยังไงดี">
+        {tips(isFraming
+          ? ['รองเท้า กางเกง ชุดเดรส: เต็มตัว', 'เสื้อ ต่างหู แว่น: ครึ่งตัว หรือ ใกล้ เน้นสินค้า', 'อยากเห็นสถานที่: เต็มตัว เห็นฉากกว้าง', 'ชุดภาพ 4 มุม ใช้ระยะของแต่ละรูปในชุดเอง']
+          : ['ไม่แน่ใจ: ตามสไตล์ (แต่ละสไตล์ตั้งมุมที่เข้ากับแสงไว้แล้ว)', 'อยากให้ขาดูยาว: มุมต่ำ มองขึ้น', 'ดูเป็นกันเองแบบเพื่อนถ่าย: มุมสูง มองลง', 'ชุดภาพ 4 มุม ใช้มุมของแต่ละรูปในชุดเอง'])}
       </Section>
     </>;
   } else if (cur.key === 'settings') {
@@ -918,7 +970,7 @@ export default function TryOn() {
           {cur.key !== 'retouch' && (
             <div className="summary">
               <p className="sub">สรุปที่เลือก</p>
-              {STEPS.slice(0, 6).map((s, i) => (
+              {STEPS.filter((s) => s.key !== 'retouch').map((s, i) => (
                 <button key={s.key} className="sum-row" onClick={() => goStep(i)}>
                   <span>{s.label}</span><b>{stepValue[s.key] || '—'}</b>
                 </button>

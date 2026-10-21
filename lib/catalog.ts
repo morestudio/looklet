@@ -232,11 +232,36 @@ export type Preset = {
   id: string; name: string; hint: string; fullBody: boolean;
   light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart; scene?: PresetPart;
 };
-// ลำดับที่โชว์ในหน้าเว็บ
+// ลำดับที่โชว์ในกล่อง "มีอะไรบ้าง" ของสไตล์ (มุมกล้อง/ระยะ มีขั้นของตัวเองในเมนูซ้าย ค่าเริ่มต้น = ของสไตล์นี้)
 export const PRESET_PARTS = [
-  { key: 'light', name: 'แสง' }, { key: 'lens', name: 'เลนส์' }, { key: 'angle', name: 'มุมกล้อง' },
-  { key: 'framing', name: 'ระยะ' }, { key: 'color', name: 'โทนสี' }, { key: 'scene', name: 'ฉาก' },
+  { key: 'light', name: 'แสง' }, { key: 'lens', name: 'เลนส์' }, { key: 'color', name: 'โทนสี' }, { key: 'scene', name: 'ฉาก' },
 ] as const;
+
+// ขั้นระยะ / มุมกล้อง (เมนูซ้าย): ไม่เลือก = ตามสไตล์ถ่ายภาพ (ทุกสไตล์มีระยะ/มุมของตัวเอง เช่น Phone candid ก้มกล้องลงแบบมือถือ)
+// เลือกแล้วใช้แทนของสไตล์ แสง/เลนส์/โทนสียังเป็นของสไตล์ — ระยะใส่บรรทัดแรกของคำสั่ง, มุมอยู่ใน "Camera: เลนส์, มุม"
+// ระยะใกล้ต้องบอก "even if the pose uses them": ทดสอบ 21 ต.ค. ท่าจับเท้า + "waist up" เฉยๆ AI ยังเก็บขาไว้ (ตัดแค่หน้าแข้ง)
+export type FramingChoice = { id: string; name: string; hint: string; fullBody: boolean; prompt: string };
+export const FRAMINGS: FramingChoice[] = [
+  { id: 'full', name: 'เต็มตัว', hint: 'หัวจรดเท้าเต็มความสูงภาพ เห็นชุดครบ', fullBody: true,
+    prompt: 'framed full body from head to feet, filling most of the frame height' },
+  { id: 'wide', name: 'เต็มตัว เห็นฉากกว้าง', hint: 'คนสูงราวครึ่งภาพ เห็นสถานที่รอบตัวเยอะ', fullBody: true,
+    prompt: 'framed full body from head to feet in a wide shot, the person filling about half of the frame height with plenty of the location around them' },
+  { id: 'knee', name: 'เข่าขึ้นไป', hint: 'ตัดที่เข่า เห็นชุดชัดกว่าเต็มตัว', fullBody: false,
+    prompt: 'a medium shot framed from the knees up: the lower legs and feet are out of frame, even if the pose uses them' },
+  { id: 'waist', name: 'ครึ่งตัว', hint: 'เอวขึ้นไป เห็นหน้าและเสื้อชัด', fullBody: false,
+    prompt: 'a close-up framed from the waist up: the legs and feet are out of frame, even if the pose uses them' },
+  { id: 'detail', name: 'ใกล้ เน้นสินค้า', hint: 'ใกล้มาก เนื้อผ้า รายละเอียด และของเสริมเต็มภาพ', fullBody: false,
+    prompt: 'a tight close-up of the upper body down to the hips, so the fabric, details and any accessories fill the frame: the legs and '
+      + 'feet are out of frame, even if the pose uses them' },
+];
+export type AngleChoice = { id: string; name: string; hint: string; prompt: string };
+export const ANGLES: AngleChoice[] = [
+  { id: 'chest', name: 'ระดับอก มองตรง', hint: 'มุมมาตรฐานของรูปแฟชั่น สัดส่วนตรงจริง', prompt: 'camera at chest height, straight on' },
+  { id: 'eye', name: 'ระดับสายตา', hint: 'เหมือนคนยืนถ่ายกันปกติ', prompt: 'camera at eye level, straight on' },
+  { id: 'side', name: 'เฉียงข้าง', hint: 'กล้องเยื้องไปด้านข้างนิดๆ เห็นรูปทรงตัวและชุด', prompt: 'camera at chest height, seen from slightly to the side' },
+  { id: 'low', name: 'มุมต่ำ มองขึ้น', hint: 'กล้องระดับเข่า ขาดูยาว ดูมั่นใจ', prompt: 'camera low at about knee height, angled slightly up, so the legs look long' },
+  { id: 'high', name: 'มุมสูง มองลง', hint: 'กล้องสูงกว่าหัวนิดๆ ดูเป็นกันเอง', prompt: 'camera a little above eye level, angled slightly down' },
+];
 
 // ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — Looklet signature ใช้ชุดเดียวกัน
 const SOFTBOX_LIGHT: PresetPart = { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
@@ -245,7 +270,8 @@ const SOFTBOX_LIGHT: PresetPart = { label: 'ซอฟต์บ็อกซ์ใ
   + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
   + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
   + 'and collarbones.' };
-const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, the whole person sharp' };
+// ไม่พูดถึง "ทั้งตัว" ในคำสั่ง: เลือกระยะใกล้ในขั้นระยะได้ คำสั่งเลนส์จะได้ไม่ขัดกับระยะ
+const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, everything on the person sharp' };
 const NEUTRAL_COLOR: PresetPart = { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' };
 
 export const PRESETS: Preset[] = [
@@ -360,9 +386,9 @@ export const SET_SHOTS: SetShot[] = [
     angle: 'Camera angle: close, at chest height, straight on, focused on the fabric, details and accessories.' },
 ];
 
-// รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
-export const presetPrompt = (p: Preset) =>
-  `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}` + (p.scene ? ' ' + p.scene.prompt : '');
+// รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก) angle = มุมที่เลือกในขั้นมุมกล้อง (ไม่ส่ง = ของสไตล์)
+export const presetPrompt = (p: Preset, angle = p.angle.prompt) =>
+  `Camera: ${p.lens.prompt}, ${angle}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}` + (p.scene ? ' ' + p.scene.prompt : '');
 // ลอกทั้งช็อตแต่เลือกใช้แสงของสไตล์ถ่ายภาพ: เอาแค่แสง + โทนสี (เลนส์/มุม/ระยะยังตามรูปต้นแบบ)
 export const presetLightPrompt = (p: Preset) => `Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
 
