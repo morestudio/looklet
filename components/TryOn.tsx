@@ -16,7 +16,8 @@ import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, FACE_MOODS, FRAMINGS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
-  PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
+  PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type AngleChoice, type FramingChoice, type Item,
+  type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
 type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
@@ -149,7 +150,9 @@ export default function TryOn() {
   const moodName = mood.id !== 'auto' ? mood.name : pose ? 'สีหน้าตามรูปท่า' : null; // null = ตามรูปนางแบบ ไม่ต้องบอก
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
   // ลอกทั้งช็อต = มุม/ระยะตามรูปต้นแบบ ไม่ใช้ที่เลือก
-  const framingChoice = shot ? undefined : FRAMINGS.find((f) => f.id === framingId);
+  // ใช้รูปท่าโพสต์ = เต็มตัวเสมอ (ผู้ใช้ต้องการให้เห็นท่าทั้งตัว 21 ต.ค.) ระยะที่ตัดขาออก (เข่า/ครึ่งตัว/ใกล้) ใช้ไม่ได้ -> ตามสไตล์
+  const croppedOff = (f: FramingChoice) => Boolean(pose) && !f.fullBody;
+  const framingChoice = shot ? undefined : FRAMINGS.find((f) => f.id === framingId && !croppedOff(f));
   const angleChoice = shot ? undefined : ANGLES.find((a) => a.id === angleId);
   const gaze = shot ? undefined : GAZES.find((c) => c.id === gazeId);
   const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
@@ -424,6 +427,9 @@ export default function TryOn() {
         // ชุดภาพ: รูปหลักเต็มตัวหน้าตรงเสมอ (ระยะของสไตล์ถ่ายภาพไม่ใช้ รูปใกล้มีในชุดแล้ว)
         full_body: set ? SET_SHOTS[0].fullBody : framingChoice?.fullBody ?? preset.fullBody,
         framing: shot ? null : set ? SET_SHOTS[0].framing : framingChoice?.prompt ?? preset.framing.prompt,
+        // เลือกระยะ/มุมเอง (ไม่ใช่ตามสไตล์): server สั่งย้ำท้ายคำสั่งว่าสำคัญกว่ากรอบภาพ/มุมกล้องของรูปท่าและรูปฉาก
+        camera_framing: set ? null : framingChoice?.prompt ?? null,
+        camera_angle: set ? null : angleChoice?.prompt ?? null,
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
         harmonize,
@@ -613,18 +619,20 @@ export default function TryOn() {
   } else if (cur.key === 'framing' || cur.key === 'angle') {
     // ตัวเลือกแรก = ตามสไตล์ถ่ายภาพที่เลือก (บอกว่าสไตล์นั้นใช้ระยะ/มุมอะไร)
     const isFraming = cur.key === 'framing';
-    const choices = isFraming ? FRAMINGS : ANGLES;
-    const value = isFraming ? framingId : angleId;
+    const choices: (FramingChoice | AngleChoice)[] = isFraming ? FRAMINGS : ANGLES;
+    const value = (isFraming ? framingChoice : angleChoice)?.id ?? 'auto'; // ค่าที่ใช้จริง (เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์)
     const choose = isFraming ? setFramingId : setAngleId;
     panel = <>
       {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: {isFraming ? 'ระยะ' : 'มุมกล้อง'}ตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
+      {isFraming && !shot && pose && <p className="note">ใช้รูปท่าโพสต์อยู่: ภาพเต็มตัวเสมอ ให้เห็นท่าทั้งตัว (เลือกได้แค่ เต็มตัว / เต็มตัว เห็นฉากกว้าง)</p>}
       <Section title={isFraming ? 'ระยะ' : 'มุมกล้อง'}>
         <div className="options">
           <button type="button" className={'option' + (value === 'auto' ? ' active' : '')} disabled={shot} onClick={() => choose('auto')}>
             <b>ตามสไตล์</b><small>{preset.name}: {(isFraming ? preset.framing : preset.angle).label}</small>
           </button>
           {choices.map((c) => (
-            <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')} disabled={shot} onClick={() => choose(c.id)}>
+            <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')}
+              disabled={shot || ('fullBody' in c && croppedOff(c))} onClick={() => choose(c.id)}>
               <b>{c.name}</b><small>{c.hint}</small>
             </button>
           ))}
@@ -786,7 +794,8 @@ export default function TryOn() {
       <Section title={isFraming ? 'ระยะที่เลือก' : 'มุมกล้องที่เลือก'}><p className="big">{stepValue[cur.key]}</p></Section>
       <Section title="เลือกยังไงดี">
         {tips(isFraming
-          ? ['รองเท้า กางเกง ชุดเดรส: เต็มตัว', 'เสื้อ ต่างหู แว่น: ครึ่งตัว หรือ ใกล้ เน้นสินค้า', 'อยากเห็นสถานที่: เต็มตัว เห็นฉากกว้าง', 'ชุดภาพ 4 มุม ใช้ระยะของแต่ละรูปในชุดเอง']
+          ? ['รองเท้า กางเกง ชุดเดรส: เต็มตัว', 'เสื้อ ต่างหู แว่น: ครึ่งตัว หรือ ใกล้ เน้นสินค้า', 'อยากเห็นสถานที่: เต็มตัว เห็นฉากกว้าง',
+            'ใช้รูปท่าโพสต์: เต็มตัวเสมอ', 'ชุดภาพ 4 มุม ใช้ระยะของแต่ละรูปในชุดเอง']
           : ['ไม่แน่ใจ: ตามสไตล์ (แต่ละสไตล์ตั้งมุมที่เข้ากับแสงไว้แล้ว)', 'อยากให้ขาดูยาว: มุมต่ำ มองขึ้น', 'ดูเป็นกันเองแบบเพื่อนถ่าย: มุมสูง มองลง', 'ชุดภาพ 4 มุม ใช้มุมของแต่ละรูปในชุดเอง'])}
       </Section>
     </>;

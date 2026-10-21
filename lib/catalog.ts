@@ -240,27 +240,35 @@ export const PRESET_PARTS = [
 // ขั้นระยะ / มุมกล้อง (เมนูซ้าย): ไม่เลือก = ตามสไตล์ถ่ายภาพ (ทุกสไตล์มีระยะ/มุมของตัวเอง เช่น Phone candid ก้มกล้องลงแบบมือถือ)
 // เลือกแล้วใช้แทนของสไตล์ แสง/เลนส์/โทนสียังเป็นของสไตล์ — ระยะใส่บรรทัดแรกของคำสั่ง, มุมอยู่ใน "Camera: เลนส์, มุม"
 // ระยะใกล้ต้องบอก "even if the pose uses them": ทดสอบ 21 ต.ค. ท่าจับเท้า + "waist up" เฉยๆ AI ยังเก็บขาไว้ (ตัดแค่หน้าแข้ง)
+// บอกเป็นภาพที่เห็น (ขอบล่างของภาพตัดตรงไหน / เห็นเพดานหรือพื้นมากขึ้น) AI ทำตามได้ดีกว่าชื่อระยะ/มุมเฉยๆ
+// เลือกเองแล้ว lib/prompts.ts สั่งย้ำท้ายคำสั่งว่าสำคัญกว่ากรอบภาพ/มุมกล้องของรูปท่าและรูปฉาก (camera)
 export type FramingChoice = { id: string; name: string; hint: string; fullBody: boolean; prompt: string };
 export const FRAMINGS: FramingChoice[] = [
   { id: 'full', name: 'เต็มตัว', hint: 'หัวจรดเท้าเต็มความสูงภาพ เห็นชุดครบ', fullBody: true,
     prompt: 'framed full body from head to feet, filling most of the frame height' },
   { id: 'wide', name: 'เต็มตัว เห็นฉากกว้าง', hint: 'คนสูงราวครึ่งภาพ เห็นสถานที่รอบตัวเยอะ', fullBody: true,
-    prompt: 'framed full body from head to feet in a wide shot, the person filling about half of the frame height with plenty of the location around them' },
+    prompt: 'a wide shot, full body from head to feet but small in the frame: the person takes up no more than half of the frame height, '
+      + 'with plenty of floor, walls and ceiling of the location around them' },
   { id: 'knee', name: 'เข่าขึ้นไป', hint: 'ตัดที่เข่า เห็นชุดชัดกว่าเต็มตัว', fullBody: false,
-    prompt: 'a medium shot framed from the knees up: the lower legs and feet are out of frame, even if the pose uses them' },
-  { id: 'waist', name: 'ครึ่งตัว', hint: 'เอวขึ้นไป เห็นหน้าและเสื้อชัด', fullBody: false,
-    prompt: 'a close-up framed from the waist up: the legs and feet are out of frame, even if the pose uses them' },
-  { id: 'detail', name: 'ใกล้ เน้นสินค้า', hint: 'ใกล้มาก เนื้อผ้า รายละเอียด และของเสริมเต็มภาพ', fullBody: false,
-    prompt: 'a tight close-up of the upper body down to the hips, so the fabric, details and any accessories fill the frame: the legs and '
+    prompt: 'a medium shot from the knees up: the bottom edge of the frame crosses her legs just above the knees, so the lower legs and '
       + 'feet are out of frame, even if the pose uses them' },
+  { id: 'waist', name: 'ครึ่งตัว', hint: 'เอวขึ้นไป เห็นหน้าและเสื้อชัด', fullBody: false,
+    prompt: 'a waist-up shot: the bottom edge of the frame crosses her body at the hips, so the legs and feet are out of frame, even if '
+      + 'the pose uses them, and the upper body fills most of the frame' },
+  { id: 'detail', name: 'ใกล้ เน้นสินค้า', hint: 'ใกล้มาก เนื้อผ้า รายละเอียด และของเสริมเต็มภาพ', fullBody: false,
+    prompt: 'a tight close-up: the frame spans only from her chin to her waist, so the fabric, details and any accessories fill the frame '
+      + 'and the legs and feet are out of frame, even if the pose uses them' },
 ];
 export type AngleChoice = { id: string; name: string; hint: string; prompt: string };
 export const ANGLES: AngleChoice[] = [
   { id: 'chest', name: 'ระดับอก มองตรง', hint: 'มุมมาตรฐานของรูปแฟชั่น สัดส่วนตรงจริง', prompt: 'camera at chest height, straight on' },
-  { id: 'eye', name: 'ระดับสายตา', hint: 'เหมือนคนยืนถ่ายกันปกติ', prompt: 'camera at eye level, straight on' },
-  { id: 'side', name: 'เฉียงข้าง', hint: 'กล้องเยื้องไปด้านข้างนิดๆ เห็นรูปทรงตัวและชุด', prompt: 'camera at chest height, seen from slightly to the side' },
-  { id: 'low', name: 'มุมต่ำ มองขึ้น', hint: 'กล้องระดับเข่า ขาดูยาว ดูมั่นใจ', prompt: 'camera low at about knee height, angled slightly up, so the legs look long' },
-  { id: 'high', name: 'มุมสูง มองลง', hint: 'กล้องสูงกว่าหัวนิดๆ ดูเป็นกันเอง', prompt: 'camera a little above eye level, angled slightly down' },
+  { id: 'eye', name: 'ระดับสายตา', hint: 'เหมือนคนยืนถ่ายกันปกติ', prompt: 'camera at her eye level, held level and straight on' },
+  { id: 'side', name: 'เฉียงข้าง', hint: 'กล้องเยื้องไปด้านข้างนิดๆ เห็นรูปทรงตัวและชุด', prompt: 'camera at chest height, moved about 30 to 45 degrees '
+    + 'to one side of her, so we see her body and outfit at an angle rather than straight on' },
+  { id: 'low', name: 'มุมต่ำ มองขึ้น', hint: 'กล้องระดับเข่า ขาดูยาว ดูมั่นใจ', prompt: 'camera low, at about her knee height, tilted up toward her: '
+    + 'we look up at her, her legs look long, more of the ceiling and less of the floor is visible, and vertical lines lean slightly inward toward the top' },
+  { id: 'high', name: 'มุมสูง มองลง', hint: 'กล้องสูงกว่าหัวนิดๆ ดูเป็นกันเอง', prompt: 'camera high, above her head height, tilted down toward her: '
+    + 'we look down on her, much more of the floor around her is visible, and her head looks slightly larger than her feet' },
 ];
 
 // ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — Looklet signature ใช้ชุดเดียวกัน

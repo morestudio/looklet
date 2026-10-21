@@ -48,12 +48,15 @@ export type PromptInput = {
   refLight?: string | null; // ลอกทั้งช็อต: แสงในรูปต้นแบบที่ AI อ่านมาแล้ว (describeLighting) — ใช้เมื่อไม่ได้ส่ง look
   sceneLight?: string | null; // แสงในรูปฉากที่อัปโหลด ที่ AI อ่านมาแล้ว (describeLighting)
   posePlan?: string | null; // ท่าสำเร็จรูป: ท่าที่ AI ตัววางแผนเขียนให้ (planPose) ใช้แทน autoPose เมื่อไม่มีรูปท่า
+  // ระยะ/มุมกล้องที่ผู้ใช้เลือกเอง (ขั้นระยะ/มุมกล้อง ไม่ใช่ "ตามสไตล์"): สั่งย้ำท้ายคำสั่ง + ไม่ให้ลอกกรอบภาพ/มุมจากรูปท่าและรูปฉาก
+  // ทดสอบ 21 ต.ค.: ใส่แค่ในบรรทัดแรก/ใน Camera: AI ยึดรูปท่าเต็มตัว (ท่าจับเท้า) และระดับสายตาของรูปฉาก ระยะ/มุมแทบไม่เปลี่ยน
+  camera?: { framing: string | null; angle: string | null } | null;
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
-  posePlan = null,
+  posePlan = null, camera = null,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -109,7 +112,8 @@ export function buildPrompt({
       lines.push(`Image ${n} is only a pose reference: pose the model exactly like the person in image ${n} `
         + '(stance, weight shift, leg and foot position, arm and hand placement, torso turn, head tilt and gaze direction). '
         + `Copy only the pose. Do not copy anything else from image ${n}: not the face, hair, body shape, clothes, `
-        + 'accessories such as sunglasses, jewelry or bags, or the background.');
+        + 'accessories such as sunglasses, jewelry or bags, or the background.'
+        + (camera ? ` Copy only the body pose, not how image ${n} is framed or the height and angle of its camera.` : ''));
     } else {
       // เลือกสีหน้าเอง -> ไม่ลอกสีหน้า, เลือกแสงของสไตล์ถ่ายภาพ (look) -> ไม่ลอกแสง/โทนสี (คำสั่งจะขัดกัน)
       const copy = ['its pose', 'camera angle and height', 'lens and framing', 'how large the person is and where they stand in the frame',
@@ -185,12 +189,18 @@ export function buildPrompt({
   }
   if (newScene) {
     // ถ้าไม่สั่งชัดๆ AI มักเก็บแสงสตูดิโอจากรูปนางแบบไว้ ผลจะดูเหมือนตัดแปะ
+    // เลือกมุมกล้องเอง: ไม่สั่งให้ตรงระดับสายตาของรูปฉาก (ไม่งั้นมุมไม่เปลี่ยน) ให้วาดฉากเดิมจากตำแหน่งกล้องใหม่แทน
+    // ระยะใกล้ไม่เห็นเท้า: ไม่สั่งเงาที่เท้า
     lines.push(
       'It must look like a single real photo taken on location, not a cut-out pasted onto a background: '
       + 'do not keep the studio lighting of image 1. Relight the model to match the scene '
       + '(light direction, color temperature, brightness and contrast), '
-      + 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
-      + 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. '
+      + (fullBody ? 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
+        : 'add soft shadows cast away from the light, ')
+      + (camera?.angle
+        ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its '
+          + 'scale, depth of field, sharpness, color grading and grain. '
+        : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ')
       + "Keep the model's natural skin tone, only as affected by the scene lighting.");
   }
   if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
@@ -200,6 +210,11 @@ export function buildPrompt({
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
   if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false
+  if (camera && !shot && (camera.framing || camera.angle)) {
+    lines.push('Camera and framing chosen for this photo, more important than the framing or camera of any reference image '
+      + '(the pose photo, the model photo or the location photo): '
+      + [camera.framing && `frame it as ${camera.framing}`, camera.angle && `with the ${camera.angle}`].filter(Boolean).join(', ') + '.');
+  }
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }
