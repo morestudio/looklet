@@ -128,7 +128,7 @@ export const POST = post(async (req) => {
   const byRole = (role: string) => imgs.filter((x) => x.role === role).map((x) => x.log);
   const choices = (refs.choices && typeof refs.choices === 'object' ? refs.choices : {}) as Record<string, unknown>;
   const style: GenerateLog['style'] = {};
-  for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'face', 'lightSource', 'gaze', 'aspect'] as const) {
+  for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'scene', 'face', 'lightSource', 'gaze', 'aspect'] as const) {
     const v = text(choices[k]);
     if (v) style[k] = v;
   }

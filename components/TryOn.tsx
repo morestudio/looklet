@@ -386,7 +386,7 @@ export default function TryOn() {
             poseMode: pose ? POSE_MODES.find((m) => m.id === poseMode)!.name : posePreset ? 'ท่าสำเร็จรูป: ' + posePreset.name : 'ท่าเดิม',
             preset: shot ? (shotPresetLight ? `แสง ${preset.name} · กล้องจากรูปท่าโพสต์` : 'ใช้แสงและกล้องจากรูปท่าโพสต์') : preset.name,
             ...(shot && !shotPresetLight ? {} : Object.fromEntries(PRESET_PARTS
-              .filter(({ key }) => !shot || key === 'light' || key === 'color').map(({ key }) => [key, preset[key].label]))),
+              .filter(({ key }) => preset[key] && (!shot || key === 'light' || key === 'color')).map(({ key }) => [key, preset[key]!.label]))),
             face: moodName ?? 'ตามรูปนางแบบ',
             lightSource: shot ? LIGHT_SOURCES.find((l) => l.id === lightSource)!.name : null,
             gaze: gaze?.name ?? null,
@@ -616,7 +616,7 @@ export default function TryOn() {
             <div key={p.id} className={p.id === preset.id ? '' : 'stack-hidden'} aria-hidden={p.id !== preset.id}>
               <Section title={`ใน ${p.name} มีอะไรบ้าง`}>
                 <dl className="preset-parts">
-                  {PRESET_PARTS.map(({ key, name }) => <div key={key}><dt>{name}</dt><dd>{p[key].label}</dd></div>)}
+                  {PRESET_PARTS.map(({ key, name }) => p[key] && <div key={key}><dt>{name}</dt><dd>{p[key].label}</dd></div>)}
                 </dl>
               </Section>
             </div>

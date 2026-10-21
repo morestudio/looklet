@@ -227,28 +227,49 @@ export const SCENES: Item[] = [
 // แสง: บอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน" ดูจากรูปตัวอย่างของ notamodel.studio
 // framing ใส่ในบรรทัดแรกของคำสั่ง (ไม่งั้น AI ยึดระยะจากรูปนางแบบ), fullBody = เห็นทั้งตัว (lib/prompts.ts สั่งเพิ่มท้ายคำสั่ง)
 export type PresetPart = { label: string; prompt: string };
+// scene = คำสั่งเรื่องฉากเพิ่ม (มีเฉพาะบางสไตล์ เช่น Looklet signature ทำฉากให้มินิมอล) ต่อท้ายคำสั่งสไตล์ ไม่ใช้ตอนลอกทั้งช็อต
 export type Preset = {
   id: string; name: string; hint: string; fullBody: boolean;
-  light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart;
+  light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart; scene?: PresetPart;
 };
 // ลำดับที่โชว์ในหน้าเว็บ
 export const PRESET_PARTS = [
   { key: 'light', name: 'แสง' }, { key: 'lens', name: 'เลนส์' }, { key: 'angle', name: 'มุมกล้อง' },
-  { key: 'framing', name: 'ระยะ' }, { key: 'color', name: 'โทนสี' },
+  { key: 'framing', name: 'ระยะ' }, { key: 'color', name: 'โทนสี' }, { key: 'scene', name: 'ฉาก' },
 ] as const;
 
+// ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — Looklet signature ใช้ชุดเดียวกัน
+const SOFTBOX_LIGHT: PresetPart = { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
+  'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
+  + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
+  + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
+  + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
+  + 'and collarbones.' };
+const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, the whole person sharp' };
+const NEUTRAL_COLOR: PresetPart = { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' };
+
 export const PRESETS: Preset[] = [
+  // ฟีลประจำของ Looklet (ค่าเริ่มต้น = ตัวแรก): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
+  // แสง/เลนส์/โทนสีของ Studio lookbook ให้สีกลางๆ อมเย็นนิดๆ ตรงรูปตัวอย่างโดยไม่ต้องเกรดสีเพิ่ม (แสงอุ่นแบบเดิมออกมาเหลือง/สว่างเกิน)
+  // + ระยะ 3/4 ของภาพ มีขอบผนังด้านหน้า + ฉากมินิมอล (ฉากที่รกจะถูกเก็บให้เรียบ เห็นผลชัดกับฉากถนน/ร้าน)
+  { id: 'signature', name: 'Looklet signature', hint: 'ฟีลของ Looklet: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
+    light: SOFTBOX_LIGHT, lens: LENS_85,
+    angle: { label: 'ระดับอก เฉียงข้างนิดๆ', prompt: 'camera at chest height, level, seen from slightly to the side' },
+    framing: { label: 'เต็มตัว ราว 3/4 ของภาพ มีขอบผนังด้านหน้า', prompt: 'framed full body from head to feet, the person filling about '
+      + 'three quarters of the frame height, with the edge of a wall, column or doorway in the foreground on one side and the space '
+      + 'continuing behind' },
+    color: NEUTRAL_COLOR,
+    scene: { label: 'มินิมอลมาก ผนังขาวครีม พื้นไม้อ่อน/หิน ไม่มีของรก ชุดเป็นสีหลักของภาพ', prompt:
+      'Looklet signature setting, super minimal: keep only the essence of the location and show it as an almost empty, calm space. '
+      + 'The frame contains only clean, plain surfaces (smooth warm off-white plaster walls, a pale stone or light oak floor, at most one '
+      + 'simple window or doorway) and at most one or two simple pieces of furniture, in warm neutral tones (cream, beige, light oak, '
+      + 'travertine, white boucle). No decor, plants, shelves, objects, clutter, cables, signs, text, logos or other people. Generous calm '
+      + 'empty space around her; the outfit is the main color in the frame.' } },
   { id: 'studio', name: 'Studio lookbook', hint: 'เต็มตัว ฉากสตูดิโอ ไฟนุ่ม เหมาะกับฉากสตูดิโอหรือฉากเดิม', fullBody: true,
-    light: { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
-      'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
-      + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
-      + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
-      + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
-      + 'and collarbones.' },
-    lens: { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, the whole person sharp' },
+    light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก มองตรง', prompt: 'camera at chest height, straight on' },
     framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
-    color: { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' } },
+    color: NEUTRAL_COLOR },
   { id: 'closeup', name: 'Product close-up', hint: 'ครึ่งตัว เน้นเนื้อผ้าและสินค้าให้ชัด', fullBody: false,
     light: { label: 'ซอฟต์บ็อกซ์ด้านหน้า + แผ่นสะท้อน + ไฟขอบหลัง', prompt:
       'One large softbox from the front-side as the key light, a white reflector filling the shadow side, and a soft rim light '
@@ -341,7 +362,7 @@ export const SET_SHOTS: SetShot[] = [
 
 // รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
 export const presetPrompt = (p: Preset) =>
-  `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
+  `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}` + (p.scene ? ' ' + p.scene.prompt : '');
 // ลอกทั้งช็อตแต่เลือกใช้แสงของสไตล์ถ่ายภาพ: เอาแค่แสง + โทนสี (เลนส์/มุม/ระยะยังตามรูปต้นแบบ)
 export const presetLightPrompt = (p: Preset) => `Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
 
