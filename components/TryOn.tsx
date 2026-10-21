@@ -6,8 +6,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import { signOut } from './AuthForm';
 import {
-  IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPose, IconRetouch, IconScene, IconSearch, IconSettings, IconShirt,
-  IconSparkle, IconZoom,
+  IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPlace, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
@@ -15,7 +15,7 @@ import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, FACE_MOODS, FRAMINGS, GAZES, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
+  ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
   PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
@@ -61,7 +61,7 @@ type Stored = { src: string; name?: string; caption?: string; type?: string; set
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
-type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'framing' | 'angle' | 'settings' | 'retouch';
+type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'framing' | 'angle' | 'placement' | 'settings' | 'retouch';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
   { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
@@ -71,6 +71,8 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   // ระยะ/มุมกล้องแยกออกจากสไตล์ถ่ายภาพ (สำคัญกับสินค้า: รองเท้าต้องเต็มตัว เสื้อครึ่งตัว) ไม่เลือก = ตามสไตล์
   { key: 'framing', label: 'ระยะ', title: 'เลือกระยะ', Icon: IconFrame },
   { key: 'angle', label: 'มุมกล้อง', title: 'เลือกมุมกล้อง', Icon: IconAngle },
+  // คนอยู่ตรงไหนของภาพ: ไม่สั่ง AI วางกลางภาพเกือบทุกรูป (ทดสอบ 21 ต.ค.) อัตโนมัติ = สุ่มซ้าย/ขวา/กลางต่อรูป
+  { key: 'placement', label: 'ตำแหน่ง', title: 'ตำแหน่งในภาพ', Icon: IconPlace },
   { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconSettings },
   { key: 'retouch', label: 'แต่งรูป', title: 'แต่งรูป', Icon: IconRetouch },
 ];
@@ -118,6 +120,7 @@ export default function TryOn() {
   const [presetId, setPresetId] = useState(PRESETS[0].id); // สไตล์ถ่ายภาพ (แสง + เลนส์ + โทนสี + ระยะ/มุมเริ่มต้น)
   const [framingId, setFramingId] = useState('auto'); // ระยะ (FRAMINGS) 'auto' = ตามสไตล์
   const [angleId, setAngleId] = useState('auto'); // มุมกล้อง (ANGLES) 'auto' = ตามสไตล์
+  const [placementId, setPlacementId] = useState('auto'); // ตำแหน่งในภาพ (PLACEMENTS) 'auto' = สุ่มต่อรูป
   const [quality, setQuality] = useState('medium');
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
@@ -152,6 +155,9 @@ export default function TryOn() {
   // ใช้รูปท่าโพสต์ + ระยะใกล้ (เข่า/ครึ่งตัว/ใกล้) ได้: ส่วนของท่าที่อยู่นอกกรอบ (ขา/เท้า) ถูกตัดออก — ไม่เลือก = ตามสไตล์ (เต็มตัว)
   const framingChoice = shot ? undefined : FRAMINGS.find((f) => f.id === framingId);
   const angleChoice = shot ? undefined : ANGLES.find((a) => a.id === angleId);
+  // ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด) = คนอยู่ที่เดิม server ไม่สั่งตำแหน่ง (lib/prompts.ts)
+  const keepsPlace = !pose && !posePreset && !scene;
+  const placementChoice = shot || keepsPlace ? undefined : PLACEMENTS.find((p) => p.id === placementId);
   const gaze = shot ? undefined : GAZES.find((c) => c.id === gazeId);
   const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
   const accs = pick.accessory.map((id) => find(lists.accessory, id)).filter((a): a is Item => a !== undefined);
@@ -360,6 +366,7 @@ export default function TryOn() {
       shot ? (shotPresetLight ? 'แสง ' + preset.name : 'แสงจากรูปต้นแบบ') : preset.name,
       ...(framingChoice && !set ? [framingChoice.name] : []),
       ...(angleChoice && !set ? [angleChoice.name] : []),
+      ...(placementChoice ? ['ตำแหน่ง' + placementChoice.name] : []),
       ...(moodName ? [moodName] : []),
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
@@ -428,6 +435,7 @@ export default function TryOn() {
         // เลือกระยะ/มุมเอง (ไม่ใช่ตามสไตล์): server สั่งย้ำท้ายคำสั่งว่าสำคัญกว่ากรอบภาพ/มุมกล้องของรูปท่าและรูปฉาก
         camera_framing: set ? null : framingChoice?.prompt ?? null,
         camera_angle: set ? null : angleChoice?.prompt ?? null,
+        placement: placementChoice?.id ?? null, // null = อัตโนมัติ (server สุ่ม)
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
         harmonize,
@@ -518,6 +526,7 @@ export default function TryOn() {
     scene: sceneName,
     framing: shot ? 'ตามรูปต้นแบบ' : framingChoice?.name ?? 'ตามสไตล์ · ' + preset.framing.label,
     angle: shot ? 'ตามรูปต้นแบบ' : angleChoice?.name ?? 'ตามสไตล์ · ' + preset.angle.label,
+    placement: shot ? 'ตามรูปต้นแบบ' : keepsPlace ? 'ที่เดิม (เปลี่ยนแค่ชุด)' : placementChoice?.name ?? 'อัตโนมัติ',
     settings: [shot ? (shotPresetLight ? 'แสง ' + preset.name : 'ตามรูปต้นแบบ') : preset.name, aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, gaze?.name,
       ...propChoices.map((p) => 'ถือ' + p.name)].filter(Boolean).join(' · '),
     retouch: retouched ? 'แต่งแล้ว' : 'ยังไม่แต่ง',
@@ -530,6 +539,7 @@ export default function TryOn() {
     scene: Boolean(scene) || shotScene,
     framing: Boolean(framingChoice),
     angle: Boolean(angleChoice),
+    placement: Boolean(placementChoice),
     settings: Boolean(presetId !== PRESETS[0].id || aspect || gaze || propChoices.length || extra.trim() || harmonize),
     retouch: retouched,
   };
@@ -630,6 +640,23 @@ export default function TryOn() {
           {choices.map((c) => (
             <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')} disabled={shot} onClick={() => choose(c.id)}>
               <b>{c.name}</b><small>{c.hint}</small>
+            </button>
+          ))}
+        </div>
+      </Section>
+    </>;
+  } else if (cur.key === 'placement') {
+    panel = <>
+      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
+      {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
+      <Section title="ตำแหน่งในภาพ">
+        <div className="options">
+          <button type="button" className={'option' + (!placementChoice ? ' active' : '')} disabled={shot || keepsPlace} onClick={() => setPlacementId('auto')}>
+            <b>อัตโนมัติ</b><small>สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย</small>
+          </button>
+          {PLACEMENTS.map((p) => (
+            <button key={p.id} type="button" className={'option' + (placementChoice?.id === p.id ? ' active' : '')} disabled={shot || keepsPlace} onClick={() => setPlacementId(p.id)}>
+              <b>{p.name}</b><small>{p.hint}</small>
             </button>
           ))}
         </div>
@@ -793,6 +820,14 @@ export default function TryOn() {
           ? ['รองเท้า กางเกง ชุดเดรส: เต็มตัว', 'เสื้อ ต่างหู แว่น: ครึ่งตัว หรือ ใกล้ เน้นสินค้า', 'อยากเห็นสถานที่: เต็มตัว เห็นฉากกว้าง',
             'ใช้รูปท่าโพสต์ + ระยะใกล้: ขาที่อยู่นอกกรอบถูกตัดออก', 'ชุดภาพ 4 มุม ใช้ระยะของแต่ละรูปในชุดเอง']
           : ['ไม่แน่ใจ: ตามสไตล์ (แต่ละสไตล์ตั้งมุมที่เข้ากับแสงไว้แล้ว)', 'อยากให้ขาดูยาว: มุมต่ำ มองขึ้น', 'ดูเป็นกันเองแบบเพื่อนถ่าย: มุมสูง มองลง', 'ชุดภาพ 4 มุม ใช้มุมของแต่ละรูปในชุดเอง'])}
+      </Section>
+    </>;
+  } else if (cur.key === 'placement') {
+    inspector = <>
+      <Section title="ตำแหน่งที่เลือก"><p className="big">{stepValue.placement}</p></Section>
+      <Section title="เลือกยังไงดี">
+        {tips(['ไม่แน่ใจ: อัตโนมัติ (แต่ละรูปได้ตำแหน่งต่างกัน)', 'อยากเห็นฉากด้านหนึ่งเยอะๆ: วางคนอีกข้าง', 'ภาพสมมาตร เช่น ประตูกลางภาพ: กลาง',
+          'AI วางห่างขอบราว 40% / 60% ของความกว้าง ไม่ถึงชิดขอบ'])}
       </Section>
     </>;
   } else if (cur.key === 'settings') {

@@ -17,6 +17,7 @@ export const IconPose = () => <Svg><circle cx="12" cy="4.5" r="2" /><path d="M12
 export const IconScene = () => <Svg><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m3 16 5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></Svg>;
 // ระยะ = กรอบครอปภาพ, มุมกล้อง = มุมองศา
 export const IconFrame = () => <Svg><path d="M7 3v14h14" /><path d="M3 7h14v14" /></Svg>;
+export const IconPlace = () => <Svg><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.6" /><path d="M8.5 11v5m-2 0h4" /></Svg>;
 export const IconAngle = () => <Svg><path d="M4 20 19 6" /><path d="M4 20h16" /><path d="M11 20a7 7 0 0 0-2-4.9" /></Svg>;
 export const IconSettings = () => (
   <Svg><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></Svg>

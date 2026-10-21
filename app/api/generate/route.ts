@@ -1,7 +1,7 @@
 import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
 import { MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
-import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
+import { buildPrompt, buildSetPrompt, harmonizePrompt, pickPlacement } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
 import { saveImage, type SetTag } from '@/lib/storage';
 
@@ -75,6 +75,9 @@ export const POST = post(async (req) => {
     }) : null,
   ]);
   const planName = plan ? (POSE_PRESETS.find((p) => p.id === plan.preset)?.name ?? POSE_AUTO.name) : null;
+  // ตำแหน่งในภาพ: เลือกเอง (ซ้าย/กลาง/ขวา) หรืออัตโนมัติ = สุ่มต่อรูป · ชุดภาพมุมที่ 2 เป็นต้นไปลอกจากรูปหลัก
+  const chosenPlacement = (['left', 'center', 'right'] as const).find((p) => p === req.placement) ?? null;
+  const placement = setRef ? null : chosenPlacement ?? pickPlacement();
   const prompt = setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -105,6 +108,7 @@ export const POST = post(async (req) => {
     sceneLight,
     // ระยะ/มุมกล้องที่เลือกเอง (ไม่ใช่ตามสไตล์) -> lib/prompts.ts สั่งย้ำให้ชนะรูปท่า/รูปฉาก
     camera: text(req.camera_framing) || text(req.camera_angle) ? { framing: text(req.camera_framing), angle: text(req.camera_angle) } : null,
+    placement, // ข้างที่วางคนในภาพ สุ่มต่อรูป (ไม่สั่ง = AI วางกลางภาพเสมอ)
   });
   const opt = { aspect: req.aspect ?? '2:3', size: req.size ?? '1024x1536', quality: req.quality ?? 'medium' };
 
@@ -129,7 +133,7 @@ export const POST = post(async (req) => {
   }));
   const byRole = (role: string) => imgs.filter((x) => x.role === role).map((x) => x.log);
   const choices = (refs.choices && typeof refs.choices === 'object' ? refs.choices : {}) as Record<string, unknown>;
-  const style: GenerateLog['style'] = {};
+  const style: GenerateLog['style'] = { placement: (placement ?? 'ไม่สั่ง (AI วางกลาง)') + (chosenPlacement ? ' · เลือกเอง' : ' · อัตโนมัติ') };
   for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'scene', 'face', 'lightSource', 'gaze', 'aspect'] as const) {
     const v = text(choices[k]);
     if (v) style[k] = v;

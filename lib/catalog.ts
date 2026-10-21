@@ -259,6 +259,12 @@ export const FRAMINGS: FramingChoice[] = [
     prompt: 'a tight close-up: the frame spans only from her chin to her waist, so the fabric, details and any accessories fill the frame '
       + 'and the legs and feet are out of frame, even if the pose uses them' },
 ];
+// ขั้นตำแหน่ง (เมนูซ้าย): คนอยู่ตรงไหนของภาพ — 'auto' = สุ่มซ้าย/ขวา/กลางต่อรูป (lib/prompts.ts pickPlacement) คำสั่งจริงอยู่ใน placementLine
+export const PLACEMENTS = [
+  { id: 'left', name: 'ซ้าย', hint: 'คนอยู่ราว 1/3 จากขอบซ้าย เหลือที่ว่างของฉากด้านขวา' },
+  { id: 'center', name: 'กลาง', hint: 'คนอยู่กลางภาพ ที่ว่างสองข้างเท่ากัน' },
+  { id: 'right', name: 'ขวา', hint: 'คนอยู่ราว 1/3 จากขอบขวา เหลือที่ว่างของฉากด้านซ้าย' },
+] as const;
 export type AngleChoice = { id: string; name: string; hint: string; prompt: string };
 export const ANGLES: AngleChoice[] = [
   { id: 'chest', name: 'ระดับอก มองตรง', hint: 'มุมมาตรฐานของรูปแฟชั่น สัดส่วนตรงจริง', prompt: 'camera at chest height, straight on' },
@@ -298,7 +304,7 @@ export const PRESETS: Preset[] = [
       + 'The frame contains only clean, plain surfaces (smooth warm off-white plaster walls, a pale stone or light oak floor, at most one '
       + 'simple window or doorway) and at most one or two simple pieces of furniture, in warm neutral tones (cream, beige, light oak, '
       + 'travertine, white boucle). No decor, plants, shelves, objects, clutter, cables, signs, text, logos or other people. Generous calm '
-      + 'empty space around her; the outfit is the main color in the frame.' } },
+      + 'empty space in the frame; the outfit is the main color in the frame.' } },
   { id: 'studio', name: 'Studio lookbook', hint: 'เต็มตัว ฉากสตูดิโอ ไฟนุ่ม เหมาะกับฉากสตูดิโอหรือฉากเดิม', fullBody: true,
     light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก มองตรง', prompt: 'camera at chest height, straight on' },

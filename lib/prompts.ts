@@ -29,6 +29,19 @@ export const SCALE = 'Real-world scale: she is an adult about 1.65 to 1.70 m tal
   + 'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer '
   + 'and larger background objects and natural perspective.';
 
+// ตำแหน่งในภาพ (ลอกทั้งช็อตใช้ตำแหน่งจากรูปต้นแบบแทน): ทดสอบ 21 ต.ค. สั่งกว้างๆ ว่า "ไม่ต้องอยู่กลาง" AI ยังวางกลางภาพทุกรูป (48–53%)
+// -> server สุ่มข้างให้ (placement) แล้วบอกเป็นตำแหน่งชัดๆ ในบรรทัดแรก + ย้ำท้ายคำสั่ง (แบบเดียวกับระยะ/มุมกล้อง)
+// ผู้ใช้เลือกเองในขั้นตำแหน่ง (PLACEMENTS ใน catalog) หรือ "อัตโนมัติ" = สุ่มต่อรูป
+export type Placement = 'left' | 'center' | 'right';
+// อัตโนมัติ: ซ้าย 40% ขวา 40% ไม่สั่ง (AI วางกลางเอง) 20% — ทดสอบ 21 ต.ค. สั่งข้างแล้วตัวคนย้ายไปราว 40% / 60% ของความกว้าง
+export const pickPlacement = (): Placement | null => { const r = Math.random(); return r < 0.4 ? 'left' : r < 0.8 ? 'right' : null; };
+const placedAt = (p: Placement) => (p === 'center' ? 'in the center of the frame' : `in the ${p} third of the frame`);
+export const placementLine = (p: Placement) => p === 'center'
+  ? 'Composition: place her in the center of the frame, with balanced space of the location on both sides. Keep the outfit clearly visible.'
+  : `Composition: place her off-center, in the ${p} third of the frame: the middle of her body is about one third of the way in from the `
+    + `${p} edge, and the other side of the frame is open space of the location, like a real fashion photographer would compose it. `
+    + 'Keep the outfit clearly visible.';
+
 // ของเสริม: AI ชอบวาดสินค้าใหม่ให้ "คล้ายๆ" ต้องสั่งให้เหมือนรูปสินค้าทุกรายละเอียด
 export const ACCESSORY_RULES =
   'Add these accessories to the model exactly as they look in their product photos: same shape, proportions, '
@@ -59,25 +72,29 @@ export type PromptInput = {
   // ระยะ/มุมกล้องที่ผู้ใช้เลือกเอง (ขั้นระยะ/มุมกล้อง ไม่ใช่ "ตามสไตล์"): สั่งย้ำท้ายคำสั่ง + ไม่ให้ลอกกรอบภาพ/มุมจากรูปท่าและรูปฉาก
   // ทดสอบ 21 ต.ค.: ใส่แค่ในบรรทัดแรก/ใน Camera: AI ยึดรูปท่าเต็มตัว (ท่าจับเท้า) และระดับสายตาของรูปฉาก ระยะ/มุมแทบไม่เปลี่ยน
   camera?: { framing: string | null; angle: string | null } | null;
+  placement?: Placement | null; // ข้างที่วางคนในภาพ (server สุ่ม) null = ไม่สั่ง (AI วางกลาง)
 };
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
-  posePlan = null, camera = null,
+  posePlan = null, camera = null, placement = null,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
   const shotScene = hasPose && poseMode === 'shot-scene';
+  const newScene = shotScene || hasSceneImage || sceneText;
+  const place = Boolean(placement) && !shot && Boolean(newScene || hasPose || autoPose || posePlan);
+  const at = place ? `, with her placed ${placedAt(placement!)}` : '';
   let first: string;
   if (shot) {
     first = 'Create one fashion photograph.';
   } else if (framing) {
-    first = `Create one fashion photograph, ${framing}.`;
+    first = `Create one fashion photograph, ${framing}${at}.`;
   } else if (!fullBody) { // ต้องบอกตั้งแต่บรรทัดแรก ไม่งั้น AI ยึดรูปนางแบบเต็มตัวแล้วออกมาเต็มตัวเหมือนเดิม
-    first = 'Create one close-up fashion photograph, framed from the waist up with the legs and feet out of frame.';
+    first = `Create one close-up fashion photograph, framed from the waist up with the legs and feet out of frame${at}.`;
   } else {
-    first = look ? 'Create one full-body fashion photograph.' : 'Create one photorealistic full-body fashion photograph.';
+    first = (look ? 'Create one full-body fashion photograph' : 'Create one photorealistic full-body fashion photograph') + at + '.';
   }
   // เปลี่ยนท่า -> ห้ามสั่ง "ท่าเดิม" ไม่งั้นคำสั่งขัดกันเอง, แค่หันหน้า/ถือพร็อพ -> ท่าคล้ายเดิม ขยับเฉพาะที่สั่ง
   const smallPoseChange = !shot && (gaze || props.length);
@@ -121,7 +138,8 @@ export function buildPrompt({
         + '(stance, weight shift, leg and foot position, arm and hand placement, torso turn, head tilt and gaze direction). '
         + `Copy only the pose. Do not copy anything else from image ${n}: not the face, hair, body shape, clothes, `
         + 'accessories such as sunglasses, jewelry or bags, or the background.'
-        + (camera ? ` Copy only the body pose, not how image ${n} is framed or the height and angle of its camera.` : '')
+        // ไม่ลอกกรอบภาพ/ตำแหน่งคนในรูปท่าเสมอ (ไม่ใช่แค่ตอนเลือกระยะ/มุมเอง) ผู้ใช้ต้องการแค่ท่า ตำแหน่งให้จัดใหม่ตามฉาก (COMPOSITION)
+        + ` Copy only the body pose, not how image ${n} is framed, where the person stands in it, or the height and angle of its camera.`
         + (camera?.framing && !fullBody ? ' Any part of the pose outside the chosen framing, such as the legs and feet, is simply cropped out of the frame.' : ''));
     } else {
       // เลือกสีหน้าเอง -> ไม่ลอกสีหน้า, เลือกแสงของสไตล์ถ่ายภาพ (look) -> ไม่ลอกแสง/โทนสี (คำสั่งจะขัดกัน)
@@ -181,7 +199,6 @@ export function buildPrompt({
       + (hints.length ? ` Interact with the accessories naturally, using one or two of these ideas that work well together: ${hints.join('; ')}.` : '')
       + ' Keep the face clearly visible: hands must not cover the eyes, nose or mouth.');
   }
-  const newScene = shotScene || hasSceneImage || sceneText;
   if (shotScene) {
     // ฉากมาจากรูปต้นแบบ (บอกไว้แล้วด้านบน)
   } else if (hasSceneImage) {
@@ -219,6 +236,8 @@ export function buildPrompt({
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
   if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false
+  // ตำแหน่งคนในภาพ: ไม่สั่งเลย AI วางคนกลางภาพเกือบทุกรูป — ท่าเดิม + ฉากเดิม (แค่เปลี่ยนชุด) ไม่สั่ง จะได้ไม่ย้ายคนในรูปเดิม
+  if (place) lines.push(placementLine(placement!));
   if (camera && !shot && (camera.framing || camera.angle)) {
     lines.push('Camera and framing chosen for this photo, more important than the framing or camera of any reference image '
       + '(the pose photo, the model photo or the location photo): '
