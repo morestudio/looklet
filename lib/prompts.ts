@@ -121,7 +121,8 @@ export function buildPrompt({
         + '(stance, weight shift, leg and foot position, arm and hand placement, torso turn, head tilt and gaze direction). '
         + `Copy only the pose. Do not copy anything else from image ${n}: not the face, hair, body shape, clothes, `
         + 'accessories such as sunglasses, jewelry or bags, or the background.'
-        + (camera ? ` Copy only the body pose, not how image ${n} is framed or the height and angle of its camera.` : ''));
+        + (camera ? ` Copy only the body pose, not how image ${n} is framed or the height and angle of its camera.` : '')
+        + (camera?.framing && !fullBody ? ' Any part of the pose outside the chosen framing, such as the legs and feet, is simply cropped out of the frame.' : ''));
     } else {
       // เลือกสีหน้าเอง -> ไม่ลอกสีหน้า, เลือกแสงของสไตล์ถ่ายภาพ (look) -> ไม่ลอกแสง/โทนสี (คำสั่งจะขัดกัน)
       const copy = ['its pose', 'camera angle and height', 'lens and framing', 'how large the person is and where they stand in the frame',
