@@ -21,6 +21,14 @@ export const REALISM =
   + 'Color: natural, slightly muted color like a real camera, true-to-life skin tones, subtle grain; '
   + 'not oversaturated, not over-sharpened, no glow.';
 
+// ขนาดคนกับฉาก: สไตล์สั่ง "เต็มความสูงภาพ" AI ขยายคนแทนที่จะขยับกล้องเข้าใกล้ ฉากยังไกลเท่ารูปฉาก คนเลยดูตัวใหญ่ผิดธรรมชาติ
+// (เจอ 20–21 ต.ค.: โซฟา/เก้าอี้ออฟฟิศดูเล็กกว่าตัวคน) -> บอกขนาดจริงของคนและของรอบตัว + ให้ขยับกล้องเข้าใกล้แทนการขยายคน
+export const SCALE = 'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to '
+  + 'her: doors about 2 m tall with the top of the frame well above her head, ceilings about 2.7 m high, the seats of chairs and sofas at '
+  + 'about knee height, tables at about hip height and counters at about waist height. Never enlarge her against an unchanged background: '
+  + 'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer '
+  + 'and larger background objects and natural perspective.';
+
 // ของเสริม: AI ชอบวาดสินค้าใหม่ให้ "คล้ายๆ" ต้องสั่งให้เหมือนรูปสินค้าทุกรายละเอียด
 export const ACCESSORY_RULES =
   'Add these accessories to the model exactly as they look in their product photos: same shape, proportions, '
@@ -201,7 +209,7 @@ export function buildPrompt({
         ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its '
           + 'scale, depth of field, sharpness, color grading and grain. '
         : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ')
-      + "Keep the model's natural skin tone, only as affected by the scene lighting.");
+      + SCALE + " Keep the model's natural skin tone, only as affected by the scene lighting.");
   }
   if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
   else if (look) lines.push(REALISM, look);
