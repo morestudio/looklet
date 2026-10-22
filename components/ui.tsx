@@ -1,6 +1,6 @@
 'use client';
 // ui.tsx — ชิ้นส่วนหน้าเว็บที่ใช้ซ้ำ: การ์ดรูป, ปุ่มกลุ่ม (chips), หัวข้อในแผง
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { Item } from '@/lib/catalog';
 
 // ---------- การ์ดให้กดเลือก ----------
@@ -23,12 +23,28 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
 }
 
 // การ์ดรอ ระหว่าง AI ดูว่าของเสริมที่เพิ่งเลือกเป็นอะไร
-export function PendingCard({ src }: { src: string }) {
+export function PendingCard({ src, label = 'AI กำลังดูว่าเป็นอะไร...' }: { src: string; label?: string }) {
   return (
     <div className="card pending">
       <div className="pic"><img src={src} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
-      <span>AI กำลังดูว่าเป็นอะไร...</span>
+      <span>{label}</span>
     </div>
+  );
+}
+
+// บันทึกรูปแบบกดค้าง: browser ในแอป (LINE ฯลฯ) ดาวน์โหลดไฟล์ไม่ได้ -> โชว์รูปให้กดค้างแล้ว "บันทึกรูปภาพ"
+export function SaveImageDialog({ src, onClose }: { src: string; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!ref.current?.open) ref.current?.showModal();
+  }, []);
+  return (
+    <dialog ref={ref} className="save-dialog" onClose={onClose}>
+      <h2>บันทึกรูป</h2>
+      <img src={src} alt="รูปที่จะบันทึก" />
+      <p className="sub">กดค้างที่รูป แล้วเลือก &quot;บันทึกรูปภาพ&quot; — เบราว์เซอร์ในแอป (เช่น LINE) ดาวน์โหลดไฟล์ไม่ได้ หรือเปิดเว็บนี้ใน Safari / Chrome</p>
+      <form method="dialog" className="retouch-actions"><button className="btn btn-secondary">ปิด</button></form>
+    </dialog>
   );
 }
 

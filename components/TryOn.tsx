@@ -9,11 +9,14 @@ import {
   IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPlace, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, Section } from './ui';
+import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, SaveImageDialog, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
-import { api, geminiAspect, guessAccessory, isHeic, jpegBase64, loadTools, openaiSize, toWebImage, uploadImage } from '@/lib/browser';
+import {
+  api, canOpenImage, canvasJpeg, finishedCanvas, geminiAspect, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadTools, openaiSize,
+  saveImageFile, toWebImage, uploadImage,
+} from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
   PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
@@ -132,6 +135,9 @@ export default function TryOn() {
   const [heldProps, setHeldProps] = useState<string[]>([]); // พร็อพในมือ (id ใน PROPS)
   // ของเสริมที่ AI กำลังดูว่าเป็นอะไร (URL รูปชั่วคราว) ขึ้นเป็นการ์ดรอในรายการ
   const [analyzing, setAnalyzing] = useState<string[]>([]);
+  // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
+  const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
+  const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // หน้าต่างของเสริม: add = AI ดูไม่ออก ให้เลือกประเภทเอง, edit = แก้ชิ้นที่เพิ่มไว้แล้ว
   const [dialog, setDialog] = useState<{ mode: 'add'; file: File; url: string } | { mode: 'edit'; item: Item } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -164,7 +170,7 @@ export default function TryOn() {
   const shown = current === null ? null : results[current];
   const finishLook: FilmLook = finish === 'auto' ? shown?.finish ?? 'film' : finish; // รูปเก่าที่ไม่ได้เก็บลุคไว้ = ฟิล์ม
 
-  const { canvasRef, fullRef, prepare } = useRetouchCanvas(
+  const { canvasRef, fullRef, fullSrcRef, prepare } = useRetouchCanvas(
     { src: shown?.src ?? model.src!, tone, amounts, zoomed, original, film: shown ? { ...film, look: finishLook } : NO_FILM }, // ใส่เฉพาะรูปที่สร้าง ไม่ใส่รูปนางแบบตัวอย่าง
     setRetouchStatus,
   );
@@ -238,11 +244,16 @@ export default function TryOn() {
   // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย
   async function addUpload(key: Key, file: File, name: string, type?: string) {
     let src: string;
+    const preview = URL.createObjectURL(file);
+    setSaving((s) => [...s, { key, url: preview }]);
     try {
       ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...(await uploadImage(file)) }));
     } catch (err) {
       src = URL.createObjectURL(file); // เซฟไม่ได้ -> ใช้ชั่วคราวไปก่อน
-      setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh`);
+      setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง`);
+    } finally {
+      setSaving((s) => s.filter((x) => x.url !== preview));
+      URL.revokeObjectURL(preview);
     }
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, uploaded: true }] }));
     // ของเสริม: ไม่ใช้ toggleAccessory เพราะระหว่างรอ AI ผู้ใช้อาจเลือก/เอาออกชิ้นอื่นไปแล้ว ต้องนับจากค่าล่าสุด
@@ -264,6 +275,7 @@ export default function TryOn() {
         return setStatus('เปิดรูป HEIC นี้ไม่ได้ — ลองส่งออกเป็น JPG จากแอปรูปภาพก่อน แล้วอัปโหลดใหม่');
       }
     }
+    if (!(await canOpenImage(file))) return setStatus('เปิดรูปนี้ไม่ได้ (ชนิดไฟล์ไม่รองรับ) — ลองใช้รูป JPG หรือ PNG');
     if (key !== 'accessory') return void addUpload(key, file, file.name.replace(/\.[^.]+$/, ''));
     void addAccessory(file);
   }
@@ -491,13 +503,19 @@ export default function TryOn() {
     }
   }
 
-  function save() {
-    const full = fullRef.current;
-    if (!full?.width) return;
-    const a = document.createElement('a');
-    a.href = full.toDataURL('image/jpeg', 0.92); // บันทึกทั้งรูปเสมอ แม้กำลังซูมหน้าอยู่
-    a.download = `tryon-${Date.now()}.jpg`;
-    a.click();
+  // ดาวน์โหลดรูปที่กำลังดู (ทั้งรูปเสมอ แม้กำลังซูมหน้าอยู่) — เดิมใช้แค่กล่องแต่งรูป ถ้าแต่งรูปพัง (ไม่มี WebAssembly) กดแล้วเงียบ (22 ต.ค.)
+  // กล่องแต่งรูปยังไม่ได้วาดรูปนี้ -> วาดจากไฟล์รูป + ลุคฟิล์มเอง · browser ในแอปดาวน์โหลดไม่ได้ -> โชว์รูปให้กดค้างบันทึก
+  async function save() {
+    const src = shown?.src ?? model.src!;
+    try {
+      const full = fullRef.current;
+      const cv = full?.width && fullSrcRef.current === src ? full : await finishedCanvas(src, shown ? { ...film, look: finishLook } : NO_FILM);
+      if (inAppBrowser()) return setSaveSrc(cv.toDataURL('image/jpeg', 0.92));
+      await saveImageFile(await canvasJpeg(cv), `looklet-${Date.now()}.jpg`);
+    } catch (err) {
+      console.error('ดาวน์โหลดไม่สำเร็จ', err);
+      setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
+    }
   }
 
 
@@ -571,6 +589,7 @@ export default function TryOn() {
       <div className={'grid ' + kind + (muted ? ' muted' : '')}>
         {showSpecial && special}
         {cards}
+        {saving.filter((x) => x.key === key).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
         <AddCard onFile={(f) => onFile(key, f)} />
       </div>
     </>
@@ -1020,6 +1039,7 @@ export default function TryOn() {
         </aside>
       </div>
 
+      {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {dialog && (dialog.mode === 'add' ? (
         <AccessoryDialog key={dialog.url} mode="add" preview={dialog.url} initial={{ name: '', type: null }}
           onDone={(info) => void onDialogDone(info)} />

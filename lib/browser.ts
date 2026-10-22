@@ -1,5 +1,6 @@
 // browser.ts — ตัวช่วยที่ใช้ได้เฉพาะใน browser (รูป, canvas, เรียก API ของเรา)
 import type { AccessoryInfo } from './catalog';
+import { applyFilm, filmOn, type Film } from './film';
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
@@ -7,8 +8,9 @@ export async function api<T = { src: string }>(path: string, body: unknown): Pro
   // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ตั้งใจโหลดทั้งหน้า
   if (res.status === 401) window.location.assign('/login');
-  const out = await res.json();
-  if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
+  // error ที่ไม่ได้มาจาก route ของเรา (เช่น Vercel ตอบ 413 ไฟล์ใหญ่เกิน / 504 หมดเวลา) ไม่ใช่ JSON -> บอกเป็นข้อความที่อ่านรู้เรื่อง
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`));
   return out;
 }
 
@@ -55,7 +57,9 @@ export async function toWebImage(file: File): Promise<File> {
   return new File([jpeg], file.name.replace(/\.(heic|heif)$/i, '') + '.jpg', { type: 'image/jpeg' });
 }
 
-export async function uploadImage(file: File, maxBytes = 2_500_000, maxSide = 2048) {
+// ไฟล์เกิน 1.5 MB ย่อเหลือ 2048 ก่อนส่ง: เดิม 2.5 MB รูปมือถือส่ง base64 ~3.3 MB ผ่านเน็ตมือถือนานจนผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
+// AI ใช้แค่ 1024 อยู่แล้ว 2048 พอสำหรับเก็บ
+export async function uploadImage(file: File, maxBytes = 1_500_000, maxSide = 2048) {
   if (file.size <= maxBytes && STORABLE.includes(file.type)) return { data: await fileToBase64(file), mime: file.type };
   const url = URL.createObjectURL(file);
   try {
@@ -72,6 +76,62 @@ export async function uploadImage(file: File, maxBytes = 2_500_000, maxSide = 20
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// เปิดรูปนี้ได้ไหม (ชนิดไฟล์ที่ browser ไม่รู้จัก -> การ์ดจะเป็นรูปเสีย ดูเหมือนรูปหาย)
+export async function canOpenImage(file: File) {
+  const url = URL.createObjectURL(file);
+  try {
+    await loadImg(url);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// ---------- ดาวน์โหลดรูป ----------
+// browser ในแอป (LINE, IG, Facebook, TikTok) ดาวน์โหลดไฟล์ไม่ได้ ปุ่มกดแล้วเงียบ -> ให้กดค้างที่รูปบันทึกแทน
+export const inAppBrowser = () => /\bLine\/|FBAN|FBAV|Instagram|TikTok|musical_ly|KAKAOTALK/i.test(navigator.userAgent);
+
+// รูปเต็มขนาด + ลุคฟิล์ม/มือถือ (lib/film.ts) วาดจากไฟล์รูปเลย ใช้ตอนกล่องแต่งรูปยังไม่ได้วาดรูปนี้ (เช่น แต่งหน้าพังบน browser ที่ไม่มี WebAssembly)
+export async function finishedCanvas(src: string, film: Film) {
+  const img = await loadImg(src);
+  const cv = document.createElement('canvas');
+  cv.width = img.naturalWidth;
+  cv.height = img.naturalHeight;
+  const c = cv.getContext('2d')!;
+  c.drawImage(img, 0, 0);
+  if (filmOn(film)) c.putImageData(applyFilm(c.getImageData(0, 0, cv.width, cv.height), film), 0, 0);
+  return cv;
+}
+
+export const canvasJpeg = (cv: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) =>
+  cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', 0.92));
+
+// มือถือ: เปิดหน้าแชร์ ("บันทึกรูปภาพ" ลงคลังรูป — iPhone ดาวน์โหลดไฟล์แล้วไปอยู่ในแอปไฟล์ หาไม่เจอ) · คอมพิวเตอร์: ดาวน์โหลดไฟล์
+// ลิงก์ต้องอยู่ในหน้าเว็บตอนกด และใช้ blob ไม่ใช้ data URL (บาง browser ไม่ดาวน์โหลด data URL หรือ a ที่ไม่ได้อยู่ในหน้า)
+export async function saveImageFile(blob: Blob, name: string): Promise<'shared' | 'downloaded' | 'cancelled'> {
+  const file = new File([blob], name, { type: blob.type });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return 'shared';
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return 'cancelled'; // ผู้ใช้ปิดหน้าแชร์เอง
+      // แชร์ไม่ได้ (เช่น หมดเวลากดของ browser) -> ดาวน์โหลดแทน
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return 'downloaded';
 }
 
 // สัดส่วนรูปที่แต่ละเจ้ารับได้ เลือกอันที่ใกล้รูปนางแบบที่สุด

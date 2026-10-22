@@ -47,6 +47,7 @@ function toneImage({ t, r, tones }: Prepared, hex: string) {
 export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
   const canvasRef = useRef<HTMLCanvasElement>(null); // ที่แสดงบนจอ (ทั้งรูป หรือเฉพาะหน้าตอนซูม)
   const fullRef = useRef<HTMLCanvasElement | null>(null); // รูปเต็มขนาดที่แต่งแล้ว ใช้ตอนบันทึก
+  const fullSrcRef = useRef<string | null>(null); // fullRef วาดรูปไหนไว้ (null = ยังไม่มี / เป็นรูปก่อนแต่ง) ดาวน์โหลดต้องได้รูปที่กำลังดู
   const preparedRef = useRef(new Map<string, Promise<Prepared>>());
   const showingRef = useRef(0);
 
@@ -72,6 +73,20 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
     return prepared.get(src)!;
   }, [setStatus]);
 
+  // แต่งหน้า/ผิวพัง (เช่น browser ปิด WebAssembly: แอป LINE, โหมดล็อกดาวน์ของ iPhone) -> ยังโชว์รูป + ลุคฟิล์ม และดาวน์โหลดได้
+  // เดิมพังทั้งกล่อง รูปบนจอค้างรูปเก่า ปุ่มดาวน์โหลดกดแล้วเงียบ (22 ต.ค.)
+  const retouchOrPlain = useCallback(async (src: string, retouch: () => Promise<ImageData>) => {
+    try {
+      return await retouch();
+    } catch (err) {
+      console.error('แต่งหน้า/ผิวไม่สำเร็จ ใช้รูปที่ยังไม่แต่งแทน', err);
+      setStatus(typeof WebAssembly === 'undefined'
+        ? 'เบราว์เซอร์นี้แต่งหน้า/ผิวไม่ได้ (เช่น เปิดในแอป LINE) — รูปและลุคฟิล์มยังใช้ได้ เปิดใน Safari หรือ Chrome เพื่อแต่งหน้า'
+        : `แต่งหน้า/ผิวไม่สำเร็จ: ${(err as Error).message} — โชว์รูปที่ยังไม่แต่งแทน ลองเลื่อนสไลเดอร์อีกครั้ง`);
+      return loadImg(src);
+    }
+  }, [setStatus]);
+
   const display = useCallback(async ({ src, tone, amounts, zoomed, original, film }: View) => {
     const mine = ++showingRef.current;
     const retouched = tone !== null || Object.values(amounts).some((v) => v > 0);
@@ -80,28 +95,32 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
       if (original || !retouched) {
         image = await loadImg(src);
       } else {
-        const p = await prepare(src);
-        const toned = tone ? toneImage(p, tone) : null;
-        // รูปเต็มตัวหน้าเล็กมาก เลื่อนตาโต/หน้าเนียนแล้วจะมองไม่ค่อยเห็น -> แนะนำให้ซูม
-        const face: Point[] | undefined = p.r.faces[0];
-        if (face && !zoomed) {
-          const xs = face.map((pt) => pt.x);
-          const small = Math.max(...xs) - Math.min(...xs) < p.r.image.width * 0.2;
-          if (small && (['eye', 'slim', 'acne', 'smooth'] as const).some((id) => amounts[id] > 0)) {
-            setStatus('หน้าในรูปเล็ก กด "ซูมหน้า" ใต้รูปเพื่อดูผลชัดๆ');
+        image = await retouchOrPlain(src, async () => {
+          const p = await prepare(src);
+          const toned = tone ? toneImage(p, tone) : null;
+          // รูปเต็มตัวหน้าเล็กมาก เลื่อนตาโต/หน้าเนียนแล้วจะมองไม่ค่อยเห็น -> แนะนำให้ซูม
+          const face: Point[] | undefined = p.r.faces[0];
+          if (face && !zoomed) {
+            const xs = face.map((pt) => pt.x);
+            const small = Math.max(...xs) - Math.min(...xs) < p.r.image.width * 0.2;
+            if (small && (['eye', 'slim', 'acne', 'smooth'] as const).some((id) => amounts[id] > 0)) {
+              setStatus('หน้าในรูปเล็ก กด "ซูมหน้า" ใต้รูปเพื่อดูผลชัดๆ');
+            }
           }
-        }
-        const amt = Object.fromEntries(Object.entries(amounts).map(([k, v]) => [k, v / 100]));
-        image = p.t.renderRetouch(p.r, { ...p.r.prep, tone: toned }, { ...amt, tone: toned ? 1 : 0 }, p.t.lut);
+          const amt = Object.fromEntries(Object.entries(amounts).map(([k, v]) => [k, v / 100]));
+          return p.t.renderRetouch(p.r, { ...p.r.prep, tone: toned }, { ...amt, tone: toned ? 1 : 0 }, p.t.lut);
+        });
       }
       let rect = null;
       if (zoomed) {
-        const { r } = await prepare(src);
-        rect = faceRect(r.faces, image.width, image.height, image.width / r.image.width);
+        // หาหน้าไม่ได้ (เครื่องมือแต่งรูปโหลดไม่ได้) -> โชว์ทั้งรูปแทน
+        const r = await prepare(src).then((p) => p.r, () => null);
+        if (r) rect = faceRect(r.faces, image.width, image.height, image.width / r.image.width);
       }
       const canvas = canvasRef.current;
       if (mine !== showingRef.current || !canvas) return; // ระหว่างรอมีการกดเลือกใหม่ -> ทิ้งผลเก่า
       const full = (fullRef.current ??= document.createElement('canvas'));
+      fullSrcRef.current = null; // กำลังวาดใหม่ ยังไม่ครบ (ยังไม่ใส่ลุคฟิล์ม)
       full.width = image.width;
       full.height = image.height;
       const fullCtx = full.getContext('2d')!;
@@ -112,6 +131,7 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
         fullCtx.putImageData(applyFilm(fullCtx.getImageData(0, 0, full.width, full.height), film), 0, 0);
         if (mine !== showingRef.current) return;
       }
+      fullSrcRef.current = original ? null : src;
       const { x, y, w, h } = rect ?? { x: 0, y: 0, w: full.width, h: full.height };
       // ตอนซูม ส่วนที่ตัดมาเล็ก -> ขยายให้สูงเท่ารูปเต็ม จะได้แสดงเต็มกรอบ
       const s = rect ? Math.min(4, full.height / h) : 1;
@@ -124,7 +144,7 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
       console.error('แต่งรูปไม่สำเร็จ', err);
       if (mine === showingRef.current) setStatus(`แต่งรูปไม่สำเร็จ: ${(err as Error).message} — ลองเลื่อนสไลเดอร์อีกครั้ง`);
     }
-  }, [prepare, setStatus]);
+  }, [prepare, retouchOrPlain, setStatus]);
 
   // เลื่อนสไลเดอร์หลายครั้งต่อเฟรม -> วาดแค่ครั้งเดียวต่อเฟรม (ค่าล่าสุด)
   const { src, tone, amounts, zoomed, original, film } = view;
@@ -134,5 +154,5 @@ export function useRetouchCanvas(view: View, setStatus: (msg: string) => void) {
     return () => cancelAnimationFrame(id);
   }, [display, src, tone, amounts, zoomed, original, look, grain, soften, phone]);
 
-  return { canvasRef, fullRef, prepare };
+  return { canvasRef, fullRef, fullSrcRef, prepare };
 }
