@@ -6,10 +6,14 @@ import { test } from 'node:test';
 import ts from 'typescript';
 
 // ทดสอบ route จริงและตัวเรียก OpenAI จริง แต่แทน auth/storage/network เพื่อไม่เสียค่า AI
-function app({ member = true, key = true, missing = false, providerFails = false, saveFails = false } = {}) {
+function app({ member = true, key = true, missing = false, providerFails = false, saveFails = false, jpegFails = false } = {}) {
   const reads = [], saves = [], calls = [], logs = [], jpegCalls = [];
   // import sharp from 'sharp' แปลงแบบไม่มี esModuleInterop -> ใช้ .default ของโมดูล
-  const sharpStub = (buf) => ({ jpeg: (o) => ({ toBuffer: async () => { jpegCalls.push(o); return Buffer.concat([Buffer.from('jpeg:'), buf]); } }) });
+  const sharpStub = (buf) => ({ jpeg: (o) => ({ toBuffer: async () => {
+    jpegCalls.push(o);
+    if (jpegFails) throw new Error('sharp unavailable');
+    return Buffer.concat([Buffer.from('jpeg:'), buf]);
+  } }) });
   sharpStub.default = sharpStub;
   const source = Buffer.from('stored-original-image');
   const cache = new Map();
@@ -126,6 +130,15 @@ test('provider failure preserves the source and records failure, without a false
   assert.equal(a.saves.length, 0);
   assert.equal(a.logs[0].status, 'พัง');
   assert.equal(a.logs[0].result, undefined);
+});
+
+test('if JPEG conversion fails the paid result is still saved as the original PNG', async () => {
+  const a = app({ jpegFails: true });
+  const response = await a.post(input);
+  assert.equal(response.status, 200);
+  assert.equal(a.saves.length, 1);
+  assert.equal(a.saves[0][2], 'image/png');
+  assert.equal(Buffer.from(a.saves[0][1], 'base64').toString(), 'new-refined-image');
 });
 
 test('storage failure is reported without claiming that a refined image was saved', async () => {

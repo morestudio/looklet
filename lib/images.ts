@@ -9,6 +9,12 @@ const MAX_BYTES = 3_500_000;
 export async function servable(img: Img): Promise<Img> {
   const data = Buffer.from(img.data, 'base64');
   if (data.length <= MAX_BYTES) return img;
-  const jpeg = await sharp(data).jpeg({ quality: 97 }).toBuffer();
-  return { data: jpeg.toString('base64'), mime: 'image/jpeg' };
+  try {
+    const jpeg = await sharp(data).jpeg({ quality: 97 }).toBuffer();
+    return { data: jpeg.toString('base64'), mime: 'image/jpeg' };
+  } catch (e) {
+    // แปลงไม่ได้ (เช่น sharp โหลดไม่ขึ้นบนเซิร์ฟเวอร์) -> เก็บ PNG เดิมไว้ก่อน รูปที่จ่ายเงินแล้วต้องไม่หาย (แต่เว็บจริงอาจเปิดรูปใหญ่ไม่ขึ้น)
+    console.error('แปลงรูปเป็น JPEG ไม่สำเร็จ เก็บไฟล์เดิม', e);
+    return img;
+  }
 }

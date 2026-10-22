@@ -36,9 +36,15 @@ export const POST = post(async (req) => {
       { size, quality: 'high', aspect: '2:3' });
     // PNG 1664×2496 ~6 MB เกินที่ Vercel ส่งได้ต่อครั้ง (4.5 MB) เปิดรูปไม่ขึ้น -> JPEG q97 ~1.3 MB
     // วัด 22 ต.ค.: q97 รายละเอียดผิวเท่า PNG, q92 ผิวเนียนลง 23%, JPEG ของ OpenAI เอง (output_format) บีบแรงกว่านี้อีก
-    const jpeg = await sharp(Buffer.from(refined.data, 'base64')).jpeg({ quality: 97 }).toBuffer();
+    let saved = { data: refined.data, mime: refined.mime };
+    try {
+      const jpeg = await sharp(Buffer.from(refined.data, 'base64')).jpeg({ quality: 97 }).toBuffer();
+      saved = { data: jpeg.toString('base64'), mime: 'image/jpeg' };
+    } catch (e) {
+      console.error('แปลงรูปปรับผิวเป็น JPEG ไม่สำเร็จ เก็บไฟล์เดิม', e); // จ่ายเงินแล้ว ต้องเก็บไว้ก่อน
+    }
     // เก็บเป็นรูปใหม่ก่อนเขียน log เสมอ ต้นฉบับยังอยู่แม้ขั้นตอนถัดไปมีปัญหา
-    const src = await saveImage({ area: 'results' }, jpeg.toString('base64'), 'image/jpeg', meta);
+    const src = await saveImage({ area: 'results' }, saved.data, saved.mime, meta);
     await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
     return json(200, { src, ...meta });
   } catch (e) {
