@@ -2,7 +2,7 @@
 // Looklet: เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import { signOut } from './AuthForm';
@@ -141,7 +141,8 @@ export default function TryOn() {
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
-  const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null); // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด)
+  // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด, start = จุดที่กดบนเวที เปิดมาซูมตรงนั้นเลย)
+  const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean; start: { fx: number; fy: number } | null } | null>(null);
   // หน้าต่างของเสริม: add = AI ดูไม่ออก ให้เลือกประเภทเอง, edit = แก้ชิ้นที่เพิ่มไว้แล้ว
   const [dialog, setDialog] = useState<{ mode: 'add'; file: File; url: string } | { mode: 'edit'; item: Item } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -543,12 +544,17 @@ export default function TryOn() {
     return full?.width && fullSrcRef.current === src ? full : finishedCanvas(src, shown ? { ...film, look: finishLook } : NO_FILM);
   }
 
-  // กดรูปบนเวที -> ดูเต็มจอ + ซูม: ฝั่ง "ก่อนแต่ง" = ไฟล์ AI ต้นฉบับ, รูปหลัก = ตามที่เห็น (แต่งแล้ว + ลุคฟิล์ม) ทั้งรูปแม้กำลังซูมหน้าอยู่
-  async function openViewer(before: boolean) {
+  // กดรูปบนเวที -> ดูเต็มจอ ซูมตรงจุดที่กด: ฝั่ง "ก่อนแต่ง" = ไฟล์ AI ต้นฉบับ, รูปหลัก = ตามที่เห็น (แต่งแล้ว + ลุคฟิล์ม) ทั้งรูปแม้กำลังซูมหน้าอยู่
+  // กำลัง "ซูมหน้า" -> รูปบนเวทีเป็นแค่หน้า จุดที่กดไม่ตรงกับทั้งรูป เปิดแบบพอดีจอแทน
+  async function openViewer(before: boolean, e: MouseEvent<HTMLElement>) {
+    const pic = e.currentTarget.querySelector('canvas, img');
+    const r = pic?.getBoundingClientRect();
+    const inside = r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    const start = inside && (before || !zoomed) ? { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height } : null;
     try {
-      if (before) return setViewer({ src: skinOriginal ?? displaySrc, alt: skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง', temp: false });
+      if (before) return setViewer({ src: skinOriginal ?? displaySrc, alt: skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง', temp: false, start });
       const url = URL.createObjectURL(await canvasJpeg(await currentCanvas(), 0.95));
-      setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
+      setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true, start });
     } catch (err) {
       setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
     }
@@ -1059,10 +1065,10 @@ export default function TryOn() {
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
-            {compare && <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(true)}>
+            {compare && <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={(e) => void openViewer(true, e)}>
               <img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption>
             </figure>}
-            <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(false)}>
+            <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={(e) => void openViewer(false, e)}>
               <canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}
             </figure>
             {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
@@ -1106,7 +1112,7 @@ export default function TryOn() {
       </div>
 
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
-      {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
+      {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} start={viewer.start} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);
         setViewer(null);
       }} />}

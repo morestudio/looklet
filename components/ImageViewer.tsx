@@ -2,6 +2,7 @@
 // ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): กดที่รูป = ซูมตรงจุดนั้น (ขนาดจริงของรูป อย่างน้อย 2 เท่าของตอนพอดีจอ) คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
 // เมาส์: ซูมตั้งแต่ตอนกดลง กดค้างแล้วลากต่อได้เลย (เดิมซูมตอนปล่อยเมาส์ ต้องกดอีกรอบถึงจะลากได้ — ผู้ใช้บอก 22 ต.ค.)
 // มือถือ: แตะเพื่อซูม ปัดนิ้วเลื่อนแบบปกติของ browser (ซูมตอนแตะลงจะซูมทุกครั้งที่ปัดหน้าจอ) · Esc หรือ ✕ = ปิด
+// start = จุดที่กดบนรูปบนเวที: เปิดมาก็ซูมตรงนั้นเลย ลากได้ทันที (เดิมเปิดมาพอดีจอ ต้องกดอีกครั้งถึงซูม/ขึ้นมือ — ผู้ใช้บอก 22 ต.ค.)
 // รูป 1664×2496 ละเอียดกว่าจอ ต้องซูมถึงจะเห็นผิว/เนื้อผ้า
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { IconHand } from './icons';
@@ -10,7 +11,9 @@ type Zoom = { width: number; fx: number; fy: number }; // ความกว้�
 // การกดครั้งนี้: จุดเริ่ม, ตำแหน่งเลื่อนตอนเริ่ม, ลากไปแล้วหรือยัง, ซูมเข้าตอนกดครั้งนี้ (คลิกที่ตามมาไม่ต้องซูมออก)
 type Drag = { x: number; y: number; left: number; top: number; moved: boolean; zoomedIn: boolean };
 
-export default function ImageViewer({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+export default function ImageViewer({ src, alt, start = null, onClose }: {
+  src: string; alt: string; start?: { fx: number; fy: number } | null; onClose: () => void;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -35,10 +38,19 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
     }
   }, [zoom]);
 
-  const zoomAt = (clientX: number, clientY: number) => {
+  const zoomTo = (fx: number, fy: number) => {
     const img = imgRef.current!;
-    const r = img.getBoundingClientRect();
-    setZoom({ width: Math.max(img.naturalWidth, r.width * 2), fx: (clientX - r.left) / r.width, fy: (clientY - r.top) / r.height });
+    setZoom({ width: Math.max(img.naturalWidth, img.getBoundingClientRect().width * 2), fx, fy });
+  };
+  const zoomAt = (clientX: number, clientY: number) => {
+    const r = imgRef.current!.getBoundingClientRect();
+    zoomTo((clientX - r.left) / r.width, (clientY - r.top) / r.height);
+  };
+  // เปิดจากการกดรูปบนเวที -> ซูมตรงจุดนั้นทันทีที่รูปโหลดเสร็จ (ต้องรู้ขนาดรูปตอนพอดีจอก่อน)
+  const onLoad = () => {
+    if (!start || zoom) return;
+    if (!dialogRef.current?.open) dialogRef.current?.showModal(); // รูปโหลดเสร็จก่อนหน้าต่างเปิด (รูปจาก cache) -> เปิดก่อน ไม่งั้นวัดขนาดได้ 0
+    zoomTo(start.fx, start.fy);
   };
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
@@ -76,7 +88,7 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
       <div ref={boxRef} className={'viewer-box' + (zoom ? ' zoomed' : '') + (dragging ? ' dragging' : '')}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => setDragging(false)}
         onPointerCancel={() => setDragging(false)} onClick={onClick}>
-        <img ref={imgRef} src={src} alt={alt} draggable={false}
+        <img ref={imgRef} src={src} alt={alt} draggable={false} onLoad={onLoad}
           style={zoom ? { width: zoom.width, maxWidth: 'none', maxHeight: 'none' } : undefined} />
       </div>
       <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>×</button>
