@@ -1,8 +1,9 @@
 import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
-import { MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
+import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { buildPrompt, buildSetPrompt, harmonizePrompt, pickPlacement } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
+import { servable } from '@/lib/images';
 import { saveImage, type SetTag } from '@/lib/storage';
 
 // what = คำบรรยายประเภท, show = ท่าที่ทำให้ของชิ้นนี้เด่น (ทั้งคู่มาจาก ACCESSORY_TYPES)
@@ -110,7 +111,10 @@ export const POST = post(async (req) => {
     camera: text(req.camera_framing) || text(req.camera_angle) ? { framing: text(req.camera_framing), angle: text(req.camera_angle) } : null,
     placement, // ข้างที่วางคนในภาพ สุ่มต่อรูป (ไม่สั่ง = AI วางกลางภาพเสมอ)
   });
-  const opt = { aspect: req.aspect ?? '2:3', size: req.size ?? '1024x1536', quality: req.quality ?? 'medium' };
+  // GPT Image 2.5: ค่าเริ่มต้นรูปใหญ่ 1664×2496 (หน้า/ผิวละเอียดขึ้น) หน้าเว็บส่งขนาดมาตรฐานตามแนวรูปมา
+  const baseSize = req.size ?? '1024x1536';
+  const size = isGpt25(String(req.model)) && Object.hasOwn(GPT25_SIZES, baseSize) ? GPT25_SIZES[baseSize] : baseSize;
+  const opt = { aspect: req.aspect ?? '2:3', size, quality: req.quality ?? 'medium' };
 
   const harmonizeText = req.harmonize && !setRef ? harmonizePrompt(look) : null; // ชุดภาพ: รูปหลักปรับแสงมาแล้ว
 
@@ -171,6 +175,7 @@ export const POST = post(async (req) => {
   try {
     let image = await generateImage(req.model, images, prompt, opt);
     if (harmonizeText) image = await generateImage(req.model, [image], harmonizeText, opt);
+    image = await servable(image); // PNG ใหญ่ -> JPEG q97 ไม่งั้นเว็บจริงเปิดรูปไม่ขึ้น
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const src = await saveImage({ area: 'results' }, image.data, image.mime,
       { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),

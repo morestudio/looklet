@@ -5,3 +5,5 @@ logs
 images/uploads
 .next
 node_modules
+# ภาพทดลองและไฟล์เปรียบเทียบส่วนตัว ไม่ใช่ส่วนหนึ่งของเว็บ
+output

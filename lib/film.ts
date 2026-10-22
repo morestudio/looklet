@@ -8,7 +8,8 @@
 
 export type FilmLook = 'film' | 'phone' | 'off';
 export type Film = { look: FilmLook; grain: number; soften: number; phone: number }; // grain/soften/phone 0..100 ตามสไลเดอร์
-export const FILM_DEFAULT: Film = { look: 'film', grain: 35, soften: 45, phone: 50 };
+// ค่าเริ่มต้น 15/15 (ผู้ใช้เลือก 22 ต.ค. ตอนเปลี่ยนรูปเป็น 1664×2496): เดิม 35/45 ตั้งไว้กับรูป 1024×1536 — เกรน/เบลอคิดเป็นพิกเซล รูปใหญ่ขึ้นจะดูเบาลงเอง
+export const FILM_DEFAULT: Film = { look: 'film', grain: 15, soften: 15, phone: 50 };
 export const NO_FILM: Film = { look: 'off', grain: 0, soften: 0, phone: 0 };
 export const filmOn = (f: Film) => (f.look === 'film' ? f.grain > 0 || f.soften > 0 : f.look === 'phone' && f.phone > 0);
 

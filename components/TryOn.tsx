@@ -13,8 +13,9 @@ import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, SaveImageDialog, S
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
+import { SKIN_MODEL } from '@/lib/skin';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, geminiAspect, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadTools, openaiSize,
+  api, canOpenImage, canvasJpeg, finishedCanvas, geminiAspect, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
   saveImageFile, toWebImage, uploadImage,
 } from '@/lib/browser';
 import {
@@ -47,7 +48,7 @@ const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'ห�
 const FILM_SLIDERS: ['grain' | 'soften', string][] = [['grain', 'เกรนฟิล์ม'], ['soften', 'ลดความคม']];
 // ลุคภาพ: อัตโนมัติ = ตามที่รูปนั้นสร้างมา (Phone candid -> มือถือ, อื่นๆ -> ฟิล์ม) เก็บไว้กับรูป (finish)
 const FINISH_LOOKS = [
-  { id: 'auto', name: 'อัตโนมัติ', hint: 'รูปจากสไตล์ Phone candid ได้ลุคมือถือ รูปอื่นได้ลุคฟิล์ม' },
+  { id: 'auto', name: 'อัตโนมัติ', hint: 'รูปปรับผิวไม่ใส่ลุค · Phone candid ได้ลุคมือถือ · รูปอื่นได้ลุคฟิล์ม' },
   { id: 'film', name: 'ฟิล์ม', hint: 'ลดความคม + เกรนฟิล์ม แบบรูปนิตยสาร' },
   { id: 'phone', name: 'มือถือ', hint: 'คมแบบมือถือ สีจืดลง ดำ/ขาวชัดขึ้น noise เบาๆ ในเงา (จูนจากรูป iPhone จริง)' },
   { id: 'off', name: 'ไม่ใส่', hint: 'รูปจาก AI ล้วน' },
@@ -56,11 +57,11 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = { name: string; th: string }; // ท่าที่ AI ตัววางแผนคิดให้ (ท่าสำเร็จรูป)
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; posePlan?: PosePlan };
+type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
 type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; posePlan?: PosePlan };
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
@@ -84,10 +85,11 @@ const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'cat
 // คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
 // ค่าเริ่มต้นของ 2.5 = high: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ, medium ผ้าเรียบลื่นเหมือนผ้าปลอม,
 // high เริ่มเห็นเนื้อผ้าในราคา ~฿1.8 (max ลายทอชัดสุดแต่ ~฿5.9 และช้ากว่า 3 เท่า เลือกเองได้)
-// ราคาในวงเล็บ = ที่จ่ายจริงตอนทดสอบ (1024×1536, รูปเข้า 2 รูป)
+// ราคาในวงเล็บ = ประมาณที่ขนาดเริ่มต้นใหม่ 1664×2496 (GPT25_SIZES): จ่ายจริงตอนทดสอบที่ 1024×1536 รูปเข้า 2 รูป (กลาง ฿0.8 · สูง ฿1.8 ·
+// สูงมาก ฿2.9 · สูงสุด ฿5.9) แล้วคิดส่วนรูปที่ได้ x1.72 (token รูปที่ได้ 1664×2496 ÷ 1024×1536 จาก output/skin-2500-test) — รูปเข้าเยอะขึ้นแพงขึ้นนิดหน่อย
 const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
 const QUALITIES_25 = [
-  { id: 'medium', name: 'กลาง ~฿0.8' }, { id: 'high', name: 'สูง ~฿1.8' }, { id: 'xhigh', name: 'สูงมาก ~฿2.9' }, { id: 'max', name: 'สูงสุด ~฿5.9' },
+  { id: 'medium', name: 'กลาง ~฿1.1' }, { id: 'high', name: 'สูง ~฿2.8' }, { id: 'xhigh', name: 'สูงมาก ~฿4.7' }, { id: 'max', name: 'สูงสุด ~฿9.8' },
 ];
 const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
 // โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
@@ -182,7 +184,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, posePlan: r.posePlan })));
+        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, posePlan: r.posePlan })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -503,8 +505,35 @@ export default function TryOn() {
     }
   }
 
-  // ดาวน์โหลดรูปที่กำลังดู (ทั้งรูปเสมอ แม้กำลังซูมหน้าอยู่) — เดิมใช้แค่กล่องแต่งรูป ถ้าแต่งรูปพัง (ไม่มี WebAssembly) กดแล้วเงียบ (22 ต.ค.)
-  // กล่องแต่งรูปยังไม่ได้วาดรูปนี้ -> วาดจากไฟล์รูป + ลุคฟิล์มเอง · browser ในแอปดาวน์โหลดไม่ได้ -> โชว์รูปให้กดค้างบันทึก
+  // ปรับผิวจากไฟล์ AI ต้นฉบับ ไม่ส่งภาพที่ผ่านสไลเดอร์/ฟิล์มกลับไปให้ AI
+  async function refineSkin() {
+    if (!shown || busy !== null || !aiModels?.some((m) => m.id === SKIN_MODEL)) return;
+    const source = shown;
+    setBusy('AI กำลังปรับผิวให้สมจริง...');
+    setStatus('');
+    try {
+      const img = await loadImg(source.src);
+      const refined = await api<Result>('/api/refine-skin', {
+        src: source.src, caption: source.caption, size: openaiSize(img.width, img.height),
+      });
+      setResults((r) => [refined, ...r]);
+      setCurrent(0);
+      setAmounts(NO_RETOUCH);
+      setTone(null);
+      setFinish('auto');
+      setZoomed(false);
+      setOriginal(false);
+      setRetouchStatus('');
+      goStep(STEPS.findIndex((s) => s.key === 'retouch'));
+      setStatus('ปรับผิวแล้ว เก็บรูปต้นฉบับและรูปใหม่ไว้ในคลังให้เทียบกัน');
+    } catch (err) {
+      setStatus('ปรับผิวไม่สำเร็จ: ' + (err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // ดาวน์โหลดรูปที่กำลังดู (ทั้งรูปเสมอ แม้กำลังซูมหน้าอยู่) — ถ้าแต่งรูปพัง ใช้ไฟล์รูป + ลุคฟิล์มแทน
   async function save() {
     const src = shown?.src ?? model.src!;
     try {
@@ -533,6 +562,8 @@ export default function TryOn() {
   const aiLabel = splitLabel(aiModels?.find((m) => m.id === aiModel)?.label ?? 'ยังไม่มีโมเดล AI')[0];
   const retouched = tone !== null || Object.values(amounts).some((v) => v > 0);
   const displaySrc = shown?.src ?? model.src!;
+  const skinOriginal = shown?.refinedFrom && results.some((r) => r.src === shown.refinedFrom) ? shown.refinedFrom : null;
+  const canRefineSkin = Boolean(shown && aiModels?.some((m) => m.id === SKIN_MODEL));
   const compare = cur.key === 'retouch' && !zoomed; // ขั้นแต่งรูป: ก่อน/หลังแต่งคู่กัน (ซูมหน้าอยู่ = ดูแค่หลังแต่ง)
 
   // ค่าที่เลือกของแต่ละขั้น (หัวแผง + สรุป) และขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดแดงบนเมนูซ้าย)
@@ -718,6 +749,15 @@ export default function TryOn() {
     </>;
   } else {
     panel = <>
+      <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
+        <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
+        <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
+          <IconSparkle /> ปรับผิวสมจริง
+        </button>
+        {!shown && <p className="muted-text">เลือกรูปที่สร้างแล้วจากคลังก่อน</p>}
+        {shown && !canRefineSkin && <p className="muted-text">ต้องตั้งค่า OpenAI API key ก่อนใช้การปรับผิว</p>}
+        {shown?.refinedFrom && <p className="muted-text">รูปนี้ปรับผิวแล้ว · ปิดลุคฟิล์มอัตโนมัติเพื่อคงรายละเอียดผิว</p>}
+      </Section>
       <Section title="รีทัช" note="ปรับได้ทันที ไม่เสียเงิน">
         <div className="sliders">
           {SLIDERS.map(([id, label]) => (
@@ -733,9 +773,9 @@ export default function TryOn() {
           <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFinish('auto'); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
         </div>
       </Section>
-      <Section title="ให้ดูเป็นรูปถ่ายจริง" note="ใส่ให้ทุกรูปอัตโนมัติ">
+      <Section title="ให้ดูเป็นรูปถ่ายจริง" note={shown?.refinedFrom ? 'รูปปรับผิวเริ่มต้นไม่ใส่ลุค' : 'ใส่ให้ทุกรูปอัตโนมัติ'}>
         <ChipGroup options={[...FINISH_LOOKS]} value={finish} onChange={(v) => setFinish(v as FinishChoice)} />
-        <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
+        <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'off' ? 'ไม่ใส่ลุค' : finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
         <div className="sliders">
           {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
             <div className="slider" key={id}>
@@ -1001,14 +1041,18 @@ export default function TryOn() {
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
-            {compare && <figure><img src={displaySrc} alt="ก่อนแต่ง" /><figcaption>ก่อนแต่ง</figcaption></figure>}
-            <figure><canvas ref={canvasRef} />{compare && <figcaption>หลังแต่ง</figcaption>}</figure>
+            {compare && <figure><img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption></figure>}
+            <figure><canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}</figure>
             {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
             {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
             <div className="caption" title={shown?.caption}>{shown ? shown.caption : `ตัวอย่าง: ${model.name} (ยังไม่ได้สร้าง)`}</div>
+            {shown && <button className="btn btn-secondary tool" disabled={busy !== null || !canRefineSkin}
+              title="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8 ได้รูปใหม่ 1664×2496" onClick={() => void refineSkin()}>
+              <IconSparkle /> ปรับผิวสมจริง
+            </button>}
             <button className={'btn btn-secondary tool' + (zoomed ? ' on' : '')} onClick={() => { setZoomed((z) => !z); setRetouchStatus(''); }}>
               <IconZoom /> {zoomed ? 'ดูทั้งรูป' : 'ซูมหน้า'}
             </button>

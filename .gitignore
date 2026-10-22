@@ -20,3 +20,6 @@ npm-debug.log*
 .DS_Store
 *.pem
 .vercel
+
+# ภาพทดลอง/ไฟล์เปรียบเทียบส่วนตัว (35 MB) ไม่ต้องเก็บใน git
+/output/
