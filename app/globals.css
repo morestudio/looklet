@@ -187,11 +187,11 @@ dialog.viewer { width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100d
 dialog.viewer::backdrop { background: rgba(0, 0, 0, .6); }
 .viewer-box { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow: hidden; }
 .viewer-box img { display: block; max-width: 100%; max-height: 100%; cursor: zoom-in; user-select: none; -webkit-user-select: none; }
-.viewer-box.zoomed { display: block; padding: 0; overflow: auto; cursor: grab; }
-.viewer-box.zoomed img { cursor: zoom-out; }
-.viewer-box.zoomed:active { cursor: grabbing; }
+.viewer-box.zoomed { display: block; padding: 0; overflow: auto; }
+.viewer-box.zoomed, .viewer-box.zoomed img { cursor: grab; } /* มือ = ลากเลื่อนได้ (คลิกเฉยๆ = ดูทั้งรูป) */
+.viewer-box.dragging, .viewer-box.dragging img { cursor: grabbing; }
 .viewer-close { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); width: 40px; height: 40px; border: 0; border-radius: var(--r-full); background: rgba(255, 255, 255, .92); color: #111; font-size: 24px; line-height: 1; cursor: pointer; }
-.viewer-hint { position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); margin: 0; transform: translateX(-50%); padding: 6px 12px; border-radius: var(--r-full); background: rgba(0, 0, 0, .6); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.viewer-hint { position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); margin: 0; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--r-full); background: rgba(0, 0, 0, .6); font-size: 12px; white-space: nowrap; pointer-events: none; }
 .frame figure.zoomable { cursor: zoom-in; }
 #accPreview { display: block; width: 100%; height: 200px; margin-bottom: 14px; object-fit: contain; border-radius: var(--r-md); background: var(--surface-card); }
 .field { display: block; margin-bottom: 12px; color: var(--mute); font-size: 12px; font-weight: 500; }

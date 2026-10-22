@@ -17,6 +17,10 @@ export const IconPose = () => <Svg><circle cx="12" cy="4.5" r="2" /><path d="M12
 export const IconScene = () => <Svg><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m3 16 5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></Svg>;
 // ระยะ = กรอบครอปภาพ, มุมกล้อง = มุมองศา
 export const IconFrame = () => <Svg><path d="M7 3v14h14" /><path d="M3 7h14v14" /></Svg>;
+// มือ = ลากเลื่อนรูปตอนซูม (components/ImageViewer.tsx)
+export const IconHand = ({ size = 16 }: { size?: number }) => (
+  <Svg size={size}><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12m0-7.5a1.5 1.5 0 0 1 3 0V12m0-6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7h-.5a6 6 0 0 1-4.6-2.2L3.5 15a1.5 1.5 0 0 1 2.3-1.9L8 15.5" /></Svg>
+);
 export const IconPlace = () => <Svg><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.6" /><path d="M8.5 11v5m-2 0h4" /></Svg>;
 export const IconAngle = () => <Svg><path d="M4 20 19 6" /><path d="M4 20h16" /><path d="M11 20a7 7 0 0 0-2-4.9" /></Svg>;
 export const IconSettings = () => (
