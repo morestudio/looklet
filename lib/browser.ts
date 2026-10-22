@@ -107,8 +107,8 @@ export async function finishedCanvas(src: string, film: Film) {
   return cv;
 }
 
-export const canvasJpeg = (cv: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) =>
-  cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', 0.92));
+export const canvasJpeg = (cv: HTMLCanvasElement, quality = 0.92) => new Promise<Blob>((resolve, reject) =>
+  cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', quality));
 
 // มือถือ: เปิดหน้าแชร์ ("บันทึกรูปภาพ" ลงคลังรูป — iPhone ดาวน์โหลดไฟล์แล้วไปอยู่ในแอปไฟล์ หาไม่เจอ) · คอมพิวเตอร์: ดาวน์โหลดไฟล์
 // ลิงก์ต้องอยู่ในหน้าเว็บตอนกด และใช้ blob ไม่ใช้ data URL (บาง browser ไม่ดาวน์โหลด data URL หรือ a ที่ไม่ได้อยู่ในหน้า)

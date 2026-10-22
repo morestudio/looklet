@@ -4,6 +4,7 @@
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
+import ImageViewer from './ImageViewer';
 import { signOut } from './AuthForm';
 import {
   IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPlace, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
@@ -140,6 +141,7 @@ export default function TryOn() {
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
+  const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null); // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด)
   // หน้าต่างของเสริม: add = AI ดูไม่ออก ให้เลือกประเภทเอง, edit = แก้ชิ้นที่เพิ่มไว้แล้ว
   const [dialog, setDialog] = useState<{ mode: 'add'; file: File; url: string } | { mode: 'edit'; item: Item } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -534,11 +536,27 @@ export default function TryOn() {
   }
 
   // ดาวน์โหลดรูปที่กำลังดู (ทั้งรูปเสมอ แม้กำลังซูมหน้าอยู่) — ถ้าแต่งรูปพัง ใช้ไฟล์รูป + ลุคฟิล์มแทน
-  async function save() {
+  // รูปที่กำลังดูแบบเต็มขนาด (แต่งรูป + ลุคฟิล์มแล้ว) — กล่องแต่งรูปยังไม่ได้วาดรูปนี้ -> วาดจากไฟล์รูปเอง
+  async function currentCanvas() {
     const src = shown?.src ?? model.src!;
+    const full = fullRef.current;
+    return full?.width && fullSrcRef.current === src ? full : finishedCanvas(src, shown ? { ...film, look: finishLook } : NO_FILM);
+  }
+
+  // กดรูปบนเวที -> ดูเต็มจอ + ซูม: ฝั่ง "ก่อนแต่ง" = ไฟล์ AI ต้นฉบับ, รูปหลัก = ตามที่เห็น (แต่งแล้ว + ลุคฟิล์ม) ทั้งรูปแม้กำลังซูมหน้าอยู่
+  async function openViewer(before: boolean) {
     try {
-      const full = fullRef.current;
-      const cv = full?.width && fullSrcRef.current === src ? full : await finishedCanvas(src, shown ? { ...film, look: finishLook } : NO_FILM);
+      if (before) return setViewer({ src: skinOriginal ?? displaySrc, alt: skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง', temp: false });
+      const url = URL.createObjectURL(await canvasJpeg(await currentCanvas(), 0.95));
+      setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
+    } catch (err) {
+      setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
+    }
+  }
+
+  async function save() {
+    try {
+      const cv = await currentCanvas();
       if (inAppBrowser()) return setSaveSrc(cv.toDataURL('image/jpeg', 0.92));
       await saveImageFile(await canvasJpeg(cv), `looklet-${Date.now()}.jpg`);
     } catch (err) {
@@ -1041,8 +1059,12 @@ export default function TryOn() {
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
-            {compare && <figure><img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption></figure>}
-            <figure><canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}</figure>
+            {compare && <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(true)}>
+              <img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption>
+            </figure>}
+            <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(false)}>
+              <canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}
+            </figure>
             {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
             {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
@@ -1084,6 +1106,10 @@ export default function TryOn() {
       </div>
 
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
+      {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
+        if (viewer.temp) URL.revokeObjectURL(viewer.src);
+        setViewer(null);
+      }} />}
       {dialog && (dialog.mode === 'add' ? (
         <AccessoryDialog key={dialog.url} mode="add" preview={dialog.url} initial={{ name: '', type: null }}
           onDone={(info) => void onDialogDone(info)} />
