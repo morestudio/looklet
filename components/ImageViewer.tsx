@@ -1,6 +1,7 @@
 'use client';
 // ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): กดที่รูป = ซูมตรงจุดนั้น (ขนาดจริงของรูป อย่างน้อย 2 เท่าของตอนพอดีจอ) คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
 // เมาส์: ซูมตั้งแต่ตอนกดลง กดค้างแล้วลากต่อได้เลย (เดิมซูมตอนปล่อยเมาส์ ต้องกดอีกรอบถึงจะลากได้ — ผู้ใช้บอก 22 ต.ค.)
+// คลิกขวาตอนซูม = กลับมาดูทั้งรูป (ไม่ขึ้นเมนูของ browser) · ตอนพอดีจอคลิกขวาได้เมนูปกติ (คัดลอก/บันทึกรูป)
 // มือถือ: แตะเพื่อซูม ปัดนิ้วเลื่อนแบบปกติของ browser (ซูมตอนแตะลงจะซูมทุกครั้งที่ปัดหน้าจอ) · Esc หรือ ✕ = ปิด
 // start = จุดที่กดบนรูปบนเวที: เปิดมาก็ซูมตรงนั้นเลย ลากได้ทันที (เดิมเปิดมาพอดีจอ ต้องกดอีกครั้งถึงซูม/ขึ้นมือ — ผู้ใช้บอก 22 ต.ค.)
 // รูป 1664×2496 ละเอียดกว่าจอ ต้องซูมถึงจะเห็นผิว/เนื้อผ้า
@@ -57,6 +58,7 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
     const box = boxRef.current!;
     const onImage = e.target === imgRef.current;
     const mouse = e.pointerType === 'mouse';
+    if (mouse && e.button !== 0) return; // ซูม/ลากด้วยปุ่มซ้ายเท่านั้น (ปุ่มขวา = ดูทั้งรูป ใน onContextMenu)
     drag.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop, moved: false, zoomedIn: false };
     if (!mouse || (!zoom && !onImage)) return;
     if (!zoom) {
@@ -87,12 +89,17 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
     <dialog ref={dialogRef} className="viewer" onClose={onClose}>
       <div ref={boxRef} className={'viewer-box' + (zoom ? ' zoomed' : '') + (dragging ? ' dragging' : '')}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => setDragging(false)}
-        onPointerCancel={() => setDragging(false)} onClick={onClick}>
+        onPointerCancel={() => setDragging(false)} onClick={onClick}
+        onContextMenu={(e) => {
+          if (!zoom) return;
+          e.preventDefault();
+          setZoom(null);
+        }}>
         <img ref={imgRef} src={src} alt={alt} draggable={false} onLoad={onLoad}
           style={zoom ? { width: zoom.width, maxWidth: 'none', maxHeight: 'none' } : undefined} />
       </div>
       <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>×</button>
-      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · คลิกเฉยๆ เพื่อดูทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม กดค้างแล้วลากได้เลย'}</p>
+      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · คลิกเฉยๆ หรือคลิกขวาเพื่อดูทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม กดค้างแล้วลากได้เลย'}</p>
     </dialog>
   );
 }
