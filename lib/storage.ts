@@ -15,7 +15,9 @@ const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
 const UPLOADS_DIR = path.join(ROOT, 'images', 'uploads');
 
-export const KINDS = ['models', 'outfits', 'accessories', 'poses', 'scenes'] as const;
+// หน้าสินค้าใช้คลังแยก: products = รูปสินค้า, product-refs = ช็อตต้นแบบ, product-scenes = รูปฉาก, product-props = พร็อพของฉัน (ไม่ปนกับฉากของหน้านางแบบ)
+// Supabase เก็บ kind เป็นข้อความ เพิ่มประเภทใหม่ได้โดยไม่ต้องแก้ตาราง
+export const KINDS = ['models', 'outfits', 'accessories', 'poses', 'scenes', 'products', 'product-refs', 'product-scenes', 'product-props'] as const;
 export type Kind = (typeof KINDS)[number];
 export const isKind = (k: unknown): k is Kind => KINDS.includes(k as Kind);
 
@@ -58,7 +60,14 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
 
 // set = ชุดภาพหลายมุม: id เดียวกันทั้งชุด + ลำดับในชุด (SET_SHOTS) ไว้จัดกลุ่มในประวัติรูป
 export type SetTag = { id: string; index: number };
-export type Stored = { src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off'; refinedFrom?: string; posePlan?: { name: string; th: string } };
+// page = 'product' -> รูปจากหน้าสินค้า (ไม่มี = หน้านางแบบ) แต่ละหน้าโชว์เฉพาะรูปของตัวเองในประวัติรูป
+// stylePlan = พร็อพที่ AI ตัววางแผนคิดให้ (หน้าสินค้า)
+export type Stored = {
+  src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off';
+  productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
+  editedFrom?: string;
+  refinedFrom?: string; posePlan?: { name: string; th: string }; page?: 'product'; stylePlan?: { name: string; th: string };
+};
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
 export async function listImages(where: Where): Promise<Stored[]> {

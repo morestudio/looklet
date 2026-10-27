@@ -34,3 +34,9 @@ export const IconSearch = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><
 export const IconZoom = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5M11 8v6M8 11h6" /></Svg>;
 export const IconCompare = () => <Svg size={18}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M12 3v18" /></Svg>;
 export const IconSparkle = () => <Svg size={18}><path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z" /><path d="m19 15 .7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z" /></Svg>;
+// หน้าสินค้า: สไตล์ = จานสี, ช็อตต้นแบบ = สำเนา, พร็อพ = ใบไม้
+export const IconPalette = () => (
+  <Svg><path d="M12 3a9 9 0 0 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-1.2-1-1.6-1-2.6 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7" r="1" /><circle cx="15" cy="7.5" r="1" /></Svg>
+);
+export const IconCopy = () => <Svg><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Svg>;
+export const IconLeaf = () => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;

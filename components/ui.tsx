@@ -1,5 +1,6 @@
 'use client';
 // ui.tsx — ชิ้นส่วนหน้าเว็บที่ใช้ซ้ำ: การ์ดรูป, ปุ่มกลุ่ม (chips), หัวข้อในแผง
+import Link from 'next/link';
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { Item } from '@/lib/catalog';
 
@@ -93,4 +94,12 @@ export function Section({ title, note, children }: { title: string; note?: React
       {children}
     </section>
   );
+}
+
+// สลับหน้า นางแบบ (components/TryOn.tsx) / สินค้า (components/Packshot.tsx) อยู่ในหัวเว็บของทั้งสองหน้า
+export function PageSwitch({ current }: { current: 'model' | 'product' }) {
+  const tab = (id: 'model' | 'product', href: string, label: string) => (
+    <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
+  );
+  return <nav className="page-switch" aria-label="เลือกหน้า">{tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}</nav>;
 }

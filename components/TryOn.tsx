@@ -5,12 +5,13 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
+import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import { signOut } from './AuthForm';
 import {
   IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPlace, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, DeleteButton, PendingCard, SaveImageDialog, Section } from './ui';
+import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
@@ -20,8 +21,9 @@ import {
   saveImageFile, toWebImage, uploadImage,
 } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS,
-  PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode,
+  ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
+  POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
+  presetLightPrompt, presetPrompt, splitLabel, type AccessoryInfo, type Item, type LightSource, type PoseMode,
 } from '@/lib/catalog';
 
 type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
@@ -58,11 +60,12 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = { name: string; th: string }; // ท่าที่ AI ตัววางแผนคิดให้ (ท่าสำเร็จรูป)
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
+type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
 type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
+// page = 'product' -> รูปจากหน้าสินค้า (components/Packshot.tsx) ไม่โชว์ในประวัติรูปของหน้านี้
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
@@ -83,24 +86,6 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
 ];
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
-// คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
-// ค่าเริ่มต้นของ 2.5 = high: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ, medium ผ้าเรียบลื่นเหมือนผ้าปลอม,
-// high เริ่มเห็นเนื้อผ้าในราคา ~฿1.8 (max ลายทอชัดสุดแต่ ~฿5.9 และช้ากว่า 3 เท่า เลือกเองได้)
-// ราคาในวงเล็บ = ประมาณที่ขนาดเริ่มต้นใหม่ 1664×2496 (GPT25_SIZES): จ่ายจริงตอนทดสอบที่ 1024×1536 รูปเข้า 2 รูป (กลาง ฿0.8 · สูง ฿1.8 ·
-// สูงมาก ฿2.9 · สูงสุด ฿5.9) แล้วคิดส่วนรูปที่ได้ x1.72 (token รูปที่ได้ 1664×2496 ÷ 1024×1536 จาก output/skin-2500-test) — รูปเข้าเยอะขึ้นแพงขึ้นนิดหน่อย
-const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
-const QUALITIES_25 = [
-  { id: 'medium', name: 'กลาง ~฿1.1' }, { id: 'high', name: 'สูง ~฿2.8' }, { id: 'xhigh', name: 'สูงมาก ~฿4.7' }, { id: 'max', name: 'สูงสุด ~฿9.8' },
-];
-const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
-// โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
-const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
-const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
-// "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
-const splitLabel = (label: string) => {
-  const m = label.match(/^(.*?)\s*\((.*)\)$/);
-  return m ? [m[1], m[2]] : [label, ''];
-};
 
 export default function TryOn() {
   const [lists, setLists] = useState(CATALOG);
@@ -145,6 +130,7 @@ export default function TryOn() {
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean; start: { fx: number; fy: number } | null } | null>(null);
   // หน้าต่างของเสริม: add = AI ดูไม่ออก ให้เลือกประเภทเอง, edit = แก้ชิ้นที่เพิ่มไว้แล้ว
   const [dialog, setDialog] = useState<{ mode: 'add'; file: File; url: string } | { mode: 'edit'; item: Item } | null>(null);
+  const [localEdit, setLocalEdit] = useState<{ src: string; caption: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS)
   const [query, setQuery] = useState(''); // ค้นหาตามชื่อในแผงเลือก
@@ -187,7 +173,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, posePlan: r.posePlan })));
+        setResults(lib.results.filter((r) => r.page !== 'product').map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -536,12 +522,33 @@ export default function TryOn() {
     }
   }
 
+  async function editLocalArea(request: LocalEditRequest) {
+    if (!localEdit || busy !== null) throw new Error('เลือกรูปที่ต้องการแก้ก่อน');
+    const source = localEdit;
+    setBusy('AI กำลังแก้เฉพาะจุด...');
+    try {
+      const result = await api<Result>('/api/local-edit', { ...request, src: source.src });
+      setResults((r) => [result, ...r]);
+      setCurrent(0);
+      setAmounts(NO_RETOUCH); setTone(null); setFinish('auto');
+      setZoomed(false); setOriginal(false); setRetouchStatus('');
+      setLocalEdit(null);
+      setStatus('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลัง');
+    } finally { setBusy(null); }
+  }
+
   // ดาวน์โหลดรูปที่กำลังดู (ทั้งรูปเสมอ แม้กำลังซูมหน้าอยู่) — ถ้าแต่งรูปพัง ใช้ไฟล์รูป + ลุคฟิล์มแทน
   // รูปที่กำลังดูแบบเต็มขนาด (แต่งรูป + ลุคฟิล์มแล้ว) — กล่องแต่งรูปยังไม่ได้วาดรูปนี้ -> วาดจากไฟล์รูปเอง
   async function currentCanvas() {
     const src = shown?.src ?? model.src!;
     const full = fullRef.current;
     return full?.width && fullSrcRef.current === src ? full : finishedCanvas(src, shown ? { ...film, look: finishLook } : NO_FILM);
+  }
+
+  function outputBlob(canvas: HTMLCanvasElement, quality = 0.92) {
+    return shown?.editedFrom
+      ? new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('บันทึก PNG ไม่สำเร็จ')), 'image/png'))
+      : canvasJpeg(canvas, quality);
   }
 
   // กดรูปบนเวที -> ดูเต็มจอ ซูมตรงจุดที่กด: ฝั่ง "ก่อนแต่ง" = ไฟล์ AI ต้นฉบับ, รูปหลัก = ตามที่เห็น (แต่งแล้ว + ลุคฟิล์ม) ทั้งรูปแม้กำลังซูมหน้าอยู่
@@ -553,7 +560,7 @@ export default function TryOn() {
     const start = inside && (before || !zoomed) ? { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height } : null;
     try {
       if (before) return setViewer({ src: skinOriginal ?? displaySrc, alt: skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง', temp: false, start });
-      const url = URL.createObjectURL(await canvasJpeg(await currentCanvas(), 0.95));
+      const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true, start });
     } catch (err) {
       setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
@@ -563,8 +570,8 @@ export default function TryOn() {
   async function save() {
     try {
       const cv = await currentCanvas();
-      if (inAppBrowser()) return setSaveSrc(cv.toDataURL('image/jpeg', 0.92));
-      await saveImageFile(await canvasJpeg(cv), `looklet-${Date.now()}.jpg`);
+      if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
+      await saveImageFile(await outputBlob(cv), `looklet-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
       setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
@@ -1023,6 +1030,7 @@ export default function TryOn() {
     <div className="app">
       <header className="topbar">
         <div className="brand">Looklet <span className="beta">Beta</span></div>
+        <PageSwitch current="model" />
         <div className="status" role="status" title={status}>
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
         </div>
@@ -1077,6 +1085,10 @@ export default function TryOn() {
           </div>
           <div className="stage-tools">
             <div className="caption" title={shown?.caption}>{shown ? shown.caption : `ตัวอย่าง: ${model.name} (ยังไม่ได้สร้าง)`}</div>
+            {shown && <button className="btn btn-secondary tool" disabled={busy !== null}
+              onClick={() => setLocalEdit({ src: shown.src, caption: shown.caption })}><IconRetouch /> แก้เฉพาะจุด</button>}
+            {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
+              onClick={() => setCurrent(results.findIndex((r) => r.src === shown.editedFrom))}>ดูต้นฉบับ</button>}
             {shown && <button className="btn btn-secondary tool" disabled={busy !== null || !canRefineSkin}
               title="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8 ได้รูปใหม่ 1664×2496" onClick={() => void refineSkin()}>
               <IconSparkle /> ปรับผิวสมจริง
@@ -1111,6 +1123,7 @@ export default function TryOn() {
         </aside>
       </div>
 
+      {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} start={viewer.start} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);

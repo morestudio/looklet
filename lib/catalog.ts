@@ -242,6 +242,25 @@ export const PRESET_PARTS = [
 export const GPT25_SIZES: Record<string, string> = { '1024x1536': '1664x2496', '1536x1024': '2496x1664', '1024x1024': '2048x2048' };
 export const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
 
+// ---------- โมเดล AI + คุณภาพ (ใช้ทั้งหน้านางแบบและหน้าสินค้า) ----------
+// คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
+// ค่าเริ่มต้นของ 2.5 = high: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ, medium ผ้าเรียบลื่นเหมือนผ้าปลอม,
+// high เริ่มเห็นเนื้อผ้าในราคา ~฿1.8 (max ลายทอชัดสุดแต่ ~฿5.9 และช้ากว่า 3 เท่า เลือกเองได้)
+// ราคาในวงเล็บ = ประมาณที่ขนาดเริ่มต้นใหม่ 1664×2496 (GPT25_SIZES): จ่ายจริงตอนทดสอบที่ 1024×1536 รูปเข้า 2 รูป (กลาง ฿0.8 · สูง ฿1.8 ·
+// สูงมาก ฿2.9 · สูงสุด ฿5.9) แล้วคิดส่วนรูปที่ได้ x1.72 (token รูปที่ได้ 1664×2496 ÷ 1024×1536 จาก output/skin-2500-test) — รูปเข้าเยอะขึ้นแพงขึ้นนิดหน่อย
+export const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
+export const QUALITIES_25 = [
+  { id: 'medium', name: 'กลาง ~฿1.1' }, { id: 'high', name: 'สูง ~฿2.8' }, { id: 'xhigh', name: 'สูงมาก ~฿4.7' }, { id: 'max', name: 'สูงสุด ~฿9.8' },
+];
+// โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
+export const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
+export const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
+// "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
+export const splitLabel = (label: string) => {
+  const m = label.match(/^(.*?)\s*\((.*)\)$/);
+  return m ? [m[1], m[2]] : [label, ''];
+};
+
 // ขั้นระยะ / มุมกล้อง (เมนูซ้าย): ไม่เลือก = ตามสไตล์ถ่ายภาพ (ทุกสไตล์มีระยะ/มุมของตัวเอง เช่น Phone candid ก้มกล้องลงแบบมือถือ)
 // เลือกแล้วใช้แทนของสไตล์ แสง/เลนส์/โทนสียังเป็นของสไตล์ — ระยะใส่บรรทัดแรกของคำสั่ง, มุมอยู่ใน "Camera: เลนส์, มุม"
 // ระยะใกล้ต้องบอก "even if the pose uses them": ทดสอบ 21 ต.ค. ท่าจับเท้า + "waist up" เฉยๆ AI ยังเก็บขาไว้ (ตัดแค่หน้าแข้ง)

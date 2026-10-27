@@ -144,17 +144,19 @@ export function geminiAspect(w: number, h: number) {
 }
 export const openaiSize = (w: number, h: number) => (w / h < 0.85 ? '1024x1536' : w / h > 1.18 ? '1536x1024' : '1024x1024');
 
-// ให้ AI ดูรูปของเสริมว่าเป็นอะไร + ตั้งชื่อ — ดูไม่ออก/เรียกไม่ได้ = null (ให้ผู้ใช้เลือกเอง)
-export async function guessAccessory(src: string): Promise<AccessoryInfo | null> {
+// ให้ AI ดูรูปของเสริม/สินค้าว่าเป็นอะไร + ตั้งชื่อ — ดูไม่ออก/เรียกไม่ได้ = null (ให้ผู้ใช้เลือกเอง)
+async function guessItem(src: string, route: string): Promise<AccessoryInfo | null> {
   try {
     const { data } = await jpegBase64(src, 768); // ดูแค่ว่าเป็นอะไร ไม่ต้องละเอียด ส่งเล็กลง = เร็วขึ้น
-    const g = await api<{ type: string | null; name: string | null }>('/api/detect-accessory', { data });
+    const g = await api<{ type: string | null; name: string | null }>(route, { data });
     return g.type && g.name ? { type: g.type, name: g.name } : null;
   } catch (err) {
-    console.warn('AI ดูรูปของเสริมไม่สำเร็จ', err);
+    console.warn('AI ดูรูปไม่สำเร็จ', err);
     return null;
   }
 }
+export const guessAccessory = (src: string) => guessItem(src, '/api/detect-accessory');
+export const guessProduct = (src: string) => guessItem(src, '/api/detect-product'); // หน้าสินค้า: ประเภทใน PRODUCT_TYPES
 
 // ---------- เครื่องมือแต่งรูป (MediaPipe): โหลดครั้งเดียวต่อหน้า เฉพาะตอนจะใช้ หน้าเว็บจะได้เปิดเร็ว ----------
 
