@@ -490,7 +490,7 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 .admin-create label { display: grid; gap: var(--space-4); color: var(--mute); font-size: var(--text-xs); }
 .admin-create .text-input { width: 120px; height: var(--control-height); min-height: 0; }
 
-/* ---------- หน้าต้อนรับลูกค้า (components/Welcome.tsx): มินิมอล ลายมือเขียน "Welcome" ตามด้วยชื่อ ----------
+/* ---------- หน้าต้อนรับลูกค้า (components/Welcome.tsx): มินิมอล "Welcome" ตามด้วยชื่อ ตัว Instrument Serif ปกติ (เดิมลายมือ เปลี่ยน 29 ต.ค.) ----------
    แต่ละคำมี 2 ชั้นซ้อนกัน: เส้นปากกา (ขอบตัวอักษร) นำ แล้วหมึกตามหลัง ~0.2 วิ เผยจากซ้ายไปขวาด้วย mask ขอบนุ่ม (เหมือนหมึกกำลังไหล)
    mask กว้าง 240%: ตำแหน่ง 100% = ซ่อนทั้งคำ, 0% = เห็นทั้งคำ · padding เผื่อหางตัวเขียนที่ยื่นออกนอกกรอบไม่ให้โดน mask ตัด */
 .welcome {
@@ -503,8 +503,8 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 .wl-ink > span { grid-area: 1 / 1; padding: .15em .7em; } /* mask อยู่ที่ชั้นนี้ เว้นที่ให้หางตัวเขียน (เช่นห่วงของ W) ที่ยื่นออกนอกตัวอักษร */
 .wl-pen { color: transparent; -webkit-text-stroke: .5px var(--wl-ink); }
 .wl-fill { color: var(--wl-ink); }
-.wl-welcome { font-family: var(--font-script), cursive; font-size: clamp(76px, 15vw, 190px); font-weight: 400; }
-.wl-name { margin-top: -.25em; font-family: var(--font-hand), var(--font-script), cursive; font-size: clamp(34px, 6vw, 72px); }
+.wl-welcome { font-family: var(--font-display); font-size: clamp(64px, 12vw, 160px); font-weight: 400; }
+.wl-name { margin-top: -.1em; font-family: var(--font-display); font-size: clamp(30px, 5vw, 60px); font-weight: 400; }
 .welcome:not(.writing) .wl-ink { visibility: hidden; } /* รอฟอนต์ + ชื่อก่อน ไม่ให้ตัวอักษรกระพริบเปลี่ยนฟอนต์ */
 .welcome.writing .wl-ink > span {
   -webkit-mask-image: linear-gradient(90deg, #000 45%, transparent 55%); mask-image: linear-gradient(90deg, #000 45%, transparent 55%);
