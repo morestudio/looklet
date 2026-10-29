@@ -1,10 +1,11 @@
 'use client';
-// ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): เปิดมาพอดีจอเสมอ · กดที่รูป = ซูม 2 เท่าของตอนพอดีจอตรงจุดนั้น คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
+// ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): เปิดมาพอดีจอเสมอ · กดที่รูปครั้งแรก = ซูม 2 เท่าของตอนพอดีจอตรงจุดนั้น
+// หลังซูมแล้ว คลิก/กดลาก = จับรูปเลื่อนอย่างเดียว ไม่ซูมออก (29 ต.ค. ผู้ใช้ขอ) — ซูมออกด้วยปุ่ม − / ทั้งรูป ล้อเมาส์ หรือคลิกขวา
 // ซูมเข้า/ออกทีละขั้น: ปุ่ม − / + / ทั้งรูป ด้านล่าง · ล้อเมาส์หรือหนีบนิ้วบนแทร็กแพด (ซูมรอบจุดที่ชี้) · ปุ่มคีย์บอร์ด + − 0
 // (29 ต.ค. ผู้ใช้บอกซูมแรงเกินและซูมออกไม่ได้: เดิมซูมไปขนาดจริงของรูปทันที ~3 เท่า ออกได้แค่คลิกนิ่งๆ หรือคลิกขวา)
 // เมาส์: ซูมตั้งแต่ตอนกดลง กดค้างแล้วลากต่อได้เลย (เดิมซูมตอนปล่อยเมาส์ ต้องกดอีกรอบถึงจะลากได้ — ผู้ใช้บอก 22 ต.ค.)
 // คลิกขวาตอนซูม = กลับมาดูทั้งรูป (ไม่ขึ้นเมนูของ browser) · ตอนพอดีจอคลิกขวาได้เมนูปกติ (คัดลอก/บันทึกรูป)
-// มือถือ: แตะเพื่อซูม/กลับ ปัดนิ้วเลื่อนแบบปกติของ browser · Esc หรือ ✕ = ปิด
+// มือถือ: แตะครั้งแรกเพื่อซูม ปัดนิ้วเลื่อนแบบปกติของ browser · Esc หรือ ✕ = ปิด
 // เดิมเปิดมาซูมตรงจุดที่กดบนเวทีเลย (22 ต.ค.) — 29 ต.ค. ผู้ใช้ขอให้เปิดมาพอดีจอก่อน
 // รูป 1664×2496 ละเอียดกว่าจอ ต้องซูมถึงจะเห็นผิว/เนื้อผ้า
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
@@ -120,12 +121,11 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
     boxRef.current!.scrollLeft = d.left - dx;
     boxRef.current!.scrollTop = d.top - dy;
   }
-  // คลิก (กดแล้วปล่อยโดยไม่ลาก): ตอนซูมอยู่ = กลับมาดูทั้งรูป · มือถือแตะที่รูป = ซูม
+  // คลิก/แตะ: ซูมเฉพาะตอนพอดีจอ (มือถือแตะที่รูป) · ซูมอยู่แล้ว = ไม่ทำอะไร (มือไว้จับเลื่อน)
   function onClick(e: MouseEvent<HTMLDivElement>) {
     const d = drag.current;
-    if (d?.moved || d?.zoomedIn) return;
-    if (zoom) setZoom(null);
-    else if (e.target === imgRef.current) scaleTo(CLICK_ZOOM, anchorAt(e.clientX, e.clientY));
+    if (zoom || d?.moved || d?.zoomedIn) return;
+    if (e.target === imgRef.current) scaleTo(CLICK_ZOOM, anchorAt(e.clientX, e.clientY));
   }
   function onKeyDown(e: KeyboardEvent<HTMLDialogElement>) {
     if (e.key === '+' || e.key === '=') zoomBy(STEP);
@@ -152,7 +152,7 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
           style={zoom && fit ? { width: fit.width * zoom.scale, maxWidth: 'none', maxHeight: 'none' } : undefined} />
       </div>
       <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>×</button>
-      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · คลิกเพื่อดูทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม · เลื่อนล้อเมาส์เพื่อซูมเข้า/ออก'}</p>
+      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · ซูมออกด้วย − หรือ ทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม · เลื่อนล้อเมาส์เพื่อซูมเข้า/ออก'}</p>
       <div className="viewer-tools" role="toolbar" aria-label="ซูม">
         <button type="button" aria-label="ซูมออก" title="ซูมออก (−)" disabled={!zoom} onClick={() => zoomBy(1 / STEP)}>−</button>
         <output aria-live="polite">{percent !== null ? `${percent}%` : 'พอดีจอ'}</output>
