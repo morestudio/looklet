@@ -76,12 +76,15 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
   };
   const zoomBy = (factor: number, at?: Anchor) => scaleTo((zoom?.scale ?? 1) * factor, at ?? middle());
 
-  // ล้อเมาส์ / หนีบนิ้วบนแทร็กแพด (ctrlKey) = ซูมรอบจุดที่ชี้ · ใส่ listener เอง เพราะ React ใส่ wheel แบบ passive (preventDefault ไม่ได้)
-  // ไม่ใส่ deps: ผูกใหม่ทุกรอบ ตัวจัดการจะเห็นระดับซูมล่าสุดเสมอ
+  // ล้อเมาส์ / หนีบนิ้วบนแทร็กแพด (ctrlKey) = ซูมรอบจุดที่ชี้ · ปัดสองนิ้วบนแทร็กแพด/Magic Mouse = เลื่อนรูป (ไม่ซูม)
+  // (29 ต.ค.: เดิมทุกการเลื่อนเป็นซูม ปัดสองนิ้วเพื่อเลื่อนรูปกลับซูมแทน) แยกล้อเมาส์จากแทร็กแพด: ล้อหมุนทีละขั้นได้ค่าเต็มๆ ทีละมาก แกนเดียว
+  // ใส่ listener เอง เพราะ React ใส่ wheel แบบ passive (preventDefault ไม่ได้) · ไม่ใส่ deps: ผูกใหม่ทุกรอบ เห็นระดับซูมล่าสุดเสมอ
   useEffect(() => {
     const box = boxRef.current;
     if (!box) return;
     const onWheel = (e: WheelEvent) => {
+      const wheelNotch = e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+      if (!e.ctrlKey && !wheelNotch) return; // ปัดสองนิ้ว: ให้ browser เลื่อนกรอบที่ซูมอยู่ตามปกติ
       e.preventDefault();
       const speed = e.ctrlKey ? 0.01 : e.deltaMode === 1 ? 0.05 : 0.002; // หนีบนิ้ว / ล้อแบบบรรทัด / ล้อแบบพิกเซล
       zoomBy(Math.exp(-e.deltaY * speed), anchorAt(e.clientX, e.clientY));
@@ -152,7 +155,7 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
           style={zoom && fit ? { width: fit.width * zoom.scale, maxWidth: 'none', maxHeight: 'none' } : undefined} />
       </div>
       <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>×</button>
-      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · ซูมออกด้วย − หรือ ทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม · เลื่อนล้อเมาส์เพื่อซูมเข้า/ออก'}</p>
+      <p className="viewer-hint">{zoom ? <><IconHand /> ลากหรือปัดสองนิ้วเพื่อเลื่อน · ซูมออกด้วย − หรือ ทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม · ล้อเมาส์หรือหนีบนิ้วเพื่อซูมเข้า/ออก'}</p>
       <div className="viewer-tools" role="toolbar" aria-label="ซูม">
         <button type="button" aria-label="ซูมออก" title="ซูมออก (−)" disabled={!zoom} onClick={() => zoomBy(1 / STEP)}>−</button>
         <output aria-live="polite">{percent !== null ? `${percent}%` : 'พอดีจอ'}</output>
