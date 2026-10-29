@@ -1,8 +1,8 @@
 import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
-import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
+import { ACCESSORY_TYPES, GPT25_SIZES, isGpt25, MAX_ACCESSORIES, MAX_WEAR, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
-import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement } from '@/lib/prompts';
+import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement, wearCount, type Wear } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
 import { cropTo, servable } from '@/lib/images';
 import { saveImage, type SetTag } from '@/lib/storage';
@@ -31,6 +31,11 @@ export const POST = post(async (req) => {
   if (!req.person) return json(400, { error: 'ไม่มีรูปนางแบบ' });
   const accessories: Accessory[] = (Array.isArray(req.accessories) ? req.accessories : []).filter((a: Accessory) => a?.data);
   if (accessories.length > MAX_ACCESSORIES) return json(400, { error: `ของเสริมใส่ได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป` });
+  // เสื้อผ้าแยกชิ้น: ทั้งชุด (outfit) หรือ เสื้อ/ท่อนล่าง + รองเท้า — ทั้งชุดคู่กับเสื้อ/ท่อนล่างแยกไม่ได้ (คำสั่งจะขัดกัน)
+  const has = (v: unknown) => typeof v === 'string' && v.length > 0;
+  const wear: Wear = { outfit: has(req.outfit), top: has(req.top), bottom: has(req.bottom), shoes: has(req.shoes) };
+  if (wear.outfit && (wear.top || wear.bottom)) return json(400, { error: 'เลือกทั้งชุดแล้ว เลือกเสื้อหรือท่อนล่างแยกอีกไม่ได้' });
+  if (wearCount(wear) + accessories.length > MAX_WEAR) return json(400, { error: `เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป` });
   const poseMode: PoseMode = POSE_MODES.find((m) => m.id === req.pose_mode)?.id ?? 'pose';
   const shotScene = Boolean(req.pose) && poseMode === 'shot-scene'; // ฉากมาจากรูปท่าโพสต์ ไม่ใช้ฉากที่เลือก
   // ชุดภาพหลายมุม (รูปที่ 2 เป็นต้นไป): set_ref = รูปหลักของชุด, set_shot = ระยะ + มุมกล้อง (SET_SHOTS) — ไม่ส่งรูปท่า/ฉาก ใช้จากรูปหลัก
@@ -50,6 +55,9 @@ export const POST = post(async (req) => {
     { role: 'รูปหลักของชุด', data: setRef, ref: toRef(refs.set_ref) },
     { role: 'นางแบบ', data: req.person, ref: toRef(refs.person) },
     { role: 'ชุด', data: req.outfit, ref: toRef(refs.outfit) },
+    { role: 'เสื้อ', data: req.top, ref: toRef(refs.top) },
+    { role: 'ท่อนล่าง', data: req.bottom, ref: toRef(refs.bottom) },
+    { role: 'รองเท้า', data: req.shoes, ref: toRef(refs.shoes) },
     ...accessories.map((a, i) => ({ role: 'ของเสริม', data: a.data, ref: toRef(accRefs[i]) })),
     { role: 'ท่าโพสต์', data: setRef ? null : req.pose, ref: toRef(refs.pose) },
     { role: 'ฉาก', data: setRef || shotScene ? null : req.scene_image, ref: toRef(refs.scene) },
@@ -73,7 +81,8 @@ export const POST = post(async (req) => {
       location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
       locationIsModelPhoto: !req.scene_image && !sceneText0,
       locationText: req.scene_image ? null : sceneText0,
-      outfit: req.outfit ? { data: req.outfit, mime: 'image/jpeg' } : null,
+      // ตัววางแผนท่าดูแค่รูปเสื้อผ้ารูปแรก (ทั้งชุด > เสื้อ > ท่อนล่าง) พอให้รู้ว่าใส่อะไร
+      outfit: [req.outfit, req.top, req.bottom].find(has) ? { data: [req.outfit, req.top, req.bottom].find(has), mime: 'image/jpeg' } : null,
       accessories: accessories.map((a) => ({ img: { data: a.data, mime: 'image/jpeg' }, what: String(a.what || 'an accessory').slice(0, 200) })),
       preset: posePreset,
       moment,
@@ -91,12 +100,12 @@ export const POST = post(async (req) => {
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
     fullBody: setShot!.full_body !== false,
-    hasOutfit: Boolean(req.outfit),
+    wear,
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
     extra: req.extra,
     crop,
   }) : buildPrompt({
-    hasOutfit: Boolean(req.outfit),
+    wear,
     hasSceneImage: !shotScene && Boolean(req.scene_image),
     sceneText: shotScene ? null : req.scene_text,
     extra: req.extra,
@@ -107,7 +116,7 @@ export const POST = post(async (req) => {
     // ท่าสำเร็จรูปวางแผนไม่สำเร็จ -> ใช้คำสั่ง "AI เลือกท่าให้" แบบเดิม (ยังได้รูป)
     autoPose: !req.pose && (Boolean(req.auto_pose) || (Boolean(posePreset) && !plan)),
     posePlan: plan?.en ?? null,
-    poseHints: accessories.map((a) => String(a.show ?? '').slice(0, 200)).filter(Boolean),
+    poseHints: [...accessories.map((a) => String(a.show ?? '').slice(0, 200)), ...(wear.shoes ? [ACCESSORY_TYPES.find((t) => t.id === 'shoes')!.show] : [])].filter(Boolean),
     poseMode,
     framing: text(req.framing),
     gaze: text(req.gaze),
@@ -166,7 +175,10 @@ export const POST = post(async (req) => {
     ai: { model: String(req.model), params },
     model: byRole('นางแบบ')[0],
     element: {
-      outfit: byRole('ชุด')[0] ?? 'ชุดเดิม',
+      outfit: byRole('ชุด')[0] ?? (wear.top || wear.bottom || wear.shoes ? 'เปลี่ยนแยกชิ้น' : 'ชุดเดิม'),
+      ...(wear.top ? { top: byRole('เสื้อ')[0] } : {}),
+      ...(wear.bottom ? { bottom: byRole('ท่อนล่าง')[0] } : {}),
+      ...(wear.shoes ? { shoes: byRole('รองเท้า')[0] } : {}),
       accessories: byRole('ของเสริม'),
       scene: setRef ? 'ใช้ฉากจากรูปหลักของชุด' : shotScene ? 'ใช้ฉากจากรูปท่าโพสต์' : byRole('ฉาก')[0] ?? (sceneText ? { name: toRef(refs.scene).name, text: sceneText } : 'ฉากเดิม'),
     },
