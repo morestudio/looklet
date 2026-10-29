@@ -16,6 +16,7 @@ import {
 } from './icons';
 import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
+import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
 import {
   api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage,
@@ -105,8 +106,8 @@ function ScenePreview({ id, color, large = false }: { id: string; color?: string
     {id === 'ledge' && <path d="M0 95 H240 V103 H0 M0 111 H240 M0 116 H240" fill="#fff" stroke="#ccc" />}
     {id === 'plinth' && <path d="M84 99 110 90 157 97 137 108 84 105Z M84 105 V150 H137 V108 M137 108 157 97 V150 H137" fill="#d8cebd" stroke="#b3a999" />}
     <ellipse cx="120" cy={id === 'plinth' ? 96 : 115} rx="38" ry="7" fill="#000" opacity=".1" />
-    <rect x="96" y={id === 'plinth' ? 46 : 58} width="48" height="49" rx="5" fill="#fafaf8" stroke="#77776f" strokeWidth="1.2" />
-    <path d={id === 'plinth' ? 'M104 55 H136 M104 62 H125' : 'M104 67 H136 M104 74 H125'} stroke="#b8b8ae" strokeWidth="2" />
+    <rect x="96" y={id === 'plinth' ? 46 : 58} width="48" height="49" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+    <path d={id === 'plinth' ? 'M104 55 H136 M104 62 H125' : 'M104 67 H136 M104 74 H125'} stroke={LABEL} strokeWidth="2" />
   </svg>;
 }
 
@@ -114,13 +115,13 @@ function ScenePreview({ id, color, large = false }: { id: string; color?: string
 function Box({ x, y, w = 48, h = 49, label = true }: { x: number; y: number; w?: number; h?: number; label?: boolean }) {
   return <>
     <ellipse cx={x + w / 2} cy={y + h + 8} rx={w * 0.8} ry="7" fill="#000" opacity=".1" />
-    <rect x={x} y={y} width={w} height={h} rx="5" fill="#fafaf8" stroke="#77776f" strokeWidth="1.2" />
-    {label && <path d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`} stroke="#b8b8ae" strokeWidth="2" />}
+    <rect x={x} y={y} width={w} height={h} rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+    {label && <path d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`} stroke={LABEL} strokeWidth="2" />}
   </>;
 }
 
 function ShotTypePreview({ id }: { id: ShotType }) {
-  const studio = <><rect width="240" height="150" fill="#f3f3f0" /><path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".03" /></>;
+  const studio = <><rect width="240" height="150" fill={WALL} /><path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".03" /></>;
   return <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
     {id === 'clean' && <>{studio}<Box x={96} y={58} /></>}
     {id === 'styled' && <>
@@ -138,8 +139,8 @@ function ShotTypePreview({ id }: { id: ShotType }) {
       <rect x="166" y="80" width="18" height="34" rx="6" fill="#f5f2ec" stroke="#b3a999" />
       <Box x={96} y={58} />
       {/* ปรับเองทีละส่วน */}
-      <path d="M204 14 H230 M204 23 H230 M204 32 H230" stroke="#77776f" strokeWidth="1.6" />
-      <g fill="#fafaf8" stroke="#77776f" strokeWidth="1.4"><circle cx="211" cy="14" r="3" /><circle cx="224" cy="23" r="3" /><circle cx="215" cy="32" r="3" /></g>
+      <path d="M204 14 H230 M204 23 H230 M204 32 H230" stroke={INK} strokeWidth="1.6" />
+      <g fill={PAPER} stroke={INK} strokeWidth="1.4"><circle cx="211" cy="14" r="3" /><circle cx="224" cy="23" r="3" /><circle cx="215" cy="32" r="3" /></g>
     </>}
     {id === 'creative' && <>
       <rect width="240" height="150" fill="#f6d9cf" />
@@ -147,8 +148,8 @@ function ShotTypePreview({ id }: { id: ShotType }) {
       <rect y="104" width="240" height="46" fill="#e9b39f" />
       <path d="M92 104 V138 H148 V104" fill="#f8efe9" stroke="#c99683" />
       <ellipse cx="120" cy="104" rx="28" ry="5" fill="#fff6f1" stroke="#c99683" />
-      <rect x="98" y="53" width="44" height="49" rx="5" fill="#fafaf8" stroke="#77776f" strokeWidth="1.2" />
-      <path d="M106 62 H134 M106 69 H124" stroke="#b8b8ae" strokeWidth="2" />
+      <rect x="98" y="53" width="44" height="49" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+      <path d="M106 62 H134 M106 69 H124" stroke={LABEL} strokeWidth="2" />
       {/* AI คิดคอนเซปต์ + โทนสีที่จับคู่ */}
       <path d="m208 12 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z M224 36 l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill="#fff" />
       <g stroke="#fff" strokeWidth="1.5"><circle cx="18" cy="134" r="6" fill="#ee9f86" /><circle cx="33" cy="134" r="6" fill="#f8efe9" /><circle cx="48" cy="134" r="6" fill="#7d8fb3" /></g>
@@ -158,22 +159,22 @@ function ShotTypePreview({ id }: { id: ShotType }) {
       <Box x={75} y={66} w={30} h={31} label={false} />
       <Box x={143} y={66} w={14} h={31} label={false} />
       <ellipse cx="210" cy="105" rx="19" ry="6" fill="#000" opacity=".1" />
-      <path d="M197 66 H217 L225 61 V92 L217 97 H197Z" fill="#fafaf8" stroke="#77776f" strokeWidth="1.2" />
-      <path d="M217 66 V97" stroke="#77776f" strokeWidth="1.2" />
-      <g fill="#8a8a82" fontSize="11" textAnchor="middle"><text x="30" y="128">หน้า</text><text x="90" y="128">หลัง</text><text x="150" y="128">ข้าง</text><text x="210" y="128">45°</text></g>
+      <path d="M197 66 H217 L225 61 V92 L217 97 H197Z" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+      <path d="M217 66 V97" stroke={INK} strokeWidth="1.2" />
+      <g fill={ASH} fontSize="11" textAnchor="middle"><text x="30" y="128">หน้า</text><text x="90" y="128">หลัง</text><text x="150" y="128">ข้าง</text><text x="210" y="128">45°</text></g>
     </>}
     {id === 'detail' && <>
-      <rect width="240" height="150" fill="#ecebe7" />
-      <rect x="-20" y="30" width="140" height="140" rx="10" fill="#fafaf8" stroke="#77776f" strokeWidth="1.2" />
-      <path d="M-20 44 H106 V170" fill="none" stroke="#b8b8ae" strokeWidth="1.5" strokeDasharray="5 4" />
-      <circle cx="98" cy="50" r="12" fill="none" stroke="#77776f" strokeDasharray="3 3" />
-      <path d="M195 94 L222 121" stroke="#77776f" strokeWidth="7" strokeLinecap="round" />
-      <circle cx="168" cy="66" r="38" fill="#fafaf8" stroke="#77776f" strokeWidth="2" />
-      <path d="M134 58 H202 M136 80 H200" stroke="#b8b8ae" strokeWidth="3" strokeDasharray="9 6" />
+      <rect width="240" height="150" fill={STUDIO} />
+      <rect x="-20" y="30" width="140" height="140" rx="10" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+      <path d="M-20 44 H106 V170" fill="none" stroke={LABEL} strokeWidth="1.5" strokeDasharray="5 4" />
+      <circle cx="98" cy="50" r="12" fill="none" stroke={INK} strokeDasharray="3 3" />
+      <path d="M195 94 L222 121" stroke={INK} strokeWidth="7" strokeLinecap="round" />
+      <circle cx="168" cy="66" r="38" fill={PAPER} stroke={INK} strokeWidth="2" />
+      <path d="M134 58 H202 M136 80 H200" stroke={LABEL} strokeWidth="3" strokeDasharray="9 6" />
     </>}
     {id === 'scale' && <>{studio}
       <Box x={92} y={48} w={56} h={57} />
-      <path d="M164 48 V105 M159 48 H169 M159 105 H169" stroke="#77776f" strokeWidth="1.4" />
+      <path d="M164 48 V105 M159 48 H169 M159 105 H169" stroke={INK} strokeWidth="1.4" />
       <rect x="30" y="122" width="180" height="12" rx="2" fill="#efe3c4" stroke="#b3a999" />
       <path d={Array.from({ length: 17 }, (_, i) => `M${40 + i * 10} 122 v${i % 5 ? 4 : 7}`).join(' ')} stroke="#9b8f78" />
     </>}
@@ -182,9 +183,9 @@ function ShotTypePreview({ id }: { id: ShotType }) {
 
 // มุมกล้อง / ระยะ: วาดภาพที่กล้องเห็นในแต่ละตัวเลือก แบบเดียวกับ ShotTypePreview (ฉากสตูดิโอ + สินค้ากล่องมีฉลาก)
 // แทนแผนผังมองจากด้านบนแบบเดิม (ผู้ใช้ขอ 28 ต.ค.: อยากได้ภาพทุกตัวเลือกเหมือนขั้นประเภทภาพ)
-const INK = '#77776f', PAPER = '#fafaf8', LABEL = '#b8b8ae', SIDE = '#e7e6df', TOPFACE = '#f1f0ea';
+const SIDE = CLOTH, TOPFACE = '#f2eee7', ASH = '#8a8478';
 const Studio = ({ horizon = 95 }: { horizon?: number }) => <>
-  <rect width="240" height="150" fill="#f3f3f0" />
+  <rect width="240" height="150" fill={WALL} />
   <path d={`M0 ${horizon} Q120 ${horizon - 9} 240 ${horizon} V150 H0Z`} fill="#000" opacity=".035" />
 </>;
 const Shadow = ({ cx, cy, rx }: { cx: number; cy: number; rx: number }) => <ellipse cx={cx} cy={cy} rx={rx} ry="6" fill="#000" opacity=".1" />;
@@ -201,12 +202,12 @@ function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
         <rect x={x} y={y} width={size} height={h} rx={size / 10} fill={PAPER} stroke={INK} strokeWidth="1.2" />
         <path d={`M${x + size * 0.17} ${y + h * 0.18} H${x + size * 0.83} M${x + size * 0.17} ${y + h * 0.31} H${x + size * 0.6}`} stroke={LABEL} strokeWidth={Math.max(2, size / 24)} /></>;
     } else {
-      art = <><rect width="240" height="150" fill="#ecebe7" />
+      art = <><rect width="240" height="150" fill={STUDIO} />
         <rect x="-20" y="18" width="230" height="160" rx="16" fill={PAPER} stroke={INK} strokeWidth="1.4" />
         <path d="M-20 40 H186 V178" fill="none" stroke={LABEL} strokeWidth="2.2" strokeDasharray="7 5" />
         <path d="M30 70 H150" stroke={INK} strokeWidth="5" strokeLinecap="round" />
         <path d="M34 66 v8 M44 66 v8 M54 66 v8 M64 66 v8 M74 66 v8 M84 66 v8 M94 66 v8 M104 66 v8 M114 66 v8 M124 66 v8 M134 66 v8 M144 66 v8" stroke={INK} strokeWidth="1.5" />
-        <rect x="150" y="62" width="14" height="22" rx="4" fill="#d8d6cc" stroke={INK} />
+        <rect x="150" y="62" width="14" height="22" rx="4" fill={SHADE} stroke={INK} />
         <circle cx="70" cy="114" r="16" fill="none" stroke={INK} strokeWidth="4" /></>;
     }
   } else {
@@ -232,14 +233,14 @@ function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
           <rect x="96" y="66" width="48" height="44" rx="3" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={66} w={48} /></>;
         break;
       case 'top': // มองตรงลงมา: พื้นเต็มภาพ สินค้าวางนอน
-        art = <><rect width="240" height="150" fill="#eeede8" />
+        art = <><rect width="240" height="150" fill={STUDIO} />
           <path d="M0 30 Q120 22 240 34 M0 120 Q120 112 240 126" stroke="#000" opacity=".04" strokeWidth="6" fill="none" />
           <rect x="89" y="40" width="70" height="74" rx="8" fill="#000" opacity=".08" />
           <rect x="85" y="35" width="70" height="74" rx="8" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={85} y={40} w={70} /></>;
         break;
       case 'bottom': // ด้านล่าง: เห็นฐานสินค้า (ปุ่มรองฐาน)
         art = <><Studio /><Shadow cx={120} cy={116} rx={40} />
-          <rect x="90" y="50" width="60" height="58" rx="10" fill="#ecebe5" stroke={INK} strokeWidth="1.2" />
+          <rect x="90" y="50" width="60" height="58" rx="10" fill={STUDIO} stroke={INK} strokeWidth="1.2" />
           <rect x="102" y="62" width="36" height="34" rx="6" fill="none" stroke={LABEL} strokeWidth="1.5" strokeDasharray="4 3" />
           <g fill={INK}><circle cx="98" cy="58" r="2.5" /><circle cx="142" cy="58" r="2.5" /><circle cx="98" cy="100" r="2.5" /><circle cx="142" cy="100" r="2.5" /></g></>;
         break;
@@ -696,7 +697,7 @@ export default function Packshot() {
 
   const cur = STEPS[step];
   const { chosen, mark } = useChosenSteps(cur.key);
-  // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปสีชมพู) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
+  // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปพื้นหินขอบหมึก) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
   const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
     : cur.key === 'shot' ? scaleReady && detailReady : true);
   const nextStep = STEPS.findIndex((s, i) => i > step && used(s.key)); // ถัดไป: ข้ามขั้นที่ประเภทภาพนี้ไม่ใช้

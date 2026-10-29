@@ -15,7 +15,7 @@ import {
   IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { SKIN_MODEL } from '@/lib/skin';
@@ -50,6 +50,10 @@ const REAL_FACE = false;
 // ตัวเลือกสีหน้าในขั้นท่าโพสต์ (FACE_MOODS) — ซ่อนไว้ก่อน (29 ต.ค. ผู้ใช้ขอ): สีหน้าเป็น "อัตโนมัติ" เสมอ
 // (ตามรูปท่า / ท่าสำเร็จรูป) โค้ดและ prompt ยังอยู่ครบ เปิดใหม่ = true
 const MOOD_PICKER = false;
+
+// ลอกทั้งช็อต / ลอกทั้งช็อต + ฉาก (POSE_MODES shot, shot-scene) — ซ่อนไว้ (29 ต.ค. ผู้ใช้ขอ): รูปท่าโพสต์ใช้แค่ท่าเสมอ ('pose')
+// ไม่มีปุ่มเลือกวิธีใช้รูปท่าและแสง (LIGHT_SOURCES) ขั้นที่ไม่ใช้จึงไม่ถูกทำเป็นสีเทาอีก · โค้ด API และ prompt ยังอยู่ครบ เปิดใหม่ = true
+const COPY_SHOT = false;
 
 // การ์ด "ตามสไตล์" ในขั้นมุมมอง: วาดระยะ/มุมที่สไตล์นั้นใช้ (เดาจากชื่อไทยของสไตล์ ใช้แค่รูปประกอบ ไม่ได้ส่งให้ AI)
 const presetFraming = (p: Preset) => (p.fullBody ? 'full' : 'waist');
@@ -605,14 +609,14 @@ export default function TryOn() {
 
   const cur = STEPS[step];
   const { chosen, mark } = useChosenSteps(cur.key);
-  const stepReady = chosen.has(cur.key) && (cur.key !== 'model' || Boolean(pick.model)); // ปุ่มถัดไปสีชมพู = ผู้ใช้เลือกในขั้นนี้แล้ว
+  const stepReady = chosen.has(cur.key) && (cur.key !== 'model' || Boolean(pick.model)); // ปุ่มถัดไปพื้นหินขอบหมึก = ผู้ใช้เลือกในขั้นนี้แล้ว
   const retouched = tone !== null || Object.values(amounts).some((v) => v > 0);
   const displaySrc = shown?.src ?? model.src!;
   const skinOriginal = shown?.refinedFrom && results.some((r) => r.src === shown.refinedFrom) ? shown.refinedFrom : null;
   const canRefineSkin = Boolean(shown && aiModels?.some((m) => m.id === SKIN_MODEL));
   const compare = cur.key === 'retouch' && !zoomed; // ขั้นแต่งรูป: ก่อน/หลังแต่งคู่กัน (ซูมหน้าอยู่ = ดูแค่หลังแต่ง)
 
-  // ขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดแดงบนเมนูซ้าย)
+  // ขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดสีเหลืองหม่นบนเมนูซ้าย)
   const stepDone: Record<StepKey, boolean> = {
     model: true,
     outfit: Boolean(outfit),
@@ -655,7 +659,7 @@ export default function TryOn() {
         <IconSearch />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${cur.label}...`} />
       </label>
-      <ChipGroup options={filters} value={filter} onChange={setFilter} />
+      {filters.length > 0 && <ChipGroup options={filters} value={filter} onChange={setFilter} />}
       {note && <p className="note">{note}</p>}
       <div className={'grid ' + kind + (muted ? ' muted' : '')}>
         {showSpecial && special}
@@ -714,9 +718,11 @@ export default function TryOn() {
       </Section>}
       <Section title="ใช้รูปท่าของฉัน" note="อัปโหลด หรือเลือกจากตัวอย่าง">
         {/* วิธีใช้รูปท่าอยู่เหนือรายการรูปเสมอ (ยังไม่เลือกรูป = กดไม่ได้) รายการรูปไม่กระโดดตอนกดเลือก */}
-        <p className="sub">ใช้รูปท่าแบบไหน</p>
-        <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => setPoseMode(v as PoseMode)} />
-        <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
+        {COPY_SHOT ? <>
+          <p className="sub">ใช้รูปท่าแบบไหน</p>
+          <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => setPoseMode(v as PoseMode)} />
+          <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
+        </> : <p className="muted-text">{POSE_MODES[0].hint}</p>}
         {shot && <>
           <p className="sub">แสง</p>
           <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
@@ -728,6 +734,7 @@ export default function TryOn() {
   } else if (cur.key === 'scene') {
     panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
       special: <Card item={{ name: 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
+      filters: [], // ไม่มีฉากตัวอย่างแล้ว (SCENES ว่าง) ทุกใบคือรูปที่อัปโหลดเอง ไม่ต้องมีชิปกรอง
       note: shotScene && 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้',
       muted: shotScene,
     });
@@ -855,7 +862,7 @@ export default function TryOn() {
           {SLIDERS.map(([id, label]) => (
             <div className="slider" key={id}>
               <label htmlFor={id}>{label} <output>{amounts[id]}</output></label>
-              <input type="range" id={id} min={0} max={100} value={amounts[id]}
+              <input type="range" id={id} min={0} max={100} value={amounts[id]} style={rangeFill(amounts[id], 0, 100)}
                 onChange={(e) => setAmounts((a) => ({ ...a, [id]: +e.target.value }))} />
             </div>
           ))}
@@ -880,14 +887,14 @@ export default function TryOn() {
           {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
             <div className="slider" key={id}>
               <label htmlFor={id}>{label} <output>{film[id]}</output></label>
-              <input type="range" id={id} min={0} max={100} value={film[id]}
+              <input type="range" id={id} min={0} max={100} value={film[id]} style={rangeFill(film[id], 0, 100)}
                 onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
             </div>
           ))}
           {finishLook === 'phone' && (
             <div className="slider">
               <label htmlFor="phone">ความแรงลุคมือถือ <output>{film.phone}</output></label>
-              <input type="range" id="phone" min={0} max={100} value={film.phone} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
+              <input type="range" id="phone" min={0} max={100} value={film.phone} style={rangeFill(film.phone, 0, 100)} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
             </div>
           )}
         </div>

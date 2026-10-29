@@ -55,7 +55,7 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       </button>)}
     </div>
 
-    {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องแดง): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
+    {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องสี): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
     {selected && <section className="current-product" aria-labelledby="product-detail-title">
       <p className="sub" id="product-detail-title">รายละเอียดสินค้า</p>
       {editing === null ? <div className="current-product-name">

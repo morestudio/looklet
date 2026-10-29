@@ -8,8 +8,8 @@
 //   ท่าโพสต์ = คนเดียวเต็มตัว เห็นแขนขาชัด ไม่มีตัวอักษร/ไอคอนแอปทับ (แคปจากมือถือให้ตัดขอบแอปออกก่อน)
 //   ฉาก    = ฉากว่างไม่มีคน แนวตั้ง เห็นพื้นตรงที่จะให้นางแบบยืน
 
-// รายการให้กดเลือก: src = รูป, emoji/prompt = ฉากที่ไม่มีรูป, type = ประเภทของเสริม, uploaded = เพิ่มเองในหน้าเว็บ (ลบได้)
-export type Item = { name: string; src?: string; emoji?: string; prompt?: string; type?: string; uploaded?: boolean };
+// รายการให้กดเลือก: src = รูป, prompt = ฉากที่ไม่มีรูป (คำบรรยาย), type = ประเภทของเสริม, uploaded = เพิ่มเองในหน้าเว็บ (ลบได้)
+export type Item = { name: string; src?: string; prompt?: string; type?: string; uploaded?: boolean };
 export type AccessoryType = { id: string; name: string; prompt: string; show: string; face?: boolean };
 export type AccessoryInfo = { name: string; type: string }; // ชื่อ + ประเภท (id) ของของเสริมหนึ่งชิ้น
 
@@ -205,16 +205,9 @@ export const PROPS: Choice[] = [
 
 // สัดส่วนภาพ (ไม่เลือก = ตามรูปนางแบบ) — OpenAI ทำได้แค่ 2:3 / 3:2 / 1:1 แนวตั้งทุกแบบจะได้ 2:3
 
-// ฉาก: มี src = ส่งรูปฉากให้ AI ดู, มี prompt = บอก AI เป็นคำบรรยาย (ภาษาอังกฤษ AI เข้าใจแม่นกว่า)
-export const SCENES: Item[] = [
-  { name: 'ถนนยุโรป', src: img('ถนนยุโรปเงียบสงบสู่โดมคลาสสิก.png') },
-  { name: 'สตูดิโอพื้นขาว', emoji: '📸', prompt: 'a photo studio with an off-white seamless paper backdrop curving into the floor, light falling off slightly toward the edges, and a soft shadow on the floor under the model' },
-  { name: 'ชายหาด', emoji: '🏖️', prompt: 'a sunny tropical beach with white sand and turquoise sea at golden hour' },
-  { name: 'ถนนกลางคืน', emoji: '🌃', prompt: 'a stylish city street at night with neon signs and wet reflective pavement' },
-  { name: 'คาเฟ่', emoji: '☕', prompt: 'a cozy minimalist cafe interior with warm natural daylight' },
-  { name: 'สวนดอกไม้', emoji: '🌸', prompt: 'a blooming flower garden in spring with soft sunlight' },
-  { name: 'รันเวย์', emoji: '✨', prompt: 'a high-end fashion show runway with spotlights and an audience' },
-];
+// ฉาก: ไม่มีฉากสำเร็จรูปแล้ว (ผู้ใช้ให้เอาออกทั้งหมด รวมถนนยุโรป 29 ต.ค.) — ใช้ "ฉากเดิม" หรือรูปฉากที่อัปโหลดเอง
+// รายการยังรับฉากแบบคำบรรยายได้: มี src = ส่งรูปฉากให้ AI ดู, มี prompt = บอก AI เป็นคำบรรยาย (ภาษาอังกฤษ AI เข้าใจแม่นกว่า)
+export const SCENES: Item[] = [];
 
 // ---------- สไตล์ถ่ายภาพ (preset): แสง + เลนส์ + มุมกล้อง + ระยะ + โทนสี ที่เข้ากันเป็นชุดเดียว ----------
 // แต่ละส่วนมี label = ที่โชว์ในหน้าเว็บ, prompt = ที่ส่งให้ AI จริง (ภาษาอังกฤษ) -> หน้าเว็บโชว์ตรงกับที่ส่งเสมอ
