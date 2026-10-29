@@ -1,4 +1,4 @@
-// catalog.ts — รายการให้เลือกใน Looklet
+// catalog.ts — รายการให้เลือกใน SnapAds
 // เพิ่มรูปใหม่: ใส่ไฟล์ในโฟลเดอร์ public/images แล้วเพิ่มบรรทัดตรงนี้ (หรือกด "+ เพิ่มรูป" ในหน้าเว็บ)
 //
 // รูปที่ได้ผลดีที่สุด:
@@ -232,7 +232,7 @@ export const SCENES: Item[] = [
 // แสง: บอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน" ดูจากรูปตัวอย่างของ notamodel.studio
 // framing ใส่ในบรรทัดแรกของคำสั่ง (ไม่งั้น AI ยึดระยะจากรูปนางแบบ), fullBody = เห็นทั้งตัว (lib/prompts.ts สั่งเพิ่มท้ายคำสั่ง)
 export type PresetPart = { label: string; prompt: string };
-// scene = คำสั่งเรื่องฉากเพิ่ม (มีเฉพาะบางสไตล์ เช่น Looklet signature ทำฉากให้มินิมอล) ต่อท้ายคำสั่งสไตล์ ไม่ใช้ตอนลอกทั้งช็อต
+// scene = คำสั่งเรื่องฉากเพิ่ม (มีเฉพาะบางสไตล์ เช่น SnapAds signature ทำฉากให้มินิมอล) ต่อท้ายคำสั่งสไตล์ ไม่ใช้ตอนลอกทั้งช็อต
 export type Preset = {
   id: string; name: string; hint: string; fullBody: boolean;
   light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart; scene?: PresetPart;
@@ -310,7 +310,7 @@ export const ANGLES: AngleChoice[] = [
     + 'we look down on her, much more of the floor around her is visible, and her head looks slightly larger than her feet' },
 ];
 
-// ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — Looklet signature ใช้ชุดเดียวกัน
+// ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — SnapAds signature ใช้ชุดเดียวกัน
 const SOFTBOX_LIGHT: PresetPart = { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
   'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
   + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
@@ -322,10 +322,10 @@ const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', 
 const NEUTRAL_COLOR: PresetPart = { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' };
 
 export const PRESETS: Preset[] = [
-  // ฟีลประจำของ Looklet (ค่าเริ่มต้น = ตัวแรก): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
+  // ฟีลประจำของ SnapAds (ค่าเริ่มต้น = ตัวแรก): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
   // แสง/เลนส์/โทนสีของ Studio lookbook ให้สีกลางๆ อมเย็นนิดๆ ตรงรูปตัวอย่างโดยไม่ต้องเกรดสีเพิ่ม (แสงอุ่นแบบเดิมออกมาเหลือง/สว่างเกิน)
   // + ระยะ 3/4 ของภาพ มีขอบผนังด้านหน้า + ฉากมินิมอล (ฉากที่รกจะถูกเก็บให้เรียบ เห็นผลชัดกับฉากถนน/ร้าน)
-  { id: 'signature', name: 'Looklet signature', hint: 'ฟีลของ Looklet: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
+  { id: 'signature', name: 'SnapAds signature', hint: 'ฟีลของ SnapAds: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
     light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก เฉียงข้างนิดๆ', prompt: 'camera at chest height, level, seen from slightly to the side' },
     framing: { label: 'เต็มตัว ราว 60% ของภาพ มีขอบผนังด้านหน้า', prompt: 'framed full body from head to feet, the person about 60 percent '
@@ -333,6 +333,7 @@ export const PRESETS: Preset[] = [
       + 'one side and the space continuing behind' },
     color: NEUTRAL_COLOR,
     scene: { label: 'มินิมอลมาก ผนังขาวครีม พื้นไม้อ่อน/หิน ไม่มีของรก ชุดเป็นสีหลักของภาพ', prompt:
+      // คำว่า Looklet ในคำสั่ง AI คงไว้ตามเดิม (เปลี่ยนชื่อแบรนด์ 29 ต.ค. แค่ในหน้าเว็บ ผลรูปจะได้ไม่เปลี่ยน)
       'Looklet signature setting, super minimal: keep only the essence of the location and show it as an almost empty, calm space. '
       + 'The frame contains only clean, plain surfaces (smooth warm off-white plaster walls, a pale stone or light oak floor, at most one '
       + 'simple window or doorway) and at most one or two simple pieces of furniture, in warm neutral tones (cream, beige, light oak, '

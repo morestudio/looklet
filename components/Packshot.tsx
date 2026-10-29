@@ -50,7 +50,7 @@ type Stored = ProductPhoto & { src: string; name?: string; caption?: string; typ
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
-const downloadName = (ext: string) => `looklet-product-${Date.now()}.${ext}`; // ชื่อไฟล์ดาวน์โหลด (เรียกตอนกดเท่านั้น)
+const downloadName = (ext: string) => `snapads-product-${Date.now()}.${ext}`; // ชื่อไฟล์ดาวน์โหลด (เรียกตอนกดเท่านั้น)
 
 // ช็อตต้นแบบ (ปิด 27 ต.ค.): ซ้ำกับภาพแรงบันดาลใจของ Creative Packshot และ "ใช้รูปฉากของฉัน" ในขั้นฉากและพื้น
 // แถมลอกทั้งช็อตแล้วขั้นอื่นใช้ไม่ได้ครึ่งเมนู · เปิดคืน = true (โค้ด UI/API ยังอยู่ครบ)
@@ -978,7 +978,7 @@ export default function Packshot() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">Looklet <span className="beta">Beta</span></div>
+        <div className="brand">SnapAds <span className="beta">Beta</span></div>
         <PageSwitch current="product" />
         <div className="status" role="status" title={status}>
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}

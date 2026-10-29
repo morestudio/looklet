@@ -61,7 +61,7 @@ button, select, input, textarea { font-family: inherit; }
 /* ---------- โครงหน้า ---------- */
 .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .topbar { flex: 0 0 var(--topbar-height); display: flex; align-items: center; gap: var(--space-16); padding: 0 var(--space-20); background: var(--canvas); border-bottom: 1px solid var(--hairline-soft); }
-/* โลโก้ = คำว่า Looklet ตัว serif สีหมึก (จนกว่าจะมีชื่อ/โลโก้จริง) + ป้าย Beta สีเหลืองหม่น */
+/* โลโก้ = คำว่า SnapAds ตัว serif สีหมึก (เดิม Looklet เปลี่ยนชื่อ 29 ต.ค.) (จนกว่าจะมีชื่อ/โลโก้จริง) + ป้าย Beta สีเหลืองหม่น */
 .brand { flex: 0 0 auto; color: var(--ink); font-family: var(--font-display); font-size: 24px; font-weight: 400; line-height: 1.3; }
 .beta { margin-left: var(--space-4); padding: var(--space-2) var(--space-8); border-radius: var(--r-full); background: var(--accent-soft); color: var(--accent-text); font-family: var(--font-sans); font-size: var(--text-2xs); font-weight: 600; vertical-align: 3px; }
 /* สลับหน้า นางแบบ / สินค้า (components/ui.tsx PageSwitch) · หน้าที่อยู่ = แท็บขาวอุ่นมีเงาบางๆ บนรางสีหิน (design system) */

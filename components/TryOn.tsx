@@ -1,5 +1,5 @@
 'use client';
-// Looklet: เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
+// SnapAds (เดิมชื่อ Looklet): เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
@@ -54,6 +54,9 @@ const MOOD_PICKER = false;
 // ลอกทั้งช็อต / ลอกทั้งช็อต + ฉาก (POSE_MODES shot, shot-scene) — ซ่อนไว้ (29 ต.ค. ผู้ใช้ขอ): รูปท่าโพสต์ใช้แค่ท่าเสมอ ('pose')
 // ไม่มีปุ่มเลือกวิธีใช้รูปท่าและแสง (LIGHT_SOURCES) ขั้นที่ไม่ใช้จึงไม่ถูกทำเป็นสีเทาอีก · โค้ด API และ prompt ยังอยู่ครบ เปิดใหม่ = true
 const COPY_SHOT = false;
+
+// ชุดภาพ 4 มุม (SET_SHOTS) — ปุ่มเป็นสีเทากดไม่ได้ไว้ก่อน บอก "เร็วๆ นี้" (29 ต.ค. ผู้ใช้ขอ) · โค้ดสร้างชุดภาพยังอยู่ครบ เปิดใหม่ = true
+const SET_SHOOT = false;
 
 // การ์ด "ตามสไตล์" ในขั้นมุมมอง: วาดระยะ/มุมที่สไตล์นั้นใช้ (เดาจากชื่อไทยของสไตล์ ใช้แค่รูปประกอบ ไม่ได้ส่งให้ AI)
 const presetFraming = (p: Preset) => (p.fullBody ? 'full' : 'waist');
@@ -593,7 +596,7 @@ export default function TryOn() {
     try {
       const cv = await currentCanvas();
       if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
-      await saveImageFile(await outputBlob(cv), `looklet-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
+      await saveImageFile(await outputBlob(cv), `snapads-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
       setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
@@ -811,9 +814,9 @@ export default function TryOn() {
       {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป): 2 ปุ่มคู่กัน */}
       <div className="gen-row">
         <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้าง...' : 'สร้างรูป'}</button>
-        <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
-          title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
-          ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
+        <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+          title={SET_SHOOT ? `${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า` : 'ยังไม่เปิดให้ใช้'}>
+          ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOOT ? `ค่า AI ${SET_SHOTS.length} เท่า` : 'เร็วๆ นี้'}</small>
         </button>
       </div>
     </>;
@@ -935,7 +938,7 @@ export default function TryOn() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">Looklet <span className="beta">Beta</span></div>
+        <div className="brand">SnapAds <span className="beta">Beta</span></div>
         <PageSwitch current="model" />
         <div className="status" role="status" title={status}>
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}

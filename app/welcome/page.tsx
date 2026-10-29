@@ -1,7 +1,7 @@
 import { Charm, Great_Vibes } from 'next/font/google';
 import Welcome from '@/components/Welcome';
 
-export const metadata = { title: 'Welcome — Looklet' };
+export const metadata = { title: 'Welcome — SnapAds' };
 
 // ลายมือใช้เฉพาะหน้าต้อนรับ (ทั้งเว็บยังใช้ Inter + Noto Sans Thai ตาม layout)
 // Welcome = ตัวเขียนลายมือแบบ calligraphy · ชื่อลูกค้า = Charm (ลายปากกาไทย มีตัวละตินด้วย ชื่อร้านมักเป็นภาษาไทย)

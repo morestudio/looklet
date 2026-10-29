@@ -53,7 +53,7 @@ export default function AdminPage() {
 
   return <div className="admin-page">
     <header className="topbar">
-      <div className="brand">Looklet <span className="beta">Beta</span></div>
+      <div className="brand">SnapAds <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{status}</div>
       <div className="top-actions"><SignOutButton /></div>
