@@ -15,6 +15,8 @@ export const supabaseEnabled = Boolean(URL && KEY);
 
 let client: SupabaseClient | undefined;
 const sb = () => (client ??= createClient(URL!, KEY!, { auth: { persistSession: false, autoRefreshToken: false } }));
+// ตัวเดียวกันใช้กับตาราง invites / usage และจัดการบัญชีลูกค้า (lib/usage.ts, app/api/admin)
+export const serviceClient = sb;
 
 export type Row = { path: string; meta: Record<string, unknown>; created: string };
 
@@ -38,16 +40,22 @@ export async function sbList(area: string, kind: string | null): Promise<Row[]> 
 }
 
 // เช็กแถวในตารางก่อน: CDN ของ Supabase เก็บไฟล์ไว้ 1 ชม. ลบแล้วยังโหลดได้ (แผนฟรีไม่ล้าง cache ตอนลบ) — ไม่มีแถว = ลบแล้ว
-export async function sbRead(key: string) {
-  const row = await sb().from('images').select('path').eq('path', key).maybeSingle();
-  if (!row.data) return null;
+// คืน meta ด้วย ให้ lib/storage.ts เช็กว่าบัญชีที่เรียกเห็นรูปนี้ได้ไหม (meta.owner)
+export async function sbRead(key: string, allowed: (meta: Record<string, unknown>) => boolean) {
+  const row = await sb().from('images').select('meta').eq('path', key).maybeSingle();
+  if (!row.data || !allowed(row.data.meta)) return null;
   const { data, error } = await sb().storage.from(BUCKET).download(key);
   return error || !data ? null : Buffer.from(await data.arrayBuffer());
 }
 
-export async function sbUpdateMeta(key: string, meta: Record<string, string>) {
+export async function sbMeta(key: string): Promise<Record<string, unknown> | null> {
   const { data } = await sb().from('images').select('meta').eq('path', key).maybeSingle();
-  if (!data) return false;
+  return data ? data.meta : null;
+}
+
+export async function sbUpdateMeta(key: string, meta: Record<string, string>, allowed: (meta: Record<string, unknown>) => boolean) {
+  const { data } = await sb().from('images').select('meta').eq('path', key).maybeSingle();
+  if (!data || !allowed(data.meta)) return false;
   const { error } = await sb().from('images').update({ meta: { ...data.meta, ...meta } }).eq('path', key);
   if (error) throw new Error('แก้ข้อมูลรูปไม่สำเร็จ: ' + error.message);
   return true;

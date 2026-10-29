@@ -1,14 +1,21 @@
 // browser.ts — ตัวช่วยที่ใช้ได้เฉพาะใน browser (รูป, canvas, เรียก API ของเรา)
 import type { AccessoryInfo } from './catalog';
+import { applyFilm, filmOn, type Film } from './film';
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
+export const USAGE_EVENT = 'looklet:usage';
+const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];
+
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ตั้งใจโหลดทั้งหน้า
   if (res.status === 401) window.location.assign('/login');
-  const out = await res.json();
-  if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
+  // error ที่ไม่ได้มาจาก route ของเรา (เช่น Vercel ตอบ 413 ไฟล์ใหญ่เกิน / 504 หมดเวลา) ไม่ใช่ JSON -> บอกเป็นข้อความที่อ่านรู้เรื่อง
+  const out = await res.json().catch(() => ({}));
+  // สร้างรูปแล้ว (สำเร็จหรือพัง) -> หัวเว็บอัปเดตจำนวนรูปที่เหลือของลูกค้า (useMe ใน components/ui.tsx)
+  if (USAGE_ROUTES.includes(path)) window.dispatchEvent(new Event(USAGE_EVENT));
+  if (!res.ok) throw new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`));
   return out;
 }
 
@@ -42,8 +49,23 @@ export async function jpegBase64(src: string, maxSide = 1024) {
 
 // รูปที่ "+ เพิ่มรูป": เล็กพอ -> ส่งไฟล์เดิม, ใหญ่ (เช่นรูปจากมือถือ) -> ย่อด้านยาวเหลือ 2048 ก่อน
 // Vercel รับ request ได้ไม่เกิน 4.5 MB (base64 ใหญ่กว่าไฟล์ ~1/3) — PNG ใช้ WebP เก็บพื้นใสไว้ browser ทำ WebP ไม่ได้ค่อยใช้ JPEG
-export async function uploadImage(file: File, maxBytes = 2_500_000, maxSide = 2048) {
-  if (file.size <= maxBytes) return { data: await fileToBase64(file), mime: file.type };
+// ชนิดรูปที่เก็บได้ (ตรงกับ EXT ใน lib/storage.ts) — ชนิดอื่นแปลงเป็น JPEG/WebP ก่อนส่ง
+const STORABLE = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// รูปจาก iPhone เป็น HEIC: Chrome/Edge/Firefox เปิดไม่ได้ (Safari ได้) -> แปลงเป็น JPEG ในเครื่องก่อนทำอย่างอื่น
+// ตัวแปลง (heic-to, libheif) ใหญ่ ~3 MB -> โหลดเฉพาะตอนเจอไฟล์ HEIC
+export const isHeic = (f: File) => /^image\/hei[cf]/i.test(f.type) || /\.(heic|heif)$/i.test(f.name);
+export async function toWebImage(file: File): Promise<File> {
+  if (!isHeic(file)) return file;
+  const { heicTo } = await import('heic-to');
+  const jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
+  return new File([jpeg], file.name.replace(/\.(heic|heif)$/i, '') + '.jpg', { type: 'image/jpeg' });
+}
+
+// ไฟล์เกิน 1.5 MB ย่อเหลือ 2048 ก่อนส่ง: เดิม 2.5 MB รูปมือถือส่ง base64 ~3.3 MB ผ่านเน็ตมือถือนานจนผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
+// AI ใช้แค่ 1024 อยู่แล้ว 2048 พอสำหรับเก็บ
+export async function uploadImage(file: File, maxBytes = 1_500_000, maxSide = 2048) {
+  if (file.size <= maxBytes && STORABLE.includes(file.type)) return { data: await fileToBase64(file), mime: file.type };
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImg(url);
@@ -61,27 +83,78 @@ export async function uploadImage(file: File, maxBytes = 2_500_000, maxSide = 20
   }
 }
 
-// สัดส่วนรูปที่แต่ละเจ้ารับได้ เลือกอันที่ใกล้รูปนางแบบที่สุด
-export function geminiAspect(w: number, h: number) {
-  const diff = (a: string) => {
-    const [x, y] = a.split(':').map(Number);
-    return Math.abs(Math.log(x / y / (w / h)));
-  };
-  return ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9'].reduce((best, a) => (diff(a) < diff(best) ? a : best));
+// เปิดรูปนี้ได้ไหม (ชนิดไฟล์ที่ browser ไม่รู้จัก -> การ์ดจะเป็นรูปเสีย ดูเหมือนรูปหาย)
+export async function canOpenImage(file: File) {
+  const url = URL.createObjectURL(file);
+  try {
+    await loadImg(url);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
+
+// ---------- ดาวน์โหลดรูป ----------
+// browser ในแอป (LINE, IG, Facebook, TikTok) ดาวน์โหลดไฟล์ไม่ได้ ปุ่มกดแล้วเงียบ -> ให้กดค้างที่รูปบันทึกแทน
+export const inAppBrowser = () => /\bLine\/|FBAN|FBAV|Instagram|TikTok|musical_ly|KAKAOTALK/i.test(navigator.userAgent);
+
+// รูปเต็มขนาด + ลุคฟิล์ม/มือถือ (lib/film.ts) วาดจากไฟล์รูปเลย ใช้ตอนกล่องแต่งรูปยังไม่ได้วาดรูปนี้ (เช่น แต่งหน้าพังบน browser ที่ไม่มี WebAssembly)
+export async function finishedCanvas(src: string, film: Film) {
+  const img = await loadImg(src);
+  const cv = document.createElement('canvas');
+  cv.width = img.naturalWidth;
+  cv.height = img.naturalHeight;
+  const c = cv.getContext('2d')!;
+  c.drawImage(img, 0, 0);
+  if (filmOn(film)) c.putImageData(applyFilm(c.getImageData(0, 0, cv.width, cv.height), film), 0, 0);
+  return cv;
+}
+
+export const canvasJpeg = (cv: HTMLCanvasElement, quality = 0.92) => new Promise<Blob>((resolve, reject) =>
+  cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', quality));
+
+// มือถือ: เปิดหน้าแชร์ ("บันทึกรูปภาพ" ลงคลังรูป — iPhone ดาวน์โหลดไฟล์แล้วไปอยู่ในแอปไฟล์ หาไม่เจอ) · คอมพิวเตอร์: ดาวน์โหลดไฟล์
+// ลิงก์ต้องอยู่ในหน้าเว็บตอนกด และใช้ blob ไม่ใช้ data URL (บาง browser ไม่ดาวน์โหลด data URL หรือ a ที่ไม่ได้อยู่ในหน้า)
+export async function saveImageFile(blob: Blob, name: string): Promise<'shared' | 'downloaded' | 'cancelled'> {
+  const file = new File([blob], name, { type: blob.type });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return 'shared';
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return 'cancelled'; // ผู้ใช้ปิดหน้าแชร์เอง
+      // แชร์ไม่ได้ (เช่น หมดเวลากดของ browser) -> ดาวน์โหลดแทน
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return 'downloaded';
+}
+
+// ขนาด OpenAI ตามแนวรูป (ปรับผิว: ขอขนาดตามแนวรูปเดิม)
 export const openaiSize = (w: number, h: number) => (w / h < 0.85 ? '1024x1536' : w / h > 1.18 ? '1536x1024' : '1024x1024');
 
-// ให้ AI ดูรูปของเสริมว่าเป็นอะไร + ตั้งชื่อ — ดูไม่ออก/เรียกไม่ได้ = null (ให้ผู้ใช้เลือกเอง)
-export async function guessAccessory(src: string): Promise<AccessoryInfo | null> {
+// ให้ AI ดูรูปของเสริม/สินค้าว่าเป็นอะไร + ตั้งชื่อ — ดูไม่ออก/เรียกไม่ได้ = null (ให้ผู้ใช้เลือกเอง)
+async function guessItem(src: string, route: string): Promise<AccessoryInfo | null> {
   try {
     const { data } = await jpegBase64(src, 768); // ดูแค่ว่าเป็นอะไร ไม่ต้องละเอียด ส่งเล็กลง = เร็วขึ้น
-    const g = await api<{ type: string | null; name: string | null }>('/api/detect-accessory', { data });
+    const g = await api<{ type: string | null; name: string | null }>(route, { data });
     return g.type && g.name ? { type: g.type, name: g.name } : null;
   } catch (err) {
-    console.warn('AI ดูรูปของเสริมไม่สำเร็จ', err);
+    console.warn('AI ดูรูปไม่สำเร็จ', err);
     return null;
   }
 }
+export const guessAccessory = (src: string) => guessItem(src, '/api/detect-accessory');
+export const guessProduct = (src: string) => guessItem(src, '/api/detect-product'); // หน้าสินค้า: ประเภทใน PRODUCT_TYPES
 
 // ---------- เครื่องมือแต่งรูป (MediaPipe): โหลดครั้งเดียวต่อหน้า เฉพาะตอนจะใช้ หน้าเว็บจะได้เปิดเร็ว ----------
 

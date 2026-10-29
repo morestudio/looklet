@@ -85,6 +85,84 @@ export const POSES: Item[] = [
   { name: 'เซลฟี่กระจก ถือแก้วกาแฟ', src: '/images/poses/pose-20.jpg' },
 ];
 
+// ---------- ท่าสำเร็จรูป: ไม่ต้องมีรูปท่า ให้ AI ตัววางแผนท่า (planPose ใน lib/ai.ts) ดูฉาก + ชุด + ของเสริม แล้วคิดท่าที่เข้ากับฉากนั้น ----------
+// brief = โจทย์ที่ส่งให้ตัววางแผน (อังกฤษ) — ตัววางแผนเลือกเฟอร์นิเจอร์/ผนัง/บันไดจริงในฉากเอง แล้วเขียนท่าเป็นคำให้ AI สร้างรูป
+// ทดสอบ 20 ต.ค. (สบายๆ ตามฉาก ในฉากออฟฟิศ): ได้ท่านั่งเอนพิงม้านั่งจริง ยืดขามาทางกล้อง ดูไม่ได้โพส ต่างจากลอกท่าจากรูปที่ได้ท่านางแบบ
+// "AI เลือกให้" (id auto) = ตัววางแผนเลือกเองว่าแบบไหนเข้ากับฉากที่สุด
+// moments = จังหวะของท่านั้นหลายแบบ route สุ่มมา 1 แบบทุกครั้งที่สร้าง (pickMoment) — brief อย่างเดียว AI ตัววางแผนหยิบตัวอย่างแรกใน brief
+//   ไปใช้ซ้ำทุกรูป: 20 ต.ค. "ถ่ายเผลอ หัวเราะ" 3 รูปก้มหน้าทั้ง 3 ทัดผม 2 (brief เดิมยกตัวอย่าง "looking down, tucking her hair")
+//   brief เลยเขียนกว้างๆ ไม่ยกตัวอย่าง ท่าที่เจาะจงอยู่ใน moments แทน
+export type PosePreset = { id: string; name: string; hint: string; brief: string; moments: string[] };
+export const POSE_PRESETS: PosePreset[] = [
+  { id: 'relaxed', name: 'สบายๆ ตามฉาก', hint: 'ท่าผ่อนคลายแบบคนทั่วไป ใช้เฟอร์นิเจอร์ในฉาก',
+    brief: 'A relaxed, natural, unposed moment of a real person, using the real furniture and surfaces of the place: relaxed shoulders, '
+      + 'natural asymmetry, loose hands, a slight slouch is fine. Expression: a soft, genuine smile.',
+    moments: [
+      'leaning back into a seat or against a wall, one arm resting along the back or on the knee',
+      'sitting sideways with one leg pulled up, the body turned a little away from the camera and the face turned back to it',
+      'standing with the weight on one hip, hands resting loosely in pockets or holding one arm',
+      'perched on the edge of something with the elbows on the knees, leaning slightly forward',
+      'glancing back toward the camera after looking out of a window or off to the side',
+    ] },
+  { id: 'sit', name: 'นั่งชิล', hint: 'นั่งบนม้านั่ง เก้าอี้ บันได หรือขอบที่มีในฉาก',
+    brief: 'Sitting casually on something that is really in the location; if there is nothing to sit on, sit naturally on a step or the ground. '
+      + 'Expression: natural and easy.',
+    moments: [
+      'sitting back deep in the seat with the legs crossed at the knee',
+      'sitting near the edge with the knees together, feet apart and both hands resting on the seat edge',
+      'sitting sideways on the seat with one arm draped over the backrest',
+      'sitting with one knee pulled up and an arm resting on it',
+      'sitting low on steps or the ground with the legs stretched out and crossed at the ankles',
+    ] },
+  { id: 'lean', name: 'พิงผนัง / เสา', hint: 'พิงผนัง ขอบประตู เสา หรือราวที่มีในฉาก',
+    brief: 'Leaning casually against something that is really in the location (a wall, door frame, pillar, railing, counter or table), '
+      + 'weight on one leg. Expression: calm and confident.',
+    moments: [
+      'the back flat against the wall with one foot raised and resting flat against the wall behind her',
+      'one shoulder against the wall with the arms loosely crossed',
+      'leaning on a door frame or pillar with one hand raised and resting on it',
+      'the hip leaning against the edge of a table, counter or railing, body turned three-quarters to the camera',
+      'leaning back on both hands against a ledge or counter behind her',
+    ] },
+  { id: 'product', name: 'โชว์สินค้า', hint: 'ของเสริม (หรือจุดเด่นของชุด) เป็นพระเอกของรูป',
+    brief: 'Showing the product naturally so it is the hero of the photo: the accessory (or, without one, the key detail of the outfit) '
+      + 'is clearly in view and the hands interact with it. The pose stays natural, not stiff, and the outfit stays visible. Expression: a soft smile.',
+    moments: [
+      'standing, holding the accessory up in front of the body with both hands',
+      'sitting, with the accessory on the lap or beside her and one hand resting on it',
+      'standing three-quarters to the camera, wearing or carrying the accessory with one hand on it',
+      'leaning against something, looking down at the accessory while adjusting it',
+      'standing, holding the accessory slightly out toward the camera',
+      'without an accessory: standing, one hand adjusting a sleeve, hem or collar of the outfit',
+    ] },
+  { id: 'fashion', name: 'ยืนแฟชั่นมั่นใจ', hint: 'ยืนแบบลุคบุ๊ก เห็นชุดทั้งตัวชัด',
+    brief: 'A confident fashion stance for a lookbook: standing, shoulders open, the whole outfit and its silhouette clearly visible. '
+      + 'Polished but not stiff. Expression: calm and confident.',
+    moments: [
+      'weight on one leg with one hand lightly on the hip, looking at the camera',
+      'mid-step, walking toward the camera',
+      'a three-quarter turn, looking back over the shoulder at the camera',
+      'hands in the pockets with the chin slightly raised',
+      'one leg crossed in front of the other, arms relaxed at the sides',
+    ] },
+  { id: 'laugh', name: 'ถ่ายเผลอ หัวเราะ', hint: 'จังหวะหัวเราะจริง แต่ละรูปไม่ซ้ำกัน',
+    brief: 'A candid caught moment: she laughs genuinely, as if the friend taking the photo just made her laugh. '
+      + 'Expression: a real laugh with crinkled eyes.',
+    // แต่ละจังหวะบอกท่าตัวด้วย (นั่ง/ยืน/เดิน/พิง) ไม่งั้น AI ให้ท่าตัวแบบเดียวทุกรูป (เช็ก 20 ต.ค.: ไม่บอก = นั่งขอบม้านั่งทั้งหมด)
+    moments: [
+      'sitting back in a seat, laughing while looking straight at the camera, as if the friend taking the photo just said something funny',
+      'standing, laughing with the head tipped back and the chin raised a little',
+      'standing and turning to the side, laughing with someone just outside the frame',
+      'sitting and leaning forward while laughing, one hand resting on the knee or a table',
+      'walking, laughing mid-step while turning back to look at the camera',
+      'leaning against a wall or furniture, laughing while holding or adjusting the accessory, eyes on the camera',
+      'sitting sideways, laughing with the head dipped down and turned a little away',
+    ] },
+];
+// สุ่มจังหวะของท่า 1 แบบ (ทุกครั้งที่สร้างได้ท่าไม่ซ้ำ)
+export const pickMoment = (p: PosePreset) => p.moments[Math.floor(Math.random() * p.moments.length)];
+export const POSE_AUTO = { id: 'auto', name: 'AI เลือกให้', hint: 'AI ดูฉาก ชุด ของเสริม แล้วเลือกแบบที่เข้ากันที่สุดให้' };
+
 // เอาอะไรจากรูปท่าโพสต์: shot = ท่า + มุมกล้อง + ระยะ + การมอง + แสง/โทนสี (ล็อกตัวเลือกกล้องกับแสงสี), shot-scene = รวมฉากในรูปด้วย
 export const POSE_MODES = [
   { id: 'pose', name: 'ลอกแค่ท่า', hint: 'เอาแค่ท่าทาง มุมกล้อง แสง และฉากใช้ตามที่เลือก' },
@@ -103,6 +181,20 @@ export const GAZES: Choice[] = [
     + 'with a relaxed natural expression, as if not posing.' },
 ];
 
+// สีหน้า: auto = ท่าสำเร็จรูป -> สีหน้าตาม brief ของท่านั้น (อยู่ในท่าที่ AI วางแผน), รูปท่าโพสต์ -> ลอกสีหน้าจากรูปนั้น,
+//   ท่าเดิม -> ตามรูปนางแบบ (ไม่สั่ง) · เลือกแบบอื่น = ใช้แทนสีหน้าในท่าสำเร็จรูป
+// คำที่ใช้ได้ผลจากการทดสอบ 19 ต.ค.: "นิ่ง" เฉยๆ หน้าแข็งไม่มีอารมณ์, "อบอุ่น" AI กลับไปยิ้มกว้างแบบรูปนางแบบ
+//   ที่ได้ผล = "no big smile; lips softly parted; real life in the eyes" — prompts.ts สั่งเพิ่มว่าไม่ต้องลอกสีหน้าจากรูปนางแบบ
+export const FACE_MOODS: (Choice & { hint: string })[] = [
+  { id: 'auto', name: 'อัตโนมัติ', hint: 'ท่าสำเร็จรูป = สีหน้าตามท่านั้น (เช่น หัวเราะ ยิ้มบางๆ) · รูปท่าโพสต์ = ลอกสีหน้าจากรูปนั้น · ท่าเดิม = ตามรูปนางแบบ', prompt: '' },
+  { id: 'calm', name: 'นิ่ง มั่นใจ', hint: 'ไม่ยิ้มกว้าง ปากเผยอ สายตามีชีวิต',
+    prompt: 'Expression: no big smile; lips softly parted; a calm, confident gaze into the lens with real life in the eyes, not blank.' },
+  { id: 'soft', name: 'ยิ้มบางๆ', hint: 'ยิ้มมุมปาก ตาอบอุ่น',
+    prompt: 'Expression: a soft, natural half-smile with relaxed lips and warm, lively eyes.' },
+  { id: 'bright', name: 'ยิ้มสดใส', hint: 'ยิ้มเห็นฟันนิดๆ ดูมีความสุข',
+    prompt: 'Expression: a bright, natural smile showing a little of the teeth, with happy, lively eyes.' },
+];
+
 // พร็อพในมือ (เลือกได้หลายอย่าง)
 export const PROPS: Choice[] = [
   { id: 'coffee', name: 'กาแฟ', prompt: 'holding an iced coffee' },
@@ -112,11 +204,6 @@ export const PROPS: Choice[] = [
 ];
 
 // สัดส่วนภาพ (ไม่เลือก = ตามรูปนางแบบ) — OpenAI ทำได้แค่ 2:3 / 3:2 / 1:1 แนวตั้งทุกแบบจะได้ 2:3
-export const ASPECTS = [
-  { id: '4:5', name: '4:5 (ฟีด IG)' },
-  { id: '9:16', name: '9:16 (สตอรี่)' },
-  { id: '2:3', name: '2:3' },
-];
 
 // ฉาก: มี src = ส่งรูปฉากให้ AI ดู, มี prompt = บอก AI เป็นคำบรรยาย (ภาษาอังกฤษ AI เข้าใจแม่นกว่า)
 export const SCENES: Item[] = [
@@ -135,28 +222,117 @@ export const SCENES: Item[] = [
 // แสง: บอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน" ดูจากรูปตัวอย่างของ notamodel.studio
 // framing ใส่ในบรรทัดแรกของคำสั่ง (ไม่งั้น AI ยึดระยะจากรูปนางแบบ), fullBody = เห็นทั้งตัว (lib/prompts.ts สั่งเพิ่มท้ายคำสั่ง)
 export type PresetPart = { label: string; prompt: string };
+// scene = คำสั่งเรื่องฉากเพิ่ม (มีเฉพาะบางสไตล์ เช่น Looklet signature ทำฉากให้มินิมอล) ต่อท้ายคำสั่งสไตล์ ไม่ใช้ตอนลอกทั้งช็อต
 export type Preset = {
   id: string; name: string; hint: string; fullBody: boolean;
-  light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart;
+  light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart; scene?: PresetPart;
 };
-// ลำดับที่โชว์ในหน้าเว็บ
+// ลำดับที่โชว์ในกล่อง "มีอะไรบ้าง" ของสไตล์ (มุมกล้อง/ระยะ มีขั้นของตัวเองในเมนูซ้าย ค่าเริ่มต้น = ของสไตล์นี้)
 export const PRESET_PARTS = [
-  { key: 'light', name: 'แสง' }, { key: 'lens', name: 'เลนส์' }, { key: 'angle', name: 'มุมกล้อง' },
-  { key: 'framing', name: 'ระยะ' }, { key: 'color', name: 'โทนสี' },
+  { key: 'light', name: 'แสง' }, { key: 'lens', name: 'เลนส์' }, { key: 'color', name: 'โทนสี' }, { key: 'scene', name: 'ฉาก' },
 ] as const;
 
+// GPT Image 2.5 (Sunburst/Flare) ทำรูปใหญ่ได้: ค่าเริ่มต้น 1664×2496 หน้า/ผิวละเอียดขึ้นชัด (ผู้ใช้ทดสอบ 22 ต.ค. output/skin-2500-test)
+// แปลงจากขนาดมาตรฐาน (openaiSize ฝั่งหน้าเว็บ) ตามแนวรูป · สี่เหลี่ยมจัตุรัสยังไม่ได้ทดสอบ · รุ่นอื่น (gpt-image-1) รับแค่ขนาดมาตรฐาน
+export const GPT25_SIZES: Record<string, string> = { '1024x1536': '1664x2496', '1536x1024': '2496x1664', '1024x1024': '2048x2048' };
+export const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
+
+// ---------- โมเดล AI + คุณภาพ (ใช้ทั้งหน้านางแบบและหน้าสินค้า) ----------
+// คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
+// ค่าเริ่มต้นของ 2.5 = high: ทดสอบ 19 ต.ค. (สตูดิโอ + คาเฟ่) หน้า/ชุด/ท่าเหมือนกันทุกระดับ, medium ผ้าเรียบลื่นเหมือนผ้าปลอม,
+// high เริ่มเห็นเนื้อผ้าในราคา ~฿1.8 (max ลายทอชัดสุดแต่ ~฿5.9 และช้ากว่า 3 เท่า เลือกเองได้)
+// ราคาในวงเล็บ = ประมาณที่ขนาดเริ่มต้นใหม่ 1664×2496 (GPT25_SIZES): จ่ายจริงตอนทดสอบที่ 1024×1536 รูปเข้า 2 รูป (กลาง ฿0.8 · สูง ฿1.8 ·
+// สูงมาก ฿2.9 · สูงสุด ฿5.9) แล้วคิดส่วนรูปที่ได้ x1.72 (token รูปที่ได้ 1664×2496 ÷ 1024×1536 จาก output/skin-2500-test) — รูปเข้าเยอะขึ้นแพงขึ้นนิดหน่อย
+export const QUALITIES = [{ id: 'low', name: 'ต่ำ (ถูก)' }, { id: 'medium', name: 'กลาง' }, { id: 'high', name: 'สูง (แพง)' }];
+export const QUALITIES_25 = [
+  { id: 'medium', name: 'กลาง ~฿1.1' }, { id: 'high', name: 'สูง ~฿2.8' }, { id: 'xhigh', name: 'สูงมาก ~฿4.7' }, { id: 'max', name: 'สูงสุด ~฿9.8' },
+];
+// โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
+export const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
+export const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
+// "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
+export const splitLabel = (label: string) => {
+  const m = label.match(/^(.*?)\s*\((.*)\)$/);
+  return m ? [m[1], m[2]] : [label, ''];
+};
+
+// ขั้นระยะ / มุมกล้อง (เมนูซ้าย): ไม่เลือก = ตามสไตล์ถ่ายภาพ (ทุกสไตล์มีระยะ/มุมของตัวเอง เช่น Phone candid ก้มกล้องลงแบบมือถือ)
+// เลือกแล้วใช้แทนของสไตล์ แสง/เลนส์/โทนสียังเป็นของสไตล์ — ระยะใส่บรรทัดแรกของคำสั่ง, มุมอยู่ใน "Camera: เลนส์, มุม"
+// ระยะใกล้ต้องบอก "even if the pose uses them": ทดสอบ 21 ต.ค. ท่าจับเท้า + "waist up" เฉยๆ AI ยังเก็บขาไว้ (ตัดแค่หน้าแข้ง)
+// บอกเป็นภาพที่เห็น (ขอบล่างของภาพตัดตรงไหน / เห็นเพดานหรือพื้นมากขึ้น) AI ทำตามได้ดีกว่าชื่อระยะ/มุมเฉยๆ
+// เลือกเองแล้ว lib/prompts.ts สั่งย้ำท้ายคำสั่งว่าสำคัญกว่ากรอบภาพ/มุมกล้องของรูปท่าและรูปฉาก (camera)
+export type FramingChoice = { id: string; name: string; hint: string; fullBody: boolean; prompt: string };
+// เต็มตัว: คนสูงราว 60% ของภาพ มีที่ว่างเหนือหัวและใต้เท้า — เดิม "filling most of the frame height" (~75%) กับรูปฉากที่อัปโหลด
+// AI ขยับกล้องเข้าไปจนเห็นสถานที่แค่นิดเดียว คนดูตัวใหญ่ (ผู้ใช้เจอ 28 ต.ค. ร้านหน้ากระจก: คนสูง 74% ของภาพ) ใช้คำนี้ทุกที่ที่เป็นเต็มตัว
+export const FULL_BODY = 'framed full body from head to feet, the person about 60 percent of the frame height, with clear space above '
+  + 'the head and below the feet and more of the location visible around her';
+export const FRAMINGS: FramingChoice[] = [
+  { id: 'full', name: 'เต็มตัว', hint: 'หัวจรดเท้า คนสูงราว 60% ของภาพ เห็นชุดครบและสถานที่รอบตัว', fullBody: true,
+    prompt: FULL_BODY },
+  { id: 'wide', name: 'เต็มตัว เห็นฉากกว้าง', hint: 'คนสูงราวครึ่งภาพ เห็นสถานที่รอบตัวเยอะ', fullBody: true,
+    prompt: 'a wide shot, full body from head to feet but small in the frame: the person takes up no more than half of the frame height, '
+      + 'with plenty of floor, walls and ceiling of the location around them' },
+  { id: 'knee', name: 'เข่าขึ้นไป', hint: 'ตัดที่เข่า เห็นชุดชัดกว่าเต็มตัว', fullBody: false,
+    prompt: 'a medium shot from the knees up: the bottom edge of the frame crosses her legs just above the knees, so the lower legs and '
+      + 'feet are out of frame, even if the pose uses them' },
+  { id: 'waist', name: 'ครึ่งตัว', hint: 'เอวขึ้นไป เห็นหน้าและเสื้อชัด', fullBody: false,
+    prompt: 'a waist-up shot: the bottom edge of the frame crosses her body at the hips, so the legs and feet are out of frame, even if '
+      + 'the pose uses them, and the upper body fills most of the frame' },
+  { id: 'detail', name: 'ใกล้ เน้นสินค้า', hint: 'ใกล้มาก เนื้อผ้า รายละเอียด และของเสริมเต็มภาพ', fullBody: false,
+    prompt: 'a tight close-up: the frame spans only from her chin to her waist, so the fabric, details and any accessories fill the frame '
+      + 'and the legs and feet are out of frame, even if the pose uses them' },
+];
+// ขั้นตำแหน่ง (เมนูซ้าย): คนอยู่ตรงไหนของภาพ — 'auto' = สุ่มซ้าย/ขวา/กลางต่อรูป (lib/prompts.ts pickPlacement) คำสั่งจริงอยู่ใน placementLine
+export const PLACEMENTS = [
+  { id: 'left', name: 'ซ้าย', hint: 'คนอยู่ราว 1/3 จากขอบซ้าย เหลือที่ว่างของฉากด้านขวา' },
+  { id: 'center', name: 'กลาง', hint: 'คนอยู่กลางภาพ ที่ว่างสองข้างเท่ากัน' },
+  { id: 'right', name: 'ขวา', hint: 'คนอยู่ราว 1/3 จากขอบขวา เหลือที่ว่างของฉากด้านซ้าย' },
+] as const;
+export type AngleChoice = { id: string; name: string; hint: string; prompt: string };
+export const ANGLES: AngleChoice[] = [
+  { id: 'chest', name: 'ระดับอก มองตรง', hint: 'มุมมาตรฐานของรูปแฟชั่น สัดส่วนตรงจริง', prompt: 'camera at chest height, straight on' },
+  { id: 'eye', name: 'ระดับสายตา', hint: 'เหมือนคนยืนถ่ายกันปกติ', prompt: 'camera at her eye level, held level and straight on' },
+  { id: 'side', name: 'เฉียงข้าง', hint: 'กล้องเยื้องไปด้านข้างนิดๆ เห็นรูปทรงตัวและชุด', prompt: 'camera at chest height, moved about 30 to 45 degrees '
+    + 'to one side of her, so we see her body and outfit at an angle rather than straight on' },
+  { id: 'low', name: 'มุมต่ำ มองขึ้น', hint: 'กล้องระดับเข่า ขาดูยาว ดูมั่นใจ', prompt: 'camera low, at about her knee height, tilted up toward her: '
+    + 'we look up at her, her legs look long, more of the ceiling and less of the floor is visible, and vertical lines lean slightly inward toward the top' },
+  { id: 'high', name: 'มุมสูง มองลง', hint: 'กล้องสูงกว่าหัวนิดๆ ดูเป็นกันเอง', prompt: 'camera high, above her head height, tilted down toward her: '
+    + 'we look down on her, much more of the floor around her is visible, and her head looks slightly larger than her feet' },
+];
+
+// ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — Looklet signature ใช้ชุดเดียวกัน
+const SOFTBOX_LIGHT: PresetPart = { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
+  'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
+  + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
+  + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
+  + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
+  + 'and collarbones.' };
+// ไม่พูดถึง "ทั้งตัว" ในคำสั่ง: เลือกระยะใกล้ในขั้นระยะได้ คำสั่งเลนส์จะได้ไม่ขัดกับระยะ
+const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, everything on the person sharp' };
+const NEUTRAL_COLOR: PresetPart = { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' };
+
 export const PRESETS: Preset[] = [
+  // ฟีลประจำของ Looklet (ค่าเริ่มต้น = ตัวแรก): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
+  // แสง/เลนส์/โทนสีของ Studio lookbook ให้สีกลางๆ อมเย็นนิดๆ ตรงรูปตัวอย่างโดยไม่ต้องเกรดสีเพิ่ม (แสงอุ่นแบบเดิมออกมาเหลือง/สว่างเกิน)
+  // + ระยะ 3/4 ของภาพ มีขอบผนังด้านหน้า + ฉากมินิมอล (ฉากที่รกจะถูกเก็บให้เรียบ เห็นผลชัดกับฉากถนน/ร้าน)
+  { id: 'signature', name: 'Looklet signature', hint: 'ฟีลของ Looklet: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
+    light: SOFTBOX_LIGHT, lens: LENS_85,
+    angle: { label: 'ระดับอก เฉียงข้างนิดๆ', prompt: 'camera at chest height, level, seen from slightly to the side' },
+    framing: { label: 'เต็มตัว ราว 60% ของภาพ มีขอบผนังด้านหน้า', prompt: 'framed full body from head to feet, the person about 60 percent '
+      + 'of the frame height with clear space above the head and below the feet, the edge of a wall, column or doorway in the foreground on '
+      + 'one side and the space continuing behind' },
+    color: NEUTRAL_COLOR,
+    scene: { label: 'มินิมอลมาก ผนังขาวครีม พื้นไม้อ่อน/หิน ไม่มีของรก ชุดเป็นสีหลักของภาพ', prompt:
+      'Looklet signature setting, super minimal: keep only the essence of the location and show it as an almost empty, calm space. '
+      + 'The frame contains only clean, plain surfaces (smooth warm off-white plaster walls, a pale stone or light oak floor, at most one '
+      + 'simple window or doorway) and at most one or two simple pieces of furniture, in warm neutral tones (cream, beige, light oak, '
+      + 'travertine, white boucle). No decor, plants, shelves, objects, clutter, cables, signs, text, logos or other people. Generous calm '
+      + 'empty space in the frame; the outfit is the main color in the frame.' } },
   { id: 'studio', name: 'Studio lookbook', hint: 'เต็มตัว ฉากสตูดิโอ ไฟนุ่ม เหมาะกับฉากสตูดิโอหรือฉากเดิม', fullBody: true,
-    light: { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
-      'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
-      + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
-      + 'The backdrop is bright but not blown out and falls off slightly toward the top corners; a soft, diffuse shadow pools on '
-      + 'the floor under and behind the person. Hair shows soft glossy highlights, skin has a natural sheen on the shoulders '
-      + 'and collarbones.' },
-    lens: { label: '85mm f/8 ชัดทั้งตัว', prompt: 'shot on a full-frame camera with an 85mm lens at f/8, the whole person sharp' },
+    light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก มองตรง', prompt: 'camera at chest height, straight on' },
-    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
-    color: { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' } },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: FULL_BODY },
+    color: NEUTRAL_COLOR },
   { id: 'closeup', name: 'Product close-up', hint: 'ครึ่งตัว เน้นเนื้อผ้าและสินค้าให้ชัด', fullBody: false,
     light: { label: 'ซอฟต์บ็อกซ์ด้านหน้า + แผ่นสะท้อน + ไฟขอบหลัง', prompt:
       'One large softbox from the front-side as the key light, a white reflector filling the shadow side, and a soft rim light '
@@ -194,7 +370,7 @@ export const PRESETS: Preset[] = [
       + 'The flash falls off quickly, so the background is noticeably darker than the person.' },
     lens: { label: '35mm ชัดทั้งภาพ', prompt: 'shot on a full-frame camera with a 35mm lens, everything in focus' },
     angle: { label: 'ต่ำกว่าระดับสายตาเล็กน้อย', prompt: "camera slightly below the model's eye level" },
-    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: FULL_BODY },
     color: { label: 'คอนทราสต์จัด สีสด ขอบภาพมืดนิดๆ', prompt: 'Punchy contrast, saturated colors, slight vignette.' } },
   { id: 'golden', name: 'Golden hour', hint: 'แดดเย็นย้อนแสง ขอบผมเรืองทอง เหมาะกับฉากกลางแจ้ง ทะเล สวน', fullBody: true,
     light: { label: 'แดดเย็นย้อนหลัง ขอบตัวเรืองทอง', prompt:
@@ -205,14 +381,21 @@ export const PRESETS: Preset[] = [
     angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
     framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet' },
     color: { label: 'โทนทองอุ่น คอนทราสต์นุ่ม', prompt: 'Warm golden tones, soft contrast, slightly lifted shadows.' } },
-  { id: 'phone', name: 'Phone candid (IG)', hint: 'เหมือนเพื่อนถ่ายด้วยมือถือ ลงไอจี ดูเป็นกันเอง ใช้ได้ทุกฉาก', fullBody: true,
-    light: { label: 'แสงที่มีอยู่ในฉาก ไม่มีไฟเสริม', prompt:
-      'Only the natural light that is already at the location, with no extra lighting equipment: the light direction, shadows and '
-      + 'brightness on the person match the place exactly, including slightly uneven light where it would really be uneven.' },
-    lens: { label: 'กล้องหลักมือถือ ~26mm ชัดทั้งภาพ', prompt: 'taken on a smartphone main camera (about 26mm), everything in focus' },
-    angle: { label: 'ระดับอก เพื่อนถือถ่าย', prompt: 'phone held by a friend at chest height' },
-    framing: { label: 'เต็มตัว จัดเฟรมสบายๆ ไม่เป๊ะ', prompt: 'framed full body with casual, slightly imperfect framing and a little space around the model' },
-    color: { label: 'สีมือถือธรรมชาติ HDR นิดๆ', prompt: 'Natural smartphone colors with mild HDR and phone-style sharpening, as posted on Instagram without filters.' } },
+  // เขียนใหม่ 20 ต.ค. จากการเทียบกับรูป iPhone จริงในฉากเดียวกัน: มือถือจริงถ่ายใกล้ เลนส์กว้าง ก้มกล้องนิดๆ จัดเฟรมไม่เป๊ะ
+  // แสงในอาคารแบนๆ เงาจาง สีจืดกว่า — แบบเดิม ("ใช้แสงที่มีในฉาก") AI ยังจัดเฟรมสวยตรงกลาง กล้องตรง เงาเข้ม เหมือนช่างภาพถ่าย
+  // fullBody = false: ให้ตัดปลายเท้าได้แบบรูปมือถือจริง (ไม่สั่ง "เห็นทั้งตัวหัวจรดเท้า")
+  { id: 'phone', name: 'Phone candid (IG)', hint: 'เหมือนเพื่อนถ่ายด้วยมือถือ ลงไอจี ดูเป็นกันเอง ใช้ได้ทุกฉาก (ได้ลุคมือถือในขั้นแต่งรูป)', fullBody: false,
+    light: { label: 'แสงที่มีในฉาก ไม่มีแฟลช/ไฟเสริม เงาจาง', prompt:
+      'Only the light that is already at the location, with no flash and no extra lighting equipment. Indoors this usually means flat '
+      + 'overhead ceiling light mixed with daylight from the windows: soft, low-contrast light with faint shadows. Outdoors it is the real '
+      + 'daylight of the place. The light on the person matches the place exactly, and bright windows may be close to blown out.' },
+    lens: { label: 'กล้องหลักมือถือ ~26mm ระยะใกล้ ชัดทั้งภาพ', prompt: 'taken on a smartphone main camera (about 26mm wide angle) from close range, '
+      + 'everything in focus, with the slight wide-angle perspective of a phone: parts of the body closer to the camera look a little larger' },
+    angle: { label: 'ระดับอก ก้มกล้องลงนิดๆ', prompt: 'phone held by a friend at chest height and tilted slightly down, so vertical lines lean in slightly' },
+    framing: { label: 'จัดเฟรมสบายๆ แบบถ่ายเร็วๆ', prompt: 'framed casually like a quick snapshot, showing most or all of the body: '
+      + 'the person slightly off-center with uneven space around them, and the feet may be cut off by the bottom edge' },
+    color: { label: 'สีมือถือธรรมชาติ จืดๆ ไม่อุ่น', prompt: 'Natural iPhone colors as posted without filters: neutral white balance, muted true-to-life colors, '
+      + 'bright exposure and phone-style sharpening; not warm, not saturated, no film look.' } },
   { id: 'night', name: 'Night city', hint: 'กลางคืน ไฟถนน/นีออนตกกระทบตัว เหมาะกับฉากถนนกลางคืน', fullBody: true,
     light: { label: 'ไฟถนน/ป้ายนีออน + แฟลชอ่อนๆ', prompt:
       'Night: the person is lit by the lights of the location (street lamps, shop windows and neon signs), with colored light '
@@ -229,20 +412,30 @@ export const PRESETS: Preset[] = [
 // framing = ระยะ (แทนระยะของสไตล์ถ่ายภาพ), angle = มุมกล้อง + ท่า สำหรับรูปที่ 2 เป็นต้นไป (รูปแรกใช้ท่าที่เลือกไว้)
 export type SetShot = { id: string; name: string; fullBody: boolean; framing: string; angle: string };
 export const SET_SHOTS: SetShot[] = [
-  { id: 'front', name: 'หน้าตรง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+  { id: 'front', name: 'หน้าตรง', fullBody: true, framing: FULL_BODY,
     angle: "Camera angle: straight on at the model's chest height, the model facing the camera." },
-  { id: 'three-quarter', name: 'เฉียง 3/4', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+  { id: 'three-quarter', name: 'เฉียง 3/4', fullBody: true, framing: FULL_BODY,
     angle: 'Camera angle: a three-quarter view: the body is turned about 45 degrees away from the camera, the face turned back toward the camera.' },
-  { id: 'back', name: 'ด้านหลัง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+  { id: 'back', name: 'ด้านหลัง', fullBody: true, framing: FULL_BODY,
     angle: "Camera angle: from behind and slightly to one side, so the back of the outfit is clearly visible; the model looks back over the shoulder so part of the face shows." },
   { id: 'detail', name: 'ใกล้ เอวขึ้นไป', fullBody: false,
     framing: 'framed from the waist up so the outfit details and any accessories fill the frame, with the legs out of frame',
     angle: 'Camera angle: close, at chest height, straight on, focused on the fabric, details and accessories.' },
 ];
 
-// รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก)
-export const presetPrompt = (p: Preset) =>
-  `Camera: ${p.lens.prompt}, ${p.angle.prompt}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
+// รวมส่วนของสไตล์ถ่ายภาพเป็นคำสั่งต่อท้าย (framing ไม่อยู่ในนี้ ใส่บรรทัดแรกแยก) angle = มุมที่เลือกในขั้นมุมกล้อง (ไม่ส่ง = ของสไตล์)
+export const presetPrompt = (p: Preset, angle = p.angle.prompt) =>
+  `Camera: ${p.lens.prompt}, ${angle}. Lighting: ${p.light.prompt} Color: ${p.color.prompt}` + (p.scene ? ' ' + p.scene.prompt : '');
+// ลอกทั้งช็อตแต่เลือกใช้แสงของสไตล์ถ่ายภาพ: เอาแค่แสง + โทนสี (เลนส์/มุม/ระยะยังตามรูปต้นแบบ)
+export const presetLightPrompt = (p: Preset) => `Lighting: ${p.light.prompt} Color: ${p.color.prompt}`;
+
+// แสงตอนลอกทั้งช็อต: ref = ให้ AI อ่านแสงในรูปต้นแบบแล้วบรรยายเป็นคำให้ (lib/ai.ts describeLighting), preset = ใช้แสงของสไตล์ถ่ายภาพ
+// ทดสอบ 19 ต.ค.: สั่งแค่ "recreate its lighting" AI ทำแสงนุ่มลงเสมอ พอบรรยายแสงจริงๆ (แฟลชตรง เงาคมด้านหลัง) แสงตรงรูปต้นแบบขึ้นชัด
+export const LIGHT_SOURCES = [
+  { id: 'ref', name: 'ลอกจากรูปต้นแบบ', hint: 'AI อ่านแสงในรูปต้นแบบแล้วบรรยายให้ละเอียด (ใช้เวลาเพิ่ม 2–5 วินาที ไม่ถึงสตางค์)' },
+  { id: 'preset', name: 'ใช้แสงของสไตล์ถ่ายภาพ', hint: 'เลือกสไตล์ในขั้นถัดไป ใช้แค่แสงและโทนสี มุมกล้อง/ระยะยังตามรูปต้นแบบ' },
+] as const;
+export type LightSource = (typeof LIGHT_SOURCES)[number]['id'];
 
 export const SKIN_TONES = [
   { name: 'ขาวอมชมพู', color: '#f3d3c3' },

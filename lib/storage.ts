@@ -9,13 +9,16 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { sbDelete, sbList, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
+import { ownerMeta, visibleTo } from './account';
+import { sbDelete, sbList, sbMeta, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
 
 const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
 const UPLOADS_DIR = path.join(ROOT, 'images', 'uploads');
 
-export const KINDS = ['models', 'outfits', 'accessories', 'poses', 'scenes'] as const;
+// หน้าสินค้าใช้คลังแยก: products = รูปสินค้า, product-refs = ช็อตต้นแบบ, product-scenes = รูปฉาก, product-props = พร็อพของฉัน (ไม่ปนกับฉากของหน้านางแบบ)
+// Supabase เก็บ kind เป็นข้อความ เพิ่มประเภทใหม่ได้โดยไม่ต้องแก้ตาราง
+export const KINDS = ['models', 'outfits', 'accessories', 'poses', 'scenes', 'products', 'product-refs', 'product-scenes', 'product-props'] as const;
 export type Kind = (typeof KINDS)[number];
 export const isKind = (k: unknown): k is Kind => KINDS.includes(k as Kind);
 
@@ -23,6 +26,8 @@ export const isKind = (k: unknown): k is Kind => KINDS.includes(k as Kind);
 export type Where = { area: 'results' } | { area: 'uploads'; kind: Kind };
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+// ชนิดรูปที่เก็บได้ — ชนิดอื่น (เช่น HEIC) หน้าเว็บแปลงเป็น JPEG ก่อน (toWebImage/uploadImage ใน lib/browser.ts)
+export const isStorable = (mime: unknown) => typeof mime === 'string' && mime in EXT;
 const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
 const URL_PREFIX = '/api/files/';
 
@@ -40,7 +45,17 @@ function stamp() {
   return `${date}-${randomUUID().replaceAll('-', '').slice(0, 6)}`;
 }
 
-export async function saveImage(where: Where, dataB64: string, mime: string, meta: Record<string, unknown>) {
+// เจ้าของรูป (meta.owner) มาจากบัญชีที่เรียก (lib/account.ts) เท่านั้น ไม่รับจาก meta ที่ส่งมา
+// ลูกค้า (customer) แต่ละคนเห็นเฉพาะรูปของตัวเอง · ทีมเห็นคลังร่วมที่ไม่มีเจ้าของ — กรองใน listImages / readImage / updateMeta / deleteImage
+// เก็บลงเครื่อง (ไม่มี Supabase) = ไม่มีระบบ login ไม่มีลูกค้า จึงไม่ต้องกรอง
+const stripOwner = <T extends Record<string, unknown>>(meta: T) => {
+  const rest = { ...meta };
+  delete rest.owner;
+  return rest;
+};
+
+export async function saveImage(where: Where, dataB64: string, mime: string, metaIn: Record<string, unknown>) {
+  const meta = { ...stripOwner(metaIn), ...ownerMeta() };
   const name = stamp();
   const file = `${name}.${EXT[mime] ?? 'png'}`;
   if (supabaseEnabled) {
@@ -56,12 +71,19 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
 
 // set = ชุดภาพหลายมุม: id เดียวกันทั้งชุด + ลำดับในชุด (SET_SHOTS) ไว้จัดกลุ่มในประวัติรูป
 export type SetTag = { id: string; index: number };
-export type Stored = { src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag };
+// page = 'product' -> รูปจากหน้าสินค้า (ไม่มี = หน้านางแบบ) แต่ละหน้าโชว์เฉพาะรูปของตัวเองในประวัติรูป
+// stylePlan = พร็อพที่ AI ตัววางแผนคิดให้ (หน้าสินค้า)
+export type Stored = {
+  src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off';
+  productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
+  editedFrom?: string;
+  refinedFrom?: string; posePlan?: { name: string; th: string }; page?: 'product'; stylePlan?: { name: string; th: string };
+};
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
 export async function listImages(where: Where): Promise<Stored[]> {
   if (supabaseEnabled) {
-    const rows = await sbList(where.area, where.area === 'uploads' ? where.kind : null);
+    const rows = (await sbList(where.area, where.area === 'uploads' ? where.kind : null)).filter((r) => visibleTo(r.meta));
     return rows.map((r) => {
       const file = r.path.slice(r.path.lastIndexOf('/') + 1);
       return { ...r.meta, file, created: Date.parse(r.created) / 1000, src: urlOf(where, file) } as Stored;
@@ -96,7 +118,7 @@ function resolveFile(parts: string[]) {
 export async function readImage(parts: string[]) {
   const f = resolveFile(parts);
   if (!f) return null;
-  const data = supabaseEnabled ? await sbRead(f.key) : await fs.readFile(f.full).catch(() => null);
+  const data = supabaseEnabled ? await sbRead(f.key, (meta) => visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
 }
 
@@ -105,7 +127,7 @@ export async function updateMeta(src: string, meta: Record<string, string>) {
   if (!src.startsWith(URL_PREFIX + 'uploads/')) return false;
   const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
   if (!f) return false;
-  if (supabaseEnabled) return sbUpdateMeta(f.key, meta);
+  if (supabaseEnabled) return sbUpdateMeta(f.key, stripOwner(meta), (old) => visibleTo(old));
   const file = f.full.slice(0, -path.extname(f.full).length) + '.json';
   const old = await fs.readFile(file, 'utf8').then(JSON.parse, () => null);
   if (!old) return false;
@@ -118,7 +140,7 @@ export async function deleteImage(src: string) {
   if (!src.startsWith(URL_PREFIX)) return false;
   const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
   if (!f) return false;
-  if (supabaseEnabled) return sbDelete(f.key);
+  if (supabaseEnabled) return visibleTo(await sbMeta(f.key)) && sbDelete(f.key);
   const trash = path.join(os.homedir(), '.Trash');
   const hasTrash = await fs.stat(trash).then((s) => s.isDirectory(), () => false);
   for (const p of [f.full, f.full.slice(0, -path.extname(f.full).length) + '.json']) {

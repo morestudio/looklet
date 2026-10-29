@@ -1,9 +1,12 @@
-import { availableModels, generateImage, type Img } from '@/lib/ai';
-import { MAX_ACCESSORIES, POSE_MODES, type PoseMode } from '@/lib/catalog';
+import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
+import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
-import { buildPrompt, buildSetPrompt, harmonizePrompt } from '@/lib/prompts';
+import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
+import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
+import { cropTo, servable } from '@/lib/images';
 import { saveImage, type SetTag } from '@/lib/storage';
+import { quotaBlock, recordUsage } from '@/lib/usage';
 
 // what = คำบรรยายประเภท, show = ท่าที่ทำให้ของชิ้นนี้เด่น (ทั้งคู่มาจาก ACCESSORY_TYPES)
 type Accessory = { data: string; what?: string; show?: string };
@@ -23,6 +26,8 @@ const toRef = (v: unknown): Ref => {
 
 export const POST = post(async (req) => {
   if (!availableModels().some((m) => m.id === req.model)) return json(400, { error: 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env' });
+  const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI
+  if (blocked) return blocked;
   if (!req.person) return json(400, { error: 'ไม่มีรูปนางแบบ' });
   const accessories: Accessory[] = (Array.isArray(req.accessories) ? req.accessories : []).filter((a: Accessory) => a?.data);
   if (accessories.length > MAX_ACCESSORIES) return json(400, { error: `ของเสริมใส่ได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป` });
@@ -34,6 +39,7 @@ export const POST = post(async (req) => {
   // ป้ายชุดภาพ (ทุกรูปในชุด รวมรูปหลัก) เก็บใน .json คู่รูป ให้ประวัติรูปจัดกลุ่มได้หลัง refresh
   const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
     ? { id: req.set.id, index: req.set.index } : null;
+  const finish = req.finish === 'phone' || req.finish === 'film' ? req.finish : null; // ลุคที่เหมาะกับรูปนี้ (lib/film.ts) เก็บกับรูป
   if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
 
   // รูปที่ส่งให้ AI: นางแบบ (ต้องมี) + ชุด + ของเสริม + ท่าโพสต์ + ฉาก (ถ้าเลือก) — ลำดับต้องตรงกับ buildPrompt
@@ -50,6 +56,37 @@ export const POST = post(async (req) => {
   ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string' && x.data.length > 0);
   const images: Img[] = inputs.map((x) => ({ data: x.data, mime: 'image/jpeg' }));
   const look: string | null = req.look ?? null;
+  // ลอกทั้งช็อต + ลอกแสงจากรูปต้นแบบ: ให้ AI อ่านแสงในรูปท่าโพสต์ก่อน (ไม่ถึงสตางค์ 2–5 วินาที) อ่านไม่ได้ = ใช้คำสั่งลอกแสงแบบเดิม
+  // รูปฉากที่อัปโหลด: อ่านแสงในฉากด้วย ให้แสง/เงาบนตัวนางแบบตรงกับห้องจริง (อ่านพร้อมกับรูปท่า ไม่ต้องรอต่อกัน)
+  // ท่าสำเร็จรูป (ไม่มีรูปท่า): ให้ AI ตัววางแผนดูฉาก + ชุด + ของเสริม แล้วคิดท่า — ทำพร้อมกับอ่านแสง ไม่ต้องรอต่อกัน
+  // ที่อยู่ของฉาก: รูปฉากที่อัปโหลด > คำบรรยายฉาก > พื้นหลังของรูปนางแบบ (ฉากเดิม)
+  const posePreset = !setRef && !req.pose && (req.pose_preset === POSE_AUTO.id || POSE_PRESETS.some((p) => p.id === req.pose_preset))
+    ? String(req.pose_preset) : null;
+  const sceneText0 = text(req.scene_text);
+  // สุ่มจังหวะของท่า 1 แบบ (POSE_PRESETS moments) — ไม่สุ่ม = AI ตัววางแผนให้ท่าเดิมซ้ำทุกรูป
+  const presetDef = POSE_PRESETS.find((p) => p.id === posePreset);
+  const moment = presetDef ? pickMoment(presetDef) : null;
+  const [refLight, sceneLight, plan] = await Promise.all([
+    !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
+    !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
+    posePreset ? planPose({
+      location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
+      locationIsModelPhoto: !req.scene_image && !sceneText0,
+      locationText: req.scene_image ? null : sceneText0,
+      outfit: req.outfit ? { data: req.outfit, mime: 'image/jpeg' } : null,
+      accessories: accessories.map((a) => ({ img: { data: a.data, mime: 'image/jpeg' }, what: String(a.what || 'an accessory').slice(0, 200) })),
+      preset: posePreset,
+      moment,
+    }) : null,
+  ]);
+  const planName = plan ? (POSE_PRESETS.find((p) => p.id === plan.preset)?.name ?? POSE_AUTO.name) : null;
+  // ตำแหน่งในภาพ: เลือกเอง (ซ้าย/กลาง/ขวา) หรืออัตโนมัติ = สุ่มต่อรูป · ชุดภาพมุมที่ 2 เป็นต้นไปลอกจากรูปหลัก
+  const chosenPlacement = (['left', 'center', 'right'] as const).find((p) => p === req.placement) ?? null;
+  const placement = setRef ? null : chosenPlacement ?? pickPlacement();
+  // ใช้ภาพที่ไหน (lib/aspects.ts): OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> 4:5 / 9:16 ทำ 2:3 แล้วตัดกลางภาพ (cropTo) บอก AI ว่าขอบไหนจะโดนตัด
+  const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
+  const crop = String(req.model).startsWith('openai:') && !AI_ASPECTS.includes(aspect)
+    ? cropLine(aspect, setRef ? setShot!.full_body !== false : req.full_body ?? true) : null;
   const prompt = setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -57,6 +94,7 @@ export const POST = post(async (req) => {
     hasOutfit: Boolean(req.outfit),
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
     extra: req.extra,
+    crop,
   }) : buildPrompt({
     hasOutfit: Boolean(req.outfit),
     hasSceneImage: !shotScene && Boolean(req.scene_image),
@@ -66,14 +104,27 @@ export const POST = post(async (req) => {
     fullBody: req.full_body ?? true,
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
     hasPose: Boolean(req.pose),
-    autoPose: !req.pose && Boolean(req.auto_pose), // มีรูปท่าแล้ว ใช้รูปท่า
+    // ท่าสำเร็จรูปวางแผนไม่สำเร็จ -> ใช้คำสั่ง "AI เลือกท่าให้" แบบเดิม (ยังได้รูป)
+    autoPose: !req.pose && (Boolean(req.auto_pose) || (Boolean(posePreset) && !plan)),
+    posePlan: plan?.en ?? null,
     poseHints: accessories.map((a) => String(a.show ?? '').slice(0, 200)).filter(Boolean),
     poseMode,
     framing: text(req.framing),
     gaze: text(req.gaze),
     props: texts(req.props),
+    face: text(req.face),
+    faceFromRef: Boolean(req.face_from_ref),
+    refLight,
+    sceneLight,
+    // ระยะ/มุมกล้องที่เลือกเอง (ไม่ใช่ตามสไตล์) -> lib/prompts.ts สั่งย้ำให้ชนะรูปท่า/รูปฉาก
+    camera: text(req.camera_framing) || text(req.camera_angle) ? { framing: text(req.camera_framing), angle: text(req.camera_angle) } : null,
+    placement, // ข้างที่วางคนในภาพ สุ่มต่อรูป (ไม่สั่ง = AI วางกลางภาพเสมอ)
+    crop,
   });
-  const opt = { aspect: req.aspect ?? '2:3', size: req.size ?? '1024x1536', quality: req.quality ?? 'medium' };
+  // GPT Image 2.5: ค่าเริ่มต้นรูปใหญ่ 1664×2496 (หน้า/ผิวละเอียดขึ้น) · ขนาดตามแนวของสัดส่วนที่เลือก
+  const baseSize = aspectBaseSize(aspect);
+  const size = isGpt25(String(req.model)) ? GPT25_SIZES[baseSize] : baseSize;
+  const opt = { aspect, size, quality: req.quality ?? 'medium' };
 
   const harmonizeText = req.harmonize && !setRef ? harmonizePrompt(look) : null; // ชุดภาพ: รูปหลักปรับแสงมาแล้ว
 
@@ -96,13 +147,16 @@ export const POST = post(async (req) => {
   }));
   const byRole = (role: string) => imgs.filter((x) => x.role === role).map((x) => x.log);
   const choices = (refs.choices && typeof refs.choices === 'object' ? refs.choices : {}) as Record<string, unknown>;
-  const style: GenerateLog['style'] = {};
-  for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'gaze', 'aspect'] as const) {
+  const style: GenerateLog['style'] = { placement: (placement ?? 'ไม่สั่ง (AI วางกลาง)') + (chosenPlacement ? ' · เลือกเอง' : ' · อัตโนมัติ') };
+  for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'scene', 'face', 'lightSource', 'gaze', 'aspect'] as const) {
     const v = text(choices[k]);
     if (v) style[k] = v;
   }
+  style.aspect = `${PLATFORM_ASPECTS.find((a) => a.id === aspect)!.name} · ${aspect}${crop ? ` (ตัดจาก ${size})` : ''}`;
   if (texts(choices.props).length) style.props = texts(choices.props);
   if (harmonizeText) style.harmonize = true;
+  if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
+  if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
   if (text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
@@ -116,7 +170,12 @@ export const POST = post(async (req) => {
       accessories: byRole('ของเสริม'),
       scene: setRef ? 'ใช้ฉากจากรูปหลักของชุด' : shotScene ? 'ใช้ฉากจากรูปท่าโพสต์' : byRole('ฉาก')[0] ?? (sceneText ? { name: toRef(refs.scene).name, text: sceneText } : 'ฉากเดิม'),
     },
-    pose: { mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'), ...byRole('ท่าโพสต์')[0] },
+    pose: {
+      mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : plan ? `AI คิดท่า: ${planName}` : posePreset ? 'AI คิดท่าไม่สำเร็จ ใช้ AI เลือกท่าแบบเดิม'
+        : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'),
+      ...(plan ? { moment: moment ?? undefined, plan_th: plan.th, plan_en: plan.en } : {}),
+      ...byRole('ท่าโพสต์')[0],
+    },
     ...(setRef ? { set: { shot: text(setShot!.name) ?? '', ...byRole('รูปหลักของชุด')[0] } } : {}),
     style,
     prompt: sentences(prompt),
@@ -124,16 +183,24 @@ export const POST = post(async (req) => {
   };
   const t0 = Date.now();
   const duration = () => `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`;
+  const usage = { page: 'model', action: 'generate', model: String(req.model), quality: String(opt.quality), calls: harmonizeText ? 2 : 1 } as const;
+  let tokens = 0; // โทเคนที่ AI คิดจริง รวมทุกครั้งที่เรียก (ปรับแสงซ้ำ = 2 ครั้ง) -> โควตาลูกค้า
   try {
-    let image = await generateImage(req.model, images, prompt, opt);
-    if (harmonizeText) image = await generateImage(req.model, [image], harmonizeText, opt);
+    const first = await generateImage(req.model, images, prompt, opt);
+    const again = harmonizeText ? await generateImage(req.model, [first], harmonizeText, opt) : null;
+    tokens = first.tokens + (again?.tokens ?? 0);
+    // ตัดตามสัดส่วนที่เลือกก่อน (4:5 / 9:16) แล้วค่อยแปลง PNG ใหญ่ -> JPEG q97 ไม่งั้นเว็บจริงเปิดรูปไม่ขึ้น
+    const image = await servable(await cropTo(again ?? first, aspect));
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const src = await saveImage({ area: 'results' }, image.data, image.mime,
-      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}) });
+      { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
+        ...(plan ? { posePlan: { name: planName, th: plan.th } } : {}) });
     await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
-    return json(200, { src });
+    await recordUsage({ ...usage, status: 'ok', tokens });
+    return json(200, { src, posePlan: plan ? { name: planName, th: plan.th } : null });
   } catch (e) {
     await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
+    await recordUsage({ ...usage, status: 'error', tokens });
     throw e;
   }
 });
