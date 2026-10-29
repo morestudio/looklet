@@ -3,7 +3,7 @@
 // โครงหน้าเหมือนหน้านางแบบ (components/TryOn.tsx) และใช้ class CSS ชุดเดียวกัน: เมนูขั้นตอนซ้าย แผงเลือก รูปตรงกลาง แผงปรับแต่งขวา
 // หน้าเว็บส่งแค่ id ของตัวเลือก (lib/packshot.ts) ไป app/api/packshot แล้ว server แปลงเป็นคำสั่งเอง
 // คลังรูปแยกจากหน้านางแบบ: สินค้า / ช็อตต้นแบบ / รูปฉาก (KINDS ใน lib/storage.ts) รูปที่สร้างติดป้าย page = 'product'
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
@@ -303,7 +303,7 @@ export default function Packshot() {
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
   const [saveSrc, setSaveSrc] = useState<string | null>(null);
-  const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean; start: { fx: number; fy: number } | null } | null>(null);
+  const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
   const productUploadRef = useRef(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
@@ -666,15 +666,11 @@ export default function Packshot() {
     return full?.width && fullSrcRef.current === src ? full : finishedCanvas(src, NO_FILM);
   }
 
-  async function openViewer(e: MouseEvent<HTMLElement>) {
+  async function openViewer() { // เปิดแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม
     if (!shown && !product) return;
-    const pic = e.currentTarget.querySelector('canvas');
-    const r = pic?.getBoundingClientRect();
-    const inside = r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-    const start = inside ? { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height } : null;
     try {
       const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
-      setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true, start });
+      setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
       setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
     }
@@ -1016,7 +1012,7 @@ export default function Packshot() {
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '')} ref={frameRef}>
-            <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={(e) => void openViewer(e)}>
+            <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer()}>
               <canvas ref={canvasRef} hidden={empty} />
               {empty && <p className="muted-text">อัปโหลดรูปสินค้าในขั้นที่ 1 แล้วกด &quot;สร้างรูป&quot;</p>}
             </figure>
@@ -1042,7 +1038,7 @@ export default function Packshot() {
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
-      {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} start={viewer.start} onClose={() => {
+      {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);
         setViewer(null);
       }} />}

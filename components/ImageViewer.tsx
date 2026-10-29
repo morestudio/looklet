@@ -1,11 +1,11 @@
 'use client';
-// ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): กดที่รูป = ซูม 2 เท่าของตอนพอดีจอตรงจุดนั้น คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
+// ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): เปิดมาพอดีจอเสมอ · กดที่รูป = ซูม 2 เท่าของตอนพอดีจอตรงจุดนั้น คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
 // ซูมเข้า/ออกทีละขั้น: ปุ่ม − / + / ทั้งรูป ด้านล่าง · ล้อเมาส์หรือหนีบนิ้วบนแทร็กแพด (ซูมรอบจุดที่ชี้) · ปุ่มคีย์บอร์ด + − 0
 // (29 ต.ค. ผู้ใช้บอกซูมแรงเกินและซูมออกไม่ได้: เดิมซูมไปขนาดจริงของรูปทันที ~3 เท่า ออกได้แค่คลิกนิ่งๆ หรือคลิกขวา)
 // เมาส์: ซูมตั้งแต่ตอนกดลง กดค้างแล้วลากต่อได้เลย (เดิมซูมตอนปล่อยเมาส์ ต้องกดอีกรอบถึงจะลากได้ — ผู้ใช้บอก 22 ต.ค.)
 // คลิกขวาตอนซูม = กลับมาดูทั้งรูป (ไม่ขึ้นเมนูของ browser) · ตอนพอดีจอคลิกขวาได้เมนูปกติ (คัดลอก/บันทึกรูป)
 // มือถือ: แตะเพื่อซูม/กลับ ปัดนิ้วเลื่อนแบบปกติของ browser · Esc หรือ ✕ = ปิด
-// start = จุดที่กดบนรูปบนเวที: เปิดมาก็ซูมตรงนั้นเลย ลากได้ทันที (ผู้ใช้บอก 22 ต.ค.)
+// เดิมเปิดมาซูมตรงจุดที่กดบนเวทีเลย (22 ต.ค.) — 29 ต.ค. ผู้ใช้ขอให้เปิดมาพอดีจอก่อน
 // รูป 1664×2496 ละเอียดกว่าจอ ต้องซูมถึงจะเห็นผิว/เนื้อผ้า
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { IconHand } from './icons';
@@ -20,9 +20,7 @@ const CLICK_ZOOM = 2; // กด/เปิดจากเวที = 2 เท่�
 const STEP = 1.5; // ปุ่ม + / − ทีละ 1.5 เท่า
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-export default function ImageViewer({ src, alt, start = null, onClose }: {
-  src: string; alt: string; start?: { fx: number; fy: number } | null; onClose: () => void;
-}) {
+export default function ImageViewer({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -91,15 +89,12 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
     return () => box.removeEventListener('wheel', onWheel);
   });
 
-  // เปิดจากการกดรูปบนเวที -> ซูมตรงจุดนั้นทันทีที่รูปโหลดเสร็จ (ต้องรู้ขนาดรูปตอนพอดีจอก่อน)
+  // รูปโหลดเสร็จ -> จำขนาดตอนพอดีจอ (ใช้คำนวณการซูม)
   const onLoad = () => {
     if (!dialogRef.current?.open) dialogRef.current?.showModal(); // รูปโหลดเสร็จก่อนหน้าต่างเปิด (รูปจาก cache) -> เปิดก่อน ไม่งั้นวัดขนาดได้ 0
     if (zoom) return;
     const img = imgRef.current!;
     setFit({ width: img.getBoundingClientRect().width, natural: img.naturalWidth });
-    if (!start) return;
-    const b = boxRef.current!.getBoundingClientRect();
-    setZoom({ scale: CLICK_ZOOM, fx: start.fx, fy: start.fy, ax: b.width / 2, ay: b.height / 2 });
   };
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
