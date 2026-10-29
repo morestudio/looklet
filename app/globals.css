@@ -269,11 +269,21 @@ dialog.viewer { width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100d
 dialog.viewer::backdrop { background: var(--scrim-strong); }
 .viewer-box { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--space-24); overflow: hidden; }
 .viewer-box img { display: block; max-width: 100%; max-height: 100%; cursor: zoom-in; user-select: none; -webkit-user-select: none; }
-.viewer-box.zoomed { display: block; padding: 0; overflow: auto; }
+.viewer-box.zoomed { display: flex; padding: 0; overflow: auto; }
+.viewer-box.zoomed img { flex: none; margin: auto; } /* ซูมแล้วยังเล็กกว่าจอด้านไหน = อยู่กลาง (margin auto ไม่ตัดขอบตอนใหญ่กว่าจอ) */
 .viewer-box.zoomed, .viewer-box.zoomed img { cursor: grab; } /* มือ = ลากเลื่อนได้ (คลิกเฉยๆ = ดูทั้งรูป) */
 .viewer-box.dragging, .viewer-box.dragging img { cursor: grabbing; }
 .viewer-close { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); width: 40px; height: 40px; border: 0; border-radius: var(--r-full); background: var(--float-bg); color: #111; font-size: 24px; line-height: 1; cursor: pointer; }
-.viewer-hint { position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); margin: 0; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-6); padding: var(--space-6) var(--space-12); border-radius: var(--r-full); background: var(--scrim-strong); font-size: var(--text-xs); white-space: nowrap; pointer-events: none; }
+.viewer-hint { position: absolute; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); margin: 0; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-6); padding: var(--space-6) var(--space-12); border-radius: var(--r-full); background: var(--scrim-strong); font-size: var(--text-xs); white-space: nowrap; pointer-events: none; }
+/* แถบซูมด้านล่าง: − % + ทั้งรูป (components/ImageViewer.tsx) */
+.viewer-tools { position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-2); padding: var(--space-4); border-radius: var(--r-full); background: var(--scrim-strong); color: var(--on-dark); }
+.viewer-tools button { display: grid; place-items: center; min-width: 40px; height: 40px; padding: 0; border: 0; border-radius: var(--r-full); background: transparent; color: var(--on-dark); font-size: 22px; line-height: 1; cursor: pointer; }
+.viewer-tools button:hover:not(:disabled) { background: rgba(255, 253, 249, .14); }
+.viewer-tools button:disabled { opacity: .35; cursor: default; }
+.viewer-tools .viewer-fit { padding: 0 var(--space-14); font-size: var(--text-sm); }
+.viewer-tools output { min-width: 64px; text-align: center; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+dialog.viewer :focus-visible { outline-color: var(--on-dark); }
+@media (max-width: 560px) { .viewer-hint { display: none; } } /* จอแคบ: คำแนะนำยาวเกินจอ ใช้แถบซูมแทน */
 .frame figure.zoomable { cursor: zoom-in; }
 #accPreview { display: block; width: 100%; height: 200px; margin-bottom: var(--space-14); object-fit: contain; border-radius: var(--r-md); background: var(--surface-card); }
 /* ช่องกรอกในหน้าต่างของเสริม: label เป็นแค่คำอธิบาย ช่อง input มีขอบอันเดียว (ช่องกรอกหน้าเข้าสู่ระบบคือ input.field ด้านล่าง) */

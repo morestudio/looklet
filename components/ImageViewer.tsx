@@ -1,16 +1,24 @@
 'use client';
-// ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): กดที่รูป = ซูมตรงจุดนั้น (ขนาดจริงของรูป อย่างน้อย 2 เท่าของตอนพอดีจอ) คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
+// ดูรูปเต็มจอ + ซูม (กดรูปบนเวที): กดที่รูป = ซูม 2 เท่าของตอนพอดีจอตรงจุดนั้น คลิกเฉยๆ อีกที = กลับมาดูทั้งรูป
+// ซูมเข้า/ออกทีละขั้น: ปุ่ม − / + / ทั้งรูป ด้านล่าง · ล้อเมาส์หรือหนีบนิ้วบนแทร็กแพด (ซูมรอบจุดที่ชี้) · ปุ่มคีย์บอร์ด + − 0
+// (29 ต.ค. ผู้ใช้บอกซูมแรงเกินและซูมออกไม่ได้: เดิมซูมไปขนาดจริงของรูปทันที ~3 เท่า ออกได้แค่คลิกนิ่งๆ หรือคลิกขวา)
 // เมาส์: ซูมตั้งแต่ตอนกดลง กดค้างแล้วลากต่อได้เลย (เดิมซูมตอนปล่อยเมาส์ ต้องกดอีกรอบถึงจะลากได้ — ผู้ใช้บอก 22 ต.ค.)
 // คลิกขวาตอนซูม = กลับมาดูทั้งรูป (ไม่ขึ้นเมนูของ browser) · ตอนพอดีจอคลิกขวาได้เมนูปกติ (คัดลอก/บันทึกรูป)
-// มือถือ: แตะเพื่อซูม ปัดนิ้วเลื่อนแบบปกติของ browser (ซูมตอนแตะลงจะซูมทุกครั้งที่ปัดหน้าจอ) · Esc หรือ ✕ = ปิด
-// start = จุดที่กดบนรูปบนเวที: เปิดมาก็ซูมตรงนั้นเลย ลากได้ทันที (เดิมเปิดมาพอดีจอ ต้องกดอีกครั้งถึงซูม/ขึ้นมือ — ผู้ใช้บอก 22 ต.ค.)
+// มือถือ: แตะเพื่อซูม/กลับ ปัดนิ้วเลื่อนแบบปกติของ browser · Esc หรือ ✕ = ปิด
+// start = จุดที่กดบนรูปบนเวที: เปิดมาก็ซูมตรงนั้นเลย ลากได้ทันที (ผู้ใช้บอก 22 ต.ค.)
 // รูป 1664×2496 ละเอียดกว่าจอ ต้องซูมถึงจะเห็นผิว/เนื้อผ้า
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { IconHand } from './icons';
 
-type Zoom = { width: number; fx: number; fy: number }; // ความกว้างรูปตอนซูม (px) + จุดที่กด (สัดส่วน 0..1)
+// scale = กี่เท่าของตอนพอดีจอ · (fx, fy) = จุดบนรูป (สัดส่วน 0..1) ที่ต้องอยู่ตรงตำแหน่ง (ax, ay) ในกรอบ (px)
+type Zoom = { scale: number; fx: number; fy: number; ax: number; ay: number };
+type Anchor = Omit<Zoom, 'scale'>;
 // การกดครั้งนี้: จุดเริ่ม, ตำแหน่งเลื่อนตอนเริ่ม, ลากไปแล้วหรือยัง, ซูมเข้าตอนกดครั้งนี้ (คลิกที่ตามมาไม่ต้องซูมออก)
 type Drag = { x: number; y: number; left: number; top: number; moved: boolean; zoomedIn: boolean };
+
+const CLICK_ZOOM = 2; // กด/เปิดจากเวที = 2 เท่าของพอดีจอ
+const STEP = 1.5; // ปุ่ม + / − ทีละ 1.5 เท่า
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 export default function ImageViewer({ src, alt, start = null, onClose }: {
   src: string; alt: string; start?: { fx: number; fy: number } | null; onClose: () => void;
@@ -19,39 +27,79 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
   const boxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [zoom, setZoom] = useState<Zoom | null>(null); // null = พอดีจอ
+  const [fit, setFit] = useState<{ width: number; natural: number } | null>(null); // รูปตอนพอดีจอ: กว้างบนจอ (px) + กว้างจริงของรูป
   const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false); // ตอนซูม: เคอร์เซอร์มือแบมือ (ลากได้) -> กำมือ (กำลังกด/ลาก)
+  // ซูมได้มากสุด 1.5 เท่าของขนาดจริงของรูป (อย่างน้อยเท่ากับตอนกดซูม)
+  const maxScale = fit ? Math.max(CLICK_ZOOM, (fit.natural / fit.width) * 1.5) : CLICK_ZOOM;
 
   useEffect(() => {
     if (!dialogRef.current?.open) dialogRef.current?.showModal();
+    // จอเปลี่ยนขนาด: กลับมาพอดีจอแล้ววัดใหม่
+    const onResize = () => {
+      setZoom(null);
+      requestAnimationFrame(() => {
+        const img = imgRef.current;
+        if (img?.naturalWidth) setFit({ width: img.getBoundingClientRect().width, natural: img.naturalWidth });
+      });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // ซูมแล้ว: เลื่อนให้จุดที่กดอยู่กลางจอ — ถ้ายังกดค้างอยู่ ให้การลากเริ่มนับจากตำแหน่งใหม่นี้
+  // ซูมแล้ว: เลื่อนให้จุด (fx, fy) บนรูปอยู่ตรง (ax, ay) ในกรอบ — ถ้ายังกดค้างอยู่ ให้การลากเริ่มนับจากตำแหน่งใหม่นี้
   useLayoutEffect(() => {
     const box = boxRef.current;
     const img = imgRef.current;
     if (!zoom || !box || !img) return;
-    box.scrollLeft = zoom.fx * img.clientWidth - box.clientWidth / 2;
-    box.scrollTop = zoom.fy * img.clientHeight - box.clientHeight / 2;
+    box.scrollLeft = img.offsetLeft + zoom.fx * img.clientWidth - zoom.ax;
+    box.scrollTop = img.offsetTop + zoom.fy * img.clientHeight - zoom.ay;
     if (drag.current?.zoomedIn) {
       drag.current.left = box.scrollLeft;
       drag.current.top = box.scrollTop;
     }
   }, [zoom]);
 
-  const zoomTo = (fx: number, fy: number) => {
-    const img = imgRef.current!;
-    setZoom({ width: Math.max(img.naturalWidth, img.getBoundingClientRect().width * 2), fx, fy });
-  };
-  const zoomAt = (clientX: number, clientY: number) => {
+  // จุดบนรูปใต้ตำแหน่งนี้บนจอ (ซูมรอบจุดที่ชี้/กด จุดนั้นอยู่ใต้เมาส์ต่อ)
+  const anchorAt = (clientX: number, clientY: number): Anchor => {
     const r = imgRef.current!.getBoundingClientRect();
-    zoomTo((clientX - r.left) / r.width, (clientY - r.top) / r.height);
+    const b = boxRef.current!.getBoundingClientRect();
+    return { fx: clamp01((clientX - r.left) / r.width), fy: clamp01((clientY - r.top) / r.height), ax: clientX - b.left, ay: clientY - b.top };
   };
+  const middle = () => {
+    const b = boxRef.current!.getBoundingClientRect();
+    return anchorAt(b.left + b.width / 2, b.top + b.height / 2);
+  };
+  const scaleTo = (scale: number, at: Anchor) => {
+    if (!fit) return; // รูปยังไม่โหลด
+    const s = Math.min(maxScale, scale);
+    setZoom(s <= 1.02 ? null : { scale: s, ...at });
+  };
+  const zoomBy = (factor: number, at?: Anchor) => scaleTo((zoom?.scale ?? 1) * factor, at ?? middle());
+
+  // ล้อเมาส์ / หนีบนิ้วบนแทร็กแพด (ctrlKey) = ซูมรอบจุดที่ชี้ · ใส่ listener เอง เพราะ React ใส่ wheel แบบ passive (preventDefault ไม่ได้)
+  // ไม่ใส่ deps: ผูกใหม่ทุกรอบ ตัวจัดการจะเห็นระดับซูมล่าสุดเสมอ
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const speed = e.ctrlKey ? 0.01 : e.deltaMode === 1 ? 0.05 : 0.002; // หนีบนิ้ว / ล้อแบบบรรทัด / ล้อแบบพิกเซล
+      zoomBy(Math.exp(-e.deltaY * speed), anchorAt(e.clientX, e.clientY));
+    };
+    box.addEventListener('wheel', onWheel, { passive: false });
+    return () => box.removeEventListener('wheel', onWheel);
+  });
+
   // เปิดจากการกดรูปบนเวที -> ซูมตรงจุดนั้นทันทีที่รูปโหลดเสร็จ (ต้องรู้ขนาดรูปตอนพอดีจอก่อน)
   const onLoad = () => {
-    if (!start || zoom) return;
     if (!dialogRef.current?.open) dialogRef.current?.showModal(); // รูปโหลดเสร็จก่อนหน้าต่างเปิด (รูปจาก cache) -> เปิดก่อน ไม่งั้นวัดขนาดได้ 0
-    zoomTo(start.fx, start.fy);
+    if (zoom) return;
+    const img = imgRef.current!;
+    setFit({ width: img.getBoundingClientRect().width, natural: img.naturalWidth });
+    if (!start) return;
+    const b = boxRef.current!.getBoundingClientRect();
+    setZoom({ scale: CLICK_ZOOM, fx: start.fx, fy: start.fy, ax: b.width / 2, ay: b.height / 2 });
   };
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
@@ -63,7 +111,7 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
     if (!mouse || (!zoom && !onImage)) return;
     if (!zoom) {
       drag.current.zoomedIn = true;
-      zoomAt(e.clientX, e.clientY);
+      scaleTo(CLICK_ZOOM, anchorAt(e.clientX, e.clientY)); // จุดที่กดอยู่ใต้เมาส์ต่อ ลากต่อได้เลย
     }
     setDragging(true);
     box.setPointerCapture(e.pointerId); // ลากออกนอกรูป/นอกกรอบก็ยังเลื่อนต่อได้
@@ -73,7 +121,7 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
     if (!d || e.pointerType !== 'mouse' || !(e.buttons & 1) || !boxRef.current!.classList.contains('zoomed')) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
-    if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 8) d.moved = true; // ขยับนิดหน่อยตอนคลิก (แทร็กแพด) ยังนับเป็นคลิก
     boxRef.current!.scrollLeft = d.left - dx;
     boxRef.current!.scrollTop = d.top - dy;
   }
@@ -82,11 +130,21 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
     const d = drag.current;
     if (d?.moved || d?.zoomedIn) return;
     if (zoom) setZoom(null);
-    else if (e.target === imgRef.current) zoomAt(e.clientX, e.clientY);
+    else if (e.target === imgRef.current) scaleTo(CLICK_ZOOM, anchorAt(e.clientX, e.clientY));
+  }
+  function onKeyDown(e: KeyboardEvent<HTMLDialogElement>) {
+    if (e.key === '+' || e.key === '=') zoomBy(STEP);
+    else if (e.key === '-' || e.key === '_') zoomBy(1 / STEP);
+    else if (e.key === '0') setZoom(null);
+    else return;
+    e.preventDefault();
   }
 
+  // เปอร์เซ็นต์เทียบขนาดจริงของรูป (100% = 1 พิกเซลรูปต่อ 1 พิกเซลจอ)
+  const percent = fit && zoom ? Math.round((fit.width * zoom.scale / fit.natural) * 100) : null;
+  const atMax = zoom !== null && zoom.scale >= maxScale - 0.01;
   return (
-    <dialog ref={dialogRef} className="viewer" onClose={onClose}>
+    <dialog ref={dialogRef} className="viewer" onClose={onClose} onKeyDown={onKeyDown}>
       <div ref={boxRef} className={'viewer-box' + (zoom ? ' zoomed' : '') + (dragging ? ' dragging' : '')}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => setDragging(false)}
         onPointerCancel={() => setDragging(false)} onClick={onClick}
@@ -96,10 +154,16 @@ export default function ImageViewer({ src, alt, start = null, onClose }: {
           setZoom(null);
         }}>
         <img ref={imgRef} src={src} alt={alt} draggable={false} onLoad={onLoad}
-          style={zoom ? { width: zoom.width, maxWidth: 'none', maxHeight: 'none' } : undefined} />
+          style={zoom && fit ? { width: fit.width * zoom.scale, maxWidth: 'none', maxHeight: 'none' } : undefined} />
       </div>
       <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>×</button>
-      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · คลิกเฉยๆ หรือคลิกขวาเพื่อดูทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม กดค้างแล้วลากได้เลย'}</p>
+      <p className="viewer-hint">{zoom ? <><IconHand /> ลากเพื่อเลื่อน · คลิกเพื่อดูทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม · เลื่อนล้อเมาส์เพื่อซูมเข้า/ออก'}</p>
+      <div className="viewer-tools" role="toolbar" aria-label="ซูม">
+        <button type="button" aria-label="ซูมออก" title="ซูมออก (−)" disabled={!zoom} onClick={() => zoomBy(1 / STEP)}>−</button>
+        <output aria-live="polite">{percent !== null ? `${percent}%` : 'พอดีจอ'}</output>
+        <button type="button" aria-label="ซูมเข้า" title="ซูมเข้า (+)" disabled={atMax} onClick={() => zoomBy(STEP)}>+</button>
+        <button type="button" className="viewer-fit" title="ดูทั้งรูป (0)" disabled={!zoom} onClick={() => setZoom(null)}>ทั้งรูป</button>
+      </div>
     </dialog>
   );
 }
