@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -6,14 +7,17 @@ import { test } from 'node:test';
 import ts from 'typescript';
 
 // ทดสอบ route จริงและตัวเรียก OpenAI จริง แต่แทน auth/storage/network เพื่อไม่เสียค่า AI
-function app({ member = true, key = true, missing = false, providerFails = false, saveFails = false, jpegFails = false } = {}) {
-  const reads = [], saves = [], calls = [], logs = [], jpegCalls = [];
+function app({ member = true, key = true, missing = false, providerFails = false, saveFails = false, jpegFails = false, dims = [1024, 1536] } = {}) {
+  const reads = [], saves = [], calls = [], logs = [], jpegCalls = [], usages = [];
   // import sharp from 'sharp' แปลงแบบไม่มี esModuleInterop -> ใช้ .default ของโมดูล
-  const sharpStub = (buf) => ({ jpeg: (o) => ({ toBuffer: async () => {
-    jpegCalls.push(o);
-    if (jpegFails) throw new Error('sharp unavailable');
-    return Buffer.concat([Buffer.from('jpeg:'), buf]);
-  } }) });
+  const sharpStub = (buf) => ({
+    metadata: async () => ({ width: dims[0], height: dims[1] }), // สัดส่วนตรงกับขนาดที่ขอ = ส่งให้ AI ตรงๆ ไม่ต้องเติมขอบ
+    jpeg: (o) => ({ toBuffer: async () => {
+      jpegCalls.push(o);
+      if (jpegFails) throw new Error('sharp unavailable');
+      return Buffer.concat([Buffer.from('jpeg:'), buf]);
+    } }),
+  });
   sharpStub.default = sharpStub;
   const source = Buffer.from('stored-original-image');
   const cache = new Map();
@@ -26,7 +30,10 @@ function app({ member = true, key = true, missing = false, providerFails = false
     '@/lib/genlog': {
       localTime: () => '2026-10-22 12:00:00', sentences: (p) => [p], writeGenerateLog: async (l) => logs.push(l),
     },
-    './supabase/server': { isSignedInMember: async () => member },
+    // ทีมงาน (ไม่มีโควตา) · undefined = ยังไม่เข้าสู่ระบบ
+    './supabase/server': { isSignedInMember: async () => member, signedInAccount: async () => (member ? { id: 'team', email: 'team@x', role: 'team' } : undefined) },
+    'node:async_hooks': { AsyncLocalStorage },
+    '@/lib/usage': { quotaBlock: async () => null, recordUsage: async (entry) => { usages.push(entry); } },
     // แปลง PNG -> JPEG: ทดสอบแค่ว่าเรียกด้วย quality 97 แล้วเก็บผลที่ได้
     sharp: sharpStub,
   };
@@ -36,7 +43,7 @@ function app({ member = true, key = true, missing = false, providerFails = false
       calls.push({ url, init });
       return providerFails
         ? Response.json({ error: { message: 'Provider unavailable' } }, { status: 503 })
-        : Response.json({ data: [{ b64_json: Buffer.from('new-refined-image').toString('base64') }] });
+        : Response.json({ data: [{ b64_json: Buffer.from('new-refined-image').toString('base64') }], usage: { total_tokens: 4116 } });
     },
   });
   function load(file) {
@@ -55,7 +62,7 @@ function app({ member = true, key = true, missing = false, providerFails = false
     return loadedModule.exports;
   }
   const route = load('app/api/refine-skin/route.ts');
-  return { reads, saves, calls, logs, jpegCalls, source,
+  return { reads, saves, calls, logs, jpegCalls, usages, source,
     post: (body) => route.POST(new Request('http://localhost/api/refine-skin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })),
@@ -95,7 +102,7 @@ test('a deleted source returns 404 without invoking AI', async () => {
 });
 
 test('refines the stored original with Sunburst high, saves separately and records lineage', async () => {
-  const a = app();
+  const a = app({ dims: [1536, 1024] }); // รูปแนวนอน ขอขนาดแนวนอน
   const before = Buffer.from(a.source);
   const response = await a.post({ ...input, size: '1536x1024' });
   assert.equal(response.status, 200);
@@ -122,6 +129,7 @@ test('refines the stored original with Sunburst high, saves separately and recor
   assert.equal(Buffer.from(a.saves[0][1], 'base64').toString(), 'jpeg:new-refined-image');
   assert.equal(a.logs[0].result, result.src);
   assert.equal(a.logs[0].style.operation, 'refine-skin');
+  assert.deepEqual([a.usages[0].status, a.usages[0].tokens], ['ok', 4116]); // โทเคนจริงจาก OpenAI -> โควตาลูกค้า
 });
 
 test('provider failure preserves the source and records failure, without a false result', async () => {

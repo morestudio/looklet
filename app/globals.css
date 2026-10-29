@@ -24,10 +24,10 @@
   --space-14: 14px; --space-16: 16px; --space-18: 18px; --space-20: 20px; --space-24: 24px;
   /* เงา + วงแหวนตอนเลือก */
   --shadow-tab: 0 1px 2px rgba(0, 0, 0, .08); --shadow-float: 0 2px 8px rgba(0, 0, 0, .08);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .06); --shadow-pinned: 0 -8px 16px -12px rgba(0, 0, 0, .25);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .06);
   --ring-option: 0 0 0 1px var(--primary); --ring-swatch: 0 0 0 2px var(--canvas), 0 0 0 4px var(--ink);
   /* โครงหน้า (จุดเปลี่ยนจอ 1279px / 860px อยู่ใน @media ด้านล่าง — @media ใช้ตัวแปรไม่ได้) */
-  --topbar-height: 60px; --rail-width: 84px; --panel-width: 340px; --panel-width-md: 320px; --inspector-width: 300px;
+  --topbar-height: 60px; --rail-width: 84px; --panel-width: 340px; --panel-width-md: 320px;
   --stage-height-phone: 70vh; --grid-columns: 3;
   /* ขนาดปุ่ม ช่องกรอก และไอคอน */
   --control-height: 40px; --control-height-tool: 36px; --control-height-main: 52px; --control-height-field: 44px;
@@ -55,19 +55,38 @@ button, select, input, textarea { font-family: inherit; }
 .topbar { flex: 0 0 var(--topbar-height); display: flex; align-items: center; gap: var(--space-16); padding: 0 var(--space-20); background: var(--canvas); border-bottom: 1px solid var(--hairline-soft); }
 .brand { flex: 0 0 auto; color: var(--primary); font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.4px; }
 .beta { margin-left: var(--space-4); padding: var(--space-2) var(--space-8); border-radius: var(--r-full); background: var(--primary-soft); color: var(--primary); font-size: var(--text-2xs); font-weight: 700; vertical-align: 3px; }
-/* สลับหน้า นางแบบ / สินค้า (components/ui.tsx PageSwitch) */
+/* สลับหน้า นางแบบ / สินค้า (components/ui.tsx PageSwitch) · หน้าที่อยู่เป็นสีแดงแบรนด์ ให้เห็นชัดว่าอยู่หน้าไหน (28 ต.ค.) */
 .page-switch { flex: 0 0 auto; display: flex; gap: var(--space-2); padding: 3px; border-radius: var(--r-full); background: var(--surface-card); }
-.page-switch a { display: inline-flex; align-items: center; height: var(--tab-height); padding: 0 var(--space-14); border-radius: var(--r-full); color: var(--mute); font-size: var(--text-sm); font-weight: 700; text-decoration: none; }
-.page-switch a.active { background: var(--canvas); color: var(--ink); box-shadow: var(--shadow-tab); }
+.page-switch a { display: inline-flex; align-items: center; height: var(--tab-height); padding: 0 var(--space-14); border-radius: var(--r-full); color: var(--mute); font-size: var(--text-sm); font-weight: 700; text-decoration: none; transition: background-color .15s, color .15s; }
+.page-switch a:not(.active):hover { color: var(--ink); background: var(--canvas); }
+.page-switch a.active { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-tab); }
+/* ลูกค้า: แถบโทเคนใช้ไป / ทั้งหมด มุมขวาบน (TokenUsage) · ใช้ไป ≥ 90% เป็นสีแดง */
+.token-usage { display: inline-flex; align-items: center; gap: var(--space-8); height: var(--tab-height); padding: 0 var(--space-12); border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); font-size: var(--text-xs); white-space: nowrap; }
+.token-track { flex: none; width: 64px; height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--hairline); }
+.token-track i { display: block; height: 100%; border-radius: inherit; background: var(--ink); transition: width .4s; }
+.token-usage b { color: var(--ink); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.token-usage.low .token-track i { background: var(--primary); }
+.token-usage.low b { color: var(--primary); }
+/* จอแคบ (มือถือ): แถบบนต้องพอดีจอ (เดิมกว้าง 517px บนจอ 390px) -> ซ่อน Beta, ช่องไฟแคบลง, ออกจากระบบเหลือไอคอน */
+@media (max-width: 560px) {
+  .topbar { gap: var(--space-8); }
+  .beta, .sign-out-text { display: none; }
+  .page-switch a { padding: 0 var(--space-8); }
+  .token-usage { gap: var(--space-4); padding: 0 var(--space-8); }
+  .token-usage b { font-size: var(--text-xs); }
+  .token-track { width: 24px; }
+  .token-word { display: none; }
+  .sign-out { padding: 0 var(--space-6); }
+}
 .status { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-6); overflow: hidden; color: var(--primary-pressed); font-size: var(--text-sm); white-space: nowrap; text-overflow: ellipsis; }
 .status-x { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); cursor: pointer; }
-.top-actions { display: flex; gap: var(--space-8); margin-left: auto; }
+.top-actions { display: flex; align-items: center; gap: var(--space-8); margin-left: auto; }
 
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--panel-width) minmax(0, 1fr) var(--inspector-width); grid-template-areas: "rail panel stage inspector"; }
+/* ไม่มีแผงขวาแล้วทั้ง 2 หน้า (เอาออก 28 ต.ค.): เมนูขั้นตอน | แผงเลือก | รูป */
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--panel-width) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage"; }
 .rail { grid-area: rail; }
 .panel { grid-area: panel; }
 .stage { grid-area: stage; }
-.inspector { grid-area: inspector; }
 
 /* เมนูขั้นตอน (ซ้ายสุด) */
 .rail { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-12) var(--space-8); overflow-y: auto; background: var(--canvas); border-right: 1px solid var(--hairline-soft); }
@@ -75,15 +94,14 @@ button, select, input, textarea { font-family: inherit; }
 .rail-btn svg { width: var(--icon-rail); height: var(--icon-rail); }
 .rail-btn:hover { background: var(--surface-card); }
 .rail-btn.active { background: var(--primary-soft); color: var(--primary); }
-.rail-btn:disabled { opacity: .35; cursor: default; background: none; } /* ขั้นที่ประเภทภาพนี้ไม่ใช้ (หน้าสินค้า) */
+.rail-btn:disabled { opacity: .35; cursor: default; background: none; } /* ขั้นที่ไม่ใช้: ประเภทภาพ (หน้าสินค้า) / ลอกทั้งช็อต (หน้านางแบบ) */
 .rail-btn .n { position: absolute; top: 5px; left: 9px; color: var(--ash); font-size: var(--text-3xs); }
 .rail-btn.active .n { color: var(--primary); }
 .rail-btn .dot { position: absolute; top: 8px; right: 12px; width: 7px; height: 7px; border-radius: var(--r-full); background: var(--primary); }
 
 /* แผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา): เลื่อนในตัว */
-.panel, .inspector { min-height: 0; overflow-y: auto; padding: var(--space-18) var(--space-16) var(--space-24); background: var(--canvas); }
+.panel { min-height: 0; overflow-y: auto; padding: var(--space-18) var(--space-16) var(--space-24); background: var(--canvas); }
 .panel { border-right: 1px solid var(--hairline-soft); }
-.inspector { border-left: 1px solid var(--hairline-soft); }
 .panel-head { display: flex; align-items: center; gap: var(--space-10); margin-bottom: var(--space-14); }
 .panel-head h2 { margin: 0; color: var(--ink-soft); font-size: var(--text-xl); font-weight: 700; }
 .panel-head .hint { margin-left: auto; color: var(--ash); font-size: var(--text-xs); font-weight: 500; }
@@ -91,7 +109,10 @@ button, select, input, textarea { font-family: inherit; }
 .search { display: flex; align-items: center; gap: var(--space-8); height: var(--control-height); margin-bottom: var(--space-10); padding: 0 var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--ash); }
 .search svg { width: var(--icon-button); height: var(--icon-button); }
 .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ink); font-size: var(--text-base); }
-.next { width: 100%; margin-top: var(--space-18); }
+.next { width: 100%; margin-top: var(--space-18); transition: background .25s ease, color .25s ease; }
+/* ปุ่มถัดไปเมื่อผู้ใช้เลือกในขั้นนั้นแล้ว (useChosenSteps ใน components/ui.tsx): ชมพูอ่อน + ตัวแดง แบบเดียวกับขั้นที่เลือกอยู่ในเมนูซ้าย */
+.btn-ready { background: var(--primary-soft); color: var(--primary); }
+.btn-ready:active { background: var(--primary); color: var(--on-primary); }
 .note { margin: 0 0 var(--space-12); padding: var(--space-8) var(--space-12); border-radius: var(--r-md); background: var(--surface-card); color: var(--ink-soft); font-size: var(--text-xs); }
 .muted-text { margin: var(--space-4) 0 0; color: var(--mute); font-size: var(--text-xs); line-height: 1.5; }
 
@@ -99,8 +120,6 @@ button, select, input, textarea { font-family: inherit; }
 .sec { margin-bottom: var(--space-20); }
 .sec h3 { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-8); margin: 0 0 var(--space-10); color: var(--ink-soft); font-size: var(--text-base); font-weight: 700; }
 .sec h3 small { color: var(--ash); font-size: var(--text-xs); font-weight: 500; }
-.big { margin: 0; color: var(--ink-soft); font-size: var(--text-lg); font-weight: 700; overflow-wrap: anywhere; }
-.tips { margin: 0; padding-left: var(--space-18); color: var(--body); font-size: var(--text-sm); line-height: 1.75; }
 
 /* ตัวเลือกแบบการ์ด (โมเดล AI / แสงสี) */
 .options { display: grid; gap: var(--space-8); }
@@ -115,6 +134,15 @@ button, select, input, textarea { font-family: inherit; }
 .chip.active { background: var(--ink); color: var(--on-dark); }
 .chip:disabled { opacity: .45; cursor: default; }
 .ratio { display: inline-block; height: 14px; margin-right: var(--space-6); border: 1.5px solid currentColor; border-radius: 3px; }
+/* ใช้ภาพที่ไหน (หน้าสินค้า): การ์ดตามแพลตฟอร์ม + กรอบเล็กตามสัดส่วนจริง */
+.aspect-options { grid-template-columns: 1fr; } /* แถวละใบ: ชื่อแพลตฟอร์มยาว 2 คอลัมน์แล้วตัดคำ */
+.aspect-option { flex-direction: row; align-items: center; gap: var(--space-10); }
+.aspect-option > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.aspect-slot { flex: none; display: grid; place-items: center; width: 58px; } /* ช่องกว้างเท่ากันทุกใบ ข้อความจะได้ตรงกัน */
+.aspect-option b { font-size: var(--text-sm); line-height: 1.3; }
+.aspect-option small { line-height: 1.35; }
+.aspect-frame { display: block; height: 38px; border: 1.5px solid var(--ash); border-radius: 4px; background: var(--surface-soft); }
+.aspect-option.active .aspect-frame { border-color: var(--primary); background: var(--primary-soft); }
 .swatch { width: var(--chip-height); height: var(--chip-height); padding: 0; border: 0; border-radius: var(--r-full); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
 .swatch.active { box-shadow: var(--ring-swatch); }
 
@@ -156,18 +184,8 @@ button, select, input, textarea { font-family: inherit; }
 .del { position: absolute; top: 6px; left: 6px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--float-bg); color: var(--ink); font-size: 15px; line-height: 1; cursor: pointer; }
 
 /* ของเสริมที่เลือก (แผงขวา) */
-.sel-row { display: flex; align-items: center; gap: var(--space-10); margin-bottom: var(--space-8); padding: var(--space-8); border-radius: var(--r-md); background: var(--surface-card); }
-.sel-row img { flex: 0 0 44px; height: 44px; object-fit: contain; border-radius: var(--r-sm); background: #fff; }
-.sel-row div { flex: 1; min-width: 0; }
-.sel-row b { display: block; color: var(--ink-soft); font-size: var(--text-sm); overflow-wrap: anywhere; }
-.icon-btn { flex: 0 0 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--canvas); color: var(--ink); font-size: 16px; cursor: pointer; }
 
 /* สรุปที่เลือก (ล่างแผงขวา) — กดแต่ละบรรทัดเพื่อไปขั้นนั้น */
-.summary { margin-top: var(--space-8); padding: var(--space-12) var(--space-14); border-radius: var(--r-md); background: var(--surface-card); }
-.sum-row { display: flex; justify-content: space-between; gap: var(--space-10); width: 100%; padding: 7px 0; border: 0; border-bottom: 1px solid var(--hairline-soft); background: none; color: var(--mute); font-size: var(--text-sm); text-align: left; cursor: pointer; }
-.sum-row:last-child { border-bottom: 0; }
-.sum-row b { color: var(--ink-soft); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
-.sum-row:hover b { color: var(--primary); }
 .gen-btn { width: 100%; height: var(--control-height-main); margin: var(--space-4) 0 var(--space-16); font-size: var(--text-lg); }
 .text-input { display: block; width: 100%; min-height: 76px; padding: var(--space-10) var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--ink); font-size: var(--text-base); resize: vertical; }
 
@@ -228,11 +246,9 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
 .field { display: block; margin-bottom: var(--space-12); color: var(--mute); font-size: var(--text-xs); font-weight: 500; }
 .field input { display: block; width: 100%; height: var(--control-height-field); margin-top: var(--space-6); padding: 0 15px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); color: var(--ink); font-size: var(--text-base); }
 
-/* ---------- จอกลาง: แผงปรับแต่งย้ายไปอยู่ใต้แผงเลือก ---------- */
+/* ---------- จอกลาง: แผงเลือกแคบลง ---------- */
 @media (max-width: 1279px) {
-  .workspace { grid-template-columns: var(--rail-width) var(--panel-width-md) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 45%); grid-template-areas: "rail panel stage" "rail inspector stage"; }
-  .panel { border-bottom: 1px solid var(--hairline-soft); }
-  .inspector { border-left: 0; border-right: 1px solid var(--hairline-soft); }
+  .workspace { grid-template-columns: var(--rail-width) var(--panel-width-md) minmax(0, 1fr); }
 }
 /* ---------- จอเล็ก (มือถือ): เรียงลงทีละส่วน เลื่อนทั้งหน้า เมนูขั้นตอนเป็นแถบบน ---------- */
 @media (max-width: 860px) {
@@ -242,7 +258,7 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
   .workspace { display: block; }
   .rail { position: sticky; top: var(--topbar-height); z-index: 5; flex-direction: row; overflow-x: auto; padding: var(--space-6) var(--space-8); border-right: 0; border-bottom: 1px solid var(--hairline-soft); }
   .rail-btn { flex: 0 0 auto; min-width: 70px; }
-  .panel, .inspector { overflow: visible; border: 0; }
+  .panel { overflow: visible; border: 0; }
   .stage { padding: var(--space-12) var(--space-16); }
   .frame { flex: none; height: var(--stage-height-phone); }
 }
@@ -259,7 +275,10 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
 .advanced summary small { margin-left: var(--space-6); color: var(--mute); font-size: var(--text-xs); font-weight: 400; }
 .advanced[open] summary { margin-bottom: var(--space-8); }
 /* ปุ่มชุดภาพหลายมุม: บรรทัดล่างบอกว่าได้มุมไหนบ้าง */
-.set-btn { flex-direction: column; gap: var(--space-4); height: auto; min-height: var(--control-height-main); margin-top: -8px; white-space: normal; }
+.set-btn { flex-direction: column; gap: var(--space-4); height: auto; min-height: var(--control-height-main); white-space: normal; }
+/* ท้ายขั้นสไตล์ถ่ายภาพ (หน้านางแบบ): สร้างรูป | ชุดภาพ คู่กัน อยู่ส่วนล่างที่ไม่เลื่อน */
+.gen-row { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); margin-top: var(--space-14); }
+.gen-row .gen-btn { margin: 0; }
 .set-btn small { color: var(--mute); font-size: var(--text-2xs); font-weight: 400; }
 /* ชุดภาพหลายมุม: รูปในชุดเดียวกันอยู่ในกรอบเดียว มีชื่อมุมใต้รูป */
 .set-group { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface-card); }
@@ -269,29 +288,17 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
 .set-label { display: block; width: var(--thumb-width); margin-top: var(--space-2); color: var(--mute); font-size: var(--text-3xs); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-pending { display: grid; place-items: center; width: var(--thumb-width); aspect-ratio: 2 / 3; border-radius: var(--r-sm); background: var(--canvas); }
 .set-pending .spinner { width: 18px; height: 18px; border-width: 2px; }
-/* ขั้นสไตล์ถ่ายภาพ: แผงไม่เลื่อนทั้งแผง เลื่อนเฉพาะรายการสไตล์ — กล่องรายละเอียด + ปุ่มถัดไปอยู่กับที่ด้านล่าง */
-.panel.split { display: flex; flex-direction: column; overflow: hidden; padding-bottom: var(--space-16); }
-.panel.split .panel-head { flex: none; }
-/* ขอบติดลบ = ยื่นออกเท่าระยะขอบซ้าย/ขวาของแผง (.panel) */
-.split-scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 calc(-1 * var(--space-16)); padding: 0 var(--space-16) var(--space-8); }
-.preset-detail { flex: none; margin: 0 calc(-1 * var(--space-16)); padding: var(--space-14) var(--space-16) 0; background: var(--canvas); border-top: 1px solid var(--hairline-soft); box-shadow: var(--shadow-pinned); }
-.preset-detail { display: grid; }
-.preset-detail > * { grid-area: 1 / 1; }
-.preset-detail .stack-hidden { visibility: hidden; }
-.preset-detail .sec { margin-bottom: 0; }
-.panel.split .next { flex: none; margin-top: var(--space-14); }
-/* จอแคบ: ทั้งหน้าเลื่อนอยู่แล้ว ไม่แยกส่วนเลื่อน */
-@media (max-width: 860px) {
-  .panel.split { display: block; overflow: visible; }
-  .split-scroll { overflow: visible; }
-}
-
 /* ---------- เข้าสู่ระบบ / เปลี่ยนรหัสผ่าน ---------- */
 .auth-page { display: grid; place-items: center; min-height: 100vh; padding: var(--space-16); }
 .auth-card { display: flex; flex-direction: column; gap: var(--space-14); width: 100%; max-width: 360px; padding: 28px var(--space-24); border-radius: var(--r-lg); background: var(--canvas); box-shadow: var(--shadow-card); }
 .auth-card h1 { margin: 0 0 var(--space-4); color: var(--ink-soft); font-size: var(--text-3xl); }
 .auth-card label { display: flex; flex-direction: column; gap: var(--space-6); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; }
 .auth-card .btn { height: var(--control-height-field); }
+/* หน้าเข้าใช้: โค้ดเชิญ (ลูกค้า) ก่อน อีเมล (ทีมงาน) พับไว้ด้านล่าง */
+.auth-form { display: flex; flex-direction: column; gap: var(--space-14); }
+.auth-code { font-size: var(--text-xl); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
+.auth-team summary { color: var(--mute); font-size: var(--text-sm); cursor: pointer; }
+.auth-team[open] summary { margin-bottom: var(--space-12); }
 .field { height: var(--control-height-field); padding: 0 var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--ink); font-size: var(--text-md); }
 .auth-error, .auth-ok { margin: 0; padding: var(--space-8) var(--space-12); border-radius: var(--r-md); font-size: var(--text-sm); }
 .auth-error { background: var(--primary-soft); color: var(--primary-pressed); }
@@ -316,10 +323,11 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
 .support-photos img { width: 44px; height: 44px; object-fit: contain; border-radius: var(--r-thumb); background: var(--surface-card); }
 
 /* แผนผังสินค้าและตำแหน่งกล้อง: เส้นแดงคือด้านหน้า จุดวงกลมคือกล้อง */
-.camera-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.camera-preview { display: block; width: 96px; height: 76px; margin: 0 auto var(--space-6); }
-.camera-option { text-align: center; }
-.camera-auto { text-align: center; margin-bottom: var(--space-16); }
+/* มุมกล้อง / ระยะ: การ์ดมีภาพด้านบนแบบเดียวกับประเภทภาพ (ViewPreview ใน Packshot.tsx) */
+.view-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.view-option { overflow: hidden; padding: 0 0 var(--space-12); }
+.view-option > :not(svg) { padding: 0 var(--space-10); }
+.camera-auto { margin-bottom: var(--space-16); }
 
 /* ฉากและพื้น: ภาพจำลองวัสดุ สีที่ใช้ได้ และตัวอย่างคู่สี */
 .scene-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -343,26 +351,30 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
 
 /* ขั้นสินค้า: สินค้าที่ใช้ด้านบน -> เพิ่มสินค้าใหม่ -> สินค้าของฉัน (ใหม่สุดก่อน เห็นครบ ไม่มีกล่องเลื่อน) */
 .product-library { min-width: 0; }
-.product-upload { position: relative; width: 100%; margin: var(--space-8) 0; cursor: pointer; }
-.product-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.product-upload:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
-.product-upload-new { margin-top: var(--space-4); }
-.current-product { margin-bottom: var(--space-20); padding: var(--space-14); border: 1px solid var(--primary); border-radius: var(--r-md); background: var(--primary-soft); }
-.current-product .sub { margin: 0 0 var(--space-8); }
-.current-product-head { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: var(--space-12); align-items: center; }
-.current-product-head > img { width: 64px; height: 72px; object-fit: contain; border-radius: var(--r-thumb); background: var(--canvas); }
-.current-product-name { display: grid; gap: var(--space-6); justify-items: start; min-width: 0; }
-.current-product-name b { font-size: var(--text-base); overflow-wrap: anywhere; }
-.current-product-name .btn-tertiary { padding: 0; height: auto; }
+/* รายละเอียดสินค้า: ส่วนเรียบๆ ไม่มีกล่องสี คั่นจากรายการด้วยเส้นบาง (28 ต.ค.) */
+.current-product { margin-top: var(--space-4); padding-top: var(--space-18); border-top: 1px solid var(--hairline-soft); }
+.current-product .sub { margin: 0 0 var(--space-10); }
+.current-product-name { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-10); min-width: 0; }
+.current-product-name b { min-width: 0; color: var(--ink); font-size: var(--text-base); overflow-wrap: anywhere; }
+.current-product-name .btn-tertiary { flex: none; height: auto; padding: 0; }
+.current-product-name.editing { display: grid; gap: var(--space-8); }
 .current-product-name .text-input { width: 100%; min-width: 0; }
 .current-product-name span { display: flex; gap: var(--space-8); }
-.current-product-photos { display: flex; flex-wrap: wrap; gap: var(--space-6); margin: var(--space-6) 0 var(--space-4); }
+.current-product .muted-text { margin: var(--space-4) 0 0; }
+.current-product-photos { display: flex; flex-wrap: wrap; gap: var(--space-8); margin: var(--space-10) 0 var(--space-6); }
 .current-product-photos figure { position: relative; margin: 0; }
-.current-product-photos img { display: block; width: 58px; height: 64px; object-fit: contain; border-radius: var(--r-thumb); background: var(--canvas); }
+.current-product-photos img { display: block; width: 64px; height: 72px; object-fit: contain; border-radius: var(--r-thumb); background: var(--surface-soft); }
 .current-product-main { position: absolute; left: 3px; bottom: 3px; padding: 1px 5px; border-radius: var(--r-full); background: var(--float-bg-strong); color: var(--ink-soft); font-size: var(--text-3xs); }
 .current-product-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border: 1px solid var(--hairline); border-radius: var(--r-full); background: var(--canvas); color: var(--ink-soft); font-size: 13px; line-height: 1; cursor: pointer; }
 .current-product-remove:hover { color: var(--primary); }
-.product-list-title { margin: var(--space-20) 0 var(--space-8); }
+/* เพิ่มรูปมุมอื่น: ช่องเส้นประขนาดเท่ารูป ต่อท้ายแถวรูป (แบบเดียวกับกล่องเพิ่มสินค้าใหม่) */
+.current-product-add { position: relative; display: grid; place-items: center; width: 64px; height: 72px; border: 2px dashed var(--hairline); border-radius: var(--r-thumb);
+  color: var(--ash); font-size: 26px; font-weight: 300; cursor: pointer; transition: border-color .2s ease, color .2s ease, background .2s ease; }
+.current-product-add:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.current-product-add:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.current-product-add.busy { opacity: .5; cursor: default; }
+.current-product-add input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.product-list-title { margin: 0 0 var(--space-8); }
 .product-group-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); margin-bottom: var(--space-24); padding: 2px; }
 .product-group-card { padding: 0 0 var(--space-12); overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); color: var(--ink-soft); cursor: pointer; text-align: left; }
 .product-group-card.active { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-soft); }
@@ -371,6 +383,15 @@ dialog.viewer::backdrop { background: var(--scrim-strong); }
 .product-group-card b { font-size: var(--text-sm); }
 .product-group-card small { margin-top: var(--space-2); font-size: var(--text-2xs); color: var(--mute); }
 .product-empty { display: grid; place-items: center; height: 100px; color: var(--mute); font-size: var(--text-xs); }
+/* เพิ่มสินค้าใหม่: การ์ดเส้นประขนาดเท่าการ์ดสินค้า ช่องแรกของรายการ (ลากรูปมาวางได้) */
+.product-add { position: relative; display: block; border: 2px dashed var(--hairline); background: none; transition: border-color .2s ease, background .2s ease; }
+.product-add:hover, .product-add.over { border-color: var(--primary); background: var(--primary-soft); }
+.product-add:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.product-add.busy { opacity: .5; cursor: default; }
+.product-add input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.product-add-plus { display: grid; place-items: center; height: 120px; color: var(--ash); font-size: 34px; font-weight: 300; }
+.product-add:hover .product-add-plus, .product-add.over .product-add-plus { color: var(--primary); }
+.product-add small { line-height: 1.45; }
 
 /* Creative Shot: เลือกหนึ่งคอนเซปต์ที่จับคู่ทุกองค์ประกอบไว้แล้ว */
 .creative-concepts { gap: var(--space-10); }
@@ -387,6 +408,7 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 .local-edit-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--space-20); align-items: start; }
 .local-edit-workspace, .local-edit-controls { min-width: 0; }
 .local-edit-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.icon-chip { justify-content: center; width: 44px; padding: 0; } /* แปรง / ยางลบ เป็นไอคอน (ชื่ออยู่ใน title + aria-label) */
 .local-edit-canvas-area { display: grid; place-items: center; padding: var(--space-12); min-height: 180px; border-radius: var(--r-md); background: var(--surface-card); }
 .local-edit-canvas-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
 .local-edit-base { display: block; width: auto; height: auto; max-width: 100%; max-height: 58dvh; }
@@ -401,3 +423,60 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
   .local-edit-layout { grid-template-columns: minmax(0, 1fr); }
   .local-edit-base { max-height: 46dvh; }
 }
+
+/* หน้า /admin (superadmin): สรุปการใช้งาน + โค้ดเชิญลูกค้า */
+.admin-page { min-height: 100vh; background: var(--surface-soft); }
+.admin-main { max-width: 1120px; margin: 0 auto; padding: var(--space-24) var(--space-16) 48px; }
+.admin-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-12); margin-bottom: var(--space-20); }
+.admin-totals > div { display: grid; gap: var(--space-4); padding: var(--space-16); border-radius: var(--r-md); background: var(--canvas); border: 1px solid var(--hairline-soft); }
+.admin-totals span { color: var(--mute); font-size: var(--text-xs); }
+.admin-totals b { color: var(--ink); font-size: var(--text-3xl); }
+.admin-totals small { color: var(--ash); font-size: var(--text-2xs); }
+.admin-card { margin-bottom: var(--space-20); padding: var(--space-20); border-radius: var(--r-md); background: var(--canvas); border: 1px solid var(--hairline-soft); }
+.admin-card h2 { margin: 0 0 var(--space-8); color: var(--ink-soft); font-size: var(--text-lg); }
+.admin-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-12); }
+.admin-table-wrap { overflow-x: auto; margin-top: var(--space-12); }
+.admin-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.admin-table th { padding: var(--space-8); color: var(--mute); font-size: var(--text-xs); font-weight: 600; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--hairline); }
+.admin-table td { padding: var(--space-8); color: var(--ink-soft); border-bottom: 1px solid var(--hairline-soft); white-space: nowrap; }
+.admin-table tr.off td { color: var(--ash); }
+.admin-table tr.fresh td { background: var(--primary-soft); }
+.admin-table .text-input { min-width: 0; width: 140px; height: 32px; min-height: 0; padding: 0 var(--space-8); } /* .text-input มี min-height 76px (กล่องข้อความ) */
+.admin-quota .text-input { display: inline-block; width: 104px; } /* อยู่บรรทัดเดียวกับ "ใช้ไป /" */
+.admin-quota small { color: var(--primary); }
+.admin-table .btn { height: 32px; font-size: var(--text-xs); }
+.admin-code { padding: var(--space-4) var(--space-8); border: 1px dashed var(--hairline); border-radius: var(--r-thumb); background: var(--surface-soft); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-sm); letter-spacing: .06em; cursor: copy; }
+.admin-create { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-12); margin-top: var(--space-16); }
+.admin-create label { display: grid; gap: var(--space-4); color: var(--mute); font-size: var(--text-xs); }
+.admin-create .text-input { width: 120px; height: var(--control-height); min-height: 0; }
+
+/* ---------- หน้าต้อนรับลูกค้า (components/Welcome.tsx): มินิมอล ลายมือเขียน "Welcome" ตามด้วยชื่อ ----------
+   แต่ละคำมี 2 ชั้นซ้อนกัน: เส้นปากกา (ขอบตัวอักษร) นำ แล้วหมึกตามหลัง ~0.2 วิ เผยจากซ้ายไปขวาด้วย mask ขอบนุ่ม (เหมือนหมึกกำลังไหล)
+   mask กว้าง 240%: ตำแหน่ง 100% = ซ่อนทั้งคำ, 0% = เห็นทั้งคำ · padding เผื่อหางตัวเขียนที่ยื่นออกนอกกรอบไม่ให้โดน mask ตัด */
+.welcome {
+  --wl-paper: #fbfaf7; --wl-ink: #1f1c19;
+  position: fixed; inset: 0; display: grid; place-content: center; justify-items: center;
+  background: var(--wl-paper); color: var(--wl-ink); cursor: pointer; transition: opacity .5s ease;
+}
+.welcome.leaving { opacity: 0; }
+.wl-ink { display: grid; line-height: 1.3; white-space: nowrap; }
+.wl-ink > span { grid-area: 1 / 1; padding: .15em .7em; } /* mask อยู่ที่ชั้นนี้ เว้นที่ให้หางตัวเขียน (เช่นห่วงของ W) ที่ยื่นออกนอกตัวอักษร */
+.wl-pen { color: transparent; -webkit-text-stroke: .5px var(--wl-ink); }
+.wl-fill { color: var(--wl-ink); }
+.wl-welcome { font-family: var(--font-script), cursive; font-size: clamp(76px, 15vw, 190px); font-weight: 400; }
+.wl-name { margin-top: -.25em; font-family: var(--font-hand), var(--font-script), cursive; font-size: clamp(34px, 6vw, 72px); }
+.welcome:not(.writing) .wl-ink { visibility: hidden; } /* รอฟอนต์ + ชื่อก่อน ไม่ให้ตัวอักษรกระพริบเปลี่ยนฟอนต์ */
+.welcome.writing .wl-ink > span {
+  -webkit-mask-image: linear-gradient(90deg, #000 45%, transparent 55%); mask-image: linear-gradient(90deg, #000 45%, transparent 55%);
+  -webkit-mask-size: 240% 100%; mask-size: 240% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  animation: wl-write var(--wl-dur) cubic-bezier(.45, .05, .4, 1) var(--wl-delay) both;
+}
+.welcome.writing .wl-fill { animation-delay: calc(var(--wl-delay) + 200ms); }
+@keyframes wl-write { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome.writing .wl-ink > span { animation: none; -webkit-mask-image: none; mask-image: none; }
+  .welcome { transition: none; }
+}
+/* ซ่อนจากตาแต่โปรแกรมอ่านหน้าจอยังอ่านได้ */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.sr-only:focus { position: fixed; top: 16px; left: 16px; width: auto; height: auto; margin: 0; padding: 8px 12px; overflow: visible; clip: auto; background: var(--wl-paper, #fff); color: inherit; }

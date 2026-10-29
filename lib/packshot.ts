@@ -52,10 +52,12 @@ export const SETS: ProductSet[] = [
     prompt: 'a raw plywood tabletop with visible wood grain, small marks and worn edges, against a painted wall in {color}; the back edge of the '
       + 'table meets the wall behind the product' },
   { id: 'plinth', name: 'แท่นประติมากรรม', hint: 'วางบนของแปลกตาเป็นแท่น เช่น โคมกระดาษจีบ บล็อกหิน', color: 'a pale warm grey',
-    prompt: 'the product balanced on top of {variant} used as a sculptural plinth, centered in the frame, against a plain painted wall in {color}',
+    // เดิมมี "a simple round wooden stool" ออกมาเป็นเก้าอี้ ผู้ใช้เลือกแท่นแต่ได้เก้าอี้ (28 ต.ค.) -> แทนด้วยแท่นปูน + ห้ามเฟอร์นิเจอร์
+    prompt: 'the product balanced on top of {variant} used as a sculptural plinth (a pedestal-like object, never a chair, stool or other furniture), '
+      + 'centered in the frame, against a plain painted wall in {color}',
     variants: [
       'a tall cone-shaped pleated paper lampshade', 'a rough-cut travertine block', 'a neat stack of large art books',
-      'a fluted white plaster column', 'a simple round wooden stool',
+      'a fluted white plaster column', 'a smooth white plaster cylinder pedestal',
     ] },
   { id: 'ledge', name: 'ขอบบัวสีขาว', hint: 'ขอบบัวปูนสีขาวแบบเตาผิง ผนังขาว ขาวทั้งภาพ',
     prompt: 'a white painted architectural ledge with classic moulding below it, like a mantelpiece, against a plain white wall; white on white, high key' },
@@ -476,11 +478,6 @@ export function resolveProductBackground(shot: unknown, preset: ProductPreset, s
 
 // ---------- สัดส่วนภาพ: 4:5 = ฟีด IG (รูปตัวอย่างเกือบทั้งหมด) ----------
 // OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> server ทำขนาดใกล้สุดแล้วตัดตรงกลางให้ได้สัดส่วนนี้ (lib/images.ts cropTo)
-export const PRODUCT_ASPECTS = [
-  { id: '4:5', name: '4:5 ฟีด IG' },
-  { id: '1:1', name: '1:1 Shopee/Lazada' },
-  { id: '2:3', name: '2:3' },
-  { id: '9:16', name: '9:16 สตอรี่' },
-  { id: '3:2', name: '3:2 แนวนอน' },
-] as const;
-export const isProductAspect = (a: unknown) => PRODUCT_ASPECTS.some((x) => x.id === a);
+// หน้าเว็บเลือกตาม "ใช้ภาพที่ไหน" (ปรับ 28 ต.ค.): name = ที่ที่จะโพสต์ use = ใช้ทำอะไร · เรียงตามที่ใช้บ่อย
+// รายการเดียวกับหน้านางแบบ (lib/aspects.ts)
+export { PLATFORM_ASPECTS as PRODUCT_ASPECTS, isPlatformAspect as isProductAspect } from './aspects';

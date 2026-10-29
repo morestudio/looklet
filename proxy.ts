@@ -3,7 +3,7 @@
 // ไม่มี Supabase ใน env -> ปล่อยผ่านทั้งหมด (ดู lib/auth.ts)
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { authEnabled, isMember, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/auth';
+import { authEnabled, isMember, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/auth';
 
 export async function proxy(request: NextRequest) {
   if (!authEnabled) return NextResponse.next();
@@ -35,7 +35,15 @@ export async function proxy(request: NextRequest) {
     return res;
   };
   if (pathname === '/login') return member ? carry(NextResponse.redirect(new URL('/', request.url))) : response;
-  if (member) return response;
+  if (pathname === '/api/invite-login') return response; // เข้าด้วยโค้ดเชิญ: คนที่ยังไม่เข้าสู่ระบบต้องเรียกได้
+  if (member) {
+    const role = roleOf(data?.claims);
+    // หน้า admin เฉพาะ superadmin (API เช็กซ้ำ) · ลูกค้าเข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
+    if ((pathname === '/admin' && role !== 'superadmin') || (pathname === '/account' && role === 'customer')) {
+      return carry(NextResponse.redirect(new URL('/', request.url)));
+    }
+    return response;
+  }
   if (pathname.startsWith('/api/')) return carry(NextResponse.json({ error: 'ต้องเข้าสู่ระบบก่อน' }, { status: 401 }));
   return carry(NextResponse.redirect(new URL('/login', request.url)));
 }

@@ -2,7 +2,8 @@
 import 'server-only';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { authEnabled, isMember, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../auth';
+import type { Account } from '../account';
+import { authEnabled, isMember, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../auth';
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -22,7 +23,14 @@ export async function createClient() {
 
 // เช็กซ้ำใน API ทุกตัว (proxy.ts กันไว้ชั้นแรกแล้ว) — getClaims ตรวจลายเซ็น token ไม่เชื่อ cookie เฉยๆ
 export async function isSignedInMember() {
-  if (!authEnabled) return true;
+  return (await signedInAccount()) !== undefined;
+}
+
+// บัญชีที่เรียกอยู่: null = ไม่ต้องเข้าสู่ระบบ (ในเครื่อง) · undefined = ยังไม่เข้าสู่ระบบหรือไม่มีสิทธิ์
+export async function signedInAccount(): Promise<Account | undefined> {
+  if (!authEnabled) return null;
   const { data } = await (await createClient()).auth.getClaims();
-  return isMember(data?.claims);
+  const claims = data?.claims;
+  if (!isMember(claims)) return undefined;
+  return { id: String(claims!.sub), email: String(claims!.email ?? ''), role: roleOf(claims) };
 }

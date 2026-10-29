@@ -3,9 +3,13 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { loadImg } from '@/lib/browser';
 import { MAX_EDIT_PIXELS, supportsMaskedEdit, type LocalEditMode } from '@/lib/local-edit';
 import { DEFAULT_AI_MODEL } from '@/lib/catalog';
+import { IconBrush, IconEraser } from './icons';
+
+// มีแค่แบบไฮไลต์คร่าว ๆ (เอา "ระบายแบบละเอียด" ออก 28 ต.ค.) — API ยังรับ precise สำหรับคำขอเก่า
+const MODE: LocalEditMode = 'rough';
 
 type Stroke = { tool: 'brush' | 'erase' | 'clear'; size: number; points: { x: number; y: number }[] };
-export type LocalEditRequest = { mask: string; instruction: string; model: string; feather: number; mode: LocalEditMode };
+export type LocalEditRequest = { mask: string | null; instruction: string; model: string; feather: number; mode: LocalEditMode }; // mask null = ไม่ได้ระบาย
 
 function paint(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   if (stroke.tool === 'clear') { ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); return; }
@@ -34,14 +38,12 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
   const history = useRef<Stroke[]>([]);
   const active = useRef<{ pointerId: number; stroke: Stroke } | null>(null);
   const submitting = useRef(false);
-  const [mode, setMode] = useState<LocalEditMode>('rough');
   const [tool, setTool] = useState<'brush' | 'erase'>('brush');
   const [brushSize, setBrushSize] = useState(32);
-  const [feather, setFeather] = useState(6);
   const [instruction, setInstruction] = useState('');
   const supported = models.filter((m) => supportsMaskedEdit(m.id));
-  const [modelChoice, setModel] = useState(initialModel);
-  const model = supported.find((m) => m.id === modelChoice)?.id ?? supported.find((m) => m.id === DEFAULT_AI_MODEL)?.id ?? supported[0]?.id ?? '';
+  // เลือกโมเดลไม่ได้แล้ว (27 ต.ค.): ใช้โมเดลเดียวที่ /api/models ส่งมา (DEFAULT_AI_MODEL) server บังคับซ้ำ
+  const model = supported.find((m) => m.id === initialModel)?.id ?? supported.find((m) => m.id === DEFAULT_AI_MODEL)?.id ?? supported[0]?.id ?? '';
   const [ready, setReady] = useState(false);
   const [count, setCount] = useState(0);
   const [drawing, setDrawing] = useState(false);
@@ -117,10 +119,14 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
         pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = 255;
         pixels.data[i + 3] = 255 - coverage;
       }
-      if (!selected) throw new Error('ระบายพื้นที่ที่ต้องการแก้ก่อน');
-      const mask = document.createElement('canvas'); mask.width = canvas.width; mask.height = canvas.height;
-      mask.getContext('2d')!.putImageData(pixels, 0, 0);
-      await onEdit({ mask: mask.toDataURL('image/png').split(',')[1], instruction: instruction.trim(), model, feather, mode });
+      // ไม่ได้ระบาย = แก้จากคำสั่งที่พิมพ์อย่างเดียว (ระบายเป็นแค่ตัวช่วยชี้ ไม่บังคับ)
+      let mask: string | null = null;
+      if (selected) {
+        const out = document.createElement('canvas'); out.width = canvas.width; out.height = canvas.height;
+        out.getContext('2d')!.putImageData(pixels, 0, 0);
+        mask = out.toDataURL('image/png').split(',')[1];
+      }
+      await onEdit({ mask, instruction: instruction.trim(), model, feather: 6, mode: MODE });
     } catch (err) { setError((err as Error).message); }
     finally { submitting.current = false; setBusy(false); }
   }
@@ -128,19 +134,17 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
   return <dialog ref={dialog} className="local-edit-dialog" aria-labelledby="local-edit-title" onClose={onClose}
     onCancel={(e) => { if (busy) e.preventDefault(); }}>
     <header className="local-edit-header"><div><h2 id="local-edit-title">แก้เฉพาะจุด</h2>
-      <p className="muted-text">ไฮไลต์คร่าว ๆ เพื่อชี้วัตถุ แล้วบอกสิ่งที่อยากเปลี่ยน</p></div>
+      <p className="muted-text">พิมพ์สิ่งที่อยากแก้ได้เลย · ระบายชี้จุดเพิ่มได้ถ้าอยากให้ชัดขึ้น</p></div>
       <button className="btn btn-tertiary" disabled={busy} aria-label="ปิดแก้เฉพาะจุด" onClick={() => dialog.current?.close()}>×</button>
     </header>
     <div className="local-edit-layout">
       <section className="local-edit-workspace">
-        <div className="local-edit-toolbar" role="group" aria-label="โหมดการแก้">
-          <button className={'chip' + (mode === 'rough' ? ' active' : '')} disabled={busy || drawing} aria-pressed={mode === 'rough'} onClick={() => setMode('rough')}>ไฮไลต์คร่าว ๆ (แนะนำ)</button>
-          <button className={'chip' + (mode === 'precise' ? ' active' : '')} disabled={busy || drawing} aria-pressed={mode === 'precise'} onClick={() => setMode('precise')}>ระบายแบบละเอียด</button>
-        </div>
-        <p className="muted-text">{mode === 'rough' ? 'ระบายเพียงบางส่วนเพื่อชี้วัตถุ ไม่ต้องระบายให้เต็มหรือตามขอบ AI ใช้คำสั่งร่วมกับไฮไลต์เพื่อแก้ทั้งวัตถุ' : 'แก้เฉพาะพิกเซลที่ระบาย ส่วนที่ไม่ได้ระบายคงเดิม'}</p>
+        <p className="muted-text">ไม่ต้องระบายก็ได้ · ถ้าอยากชี้ให้ชัด ระบายบางส่วนของวัตถุ ไม่ต้องเต็มหรือตามขอบ</p>
         <div className="local-edit-toolbar" role="group" aria-label="เครื่องมือเลือกพื้นที่">
-          <button className={'chip' + (tool === 'brush' ? ' active' : '')} disabled={busy || drawing} aria-pressed={tool === 'brush'} onClick={() => setTool('brush')}>แปรง</button>
-          <button className={'chip' + (tool === 'erase' ? ' active' : '')} disabled={busy || drawing} aria-pressed={tool === 'erase'} onClick={() => setTool('erase')}>ยางลบ</button>
+          <button className={'chip icon-chip' + (tool === 'brush' ? ' active' : '')} disabled={busy || drawing} aria-pressed={tool === 'brush'}
+            aria-label="แปรง" title="แปรง" onClick={() => setTool('brush')}><IconBrush /></button>
+          <button className={'chip icon-chip' + (tool === 'erase' ? ' active' : '')} disabled={busy || drawing} aria-pressed={tool === 'erase'}
+            aria-label="ยางลบ" title="ยางลบ" onClick={() => setTool('erase')}><IconEraser /></button>
           <button className="chip" disabled={busy || drawing || !count} onClick={undo}>ย้อนกลับ</button>
           <button className="chip" disabled={busy || drawing || !count} onClick={clear}>ล้างพื้นที่</button>
         </div>
@@ -149,26 +153,20 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
           <canvas className="local-edit-selection" ref={selection} aria-label="ระบายพื้นที่ที่ต้องการแก้" style={{ cursor: tool === 'erase' ? 'cell' : 'crosshair' }}
             onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} />
         </div>{!ready && !error && <p className="muted-text">กำลังโหลดรูป...</p>}</div>
-        <p className="muted-text">{mode === 'rough' ? 'สีแดง = จุดอ้างอิง ไม่ใช่ขอบเขตการแก้ · AI อาจเปลี่ยนรายละเอียดใกล้เคียงได้' : 'สีแดง = บริเวณที่แก้ · ส่วนที่ไม่ได้ระบายคงเดิม'}</p>
+        <p className="muted-text">สีแดง = จุดอ้างอิง ไม่ใช่ขอบเขตการแก้ · AI อาจเปลี่ยนรายละเอียดใกล้เคียงได้</p>
       </section>
       <section className="local-edit-controls">
         <label className="shot-field">ขนาดแปรง <output>{brushSize}</output>
           <input type="range" min="8" max="120" value={brushSize} disabled={busy || drawing} onChange={(e) => setBrushSize(Number(e.target.value))} />
         </label>
-        {mode === 'precise' && <label className="shot-field">ความนุ่มของขอบ <output>{feather}</output>
-          <input type="range" min="0" max="24" value={feather} disabled={busy} onChange={(e) => setFeather(Number(e.target.value))} />
-        </label>}
         <label className="shot-field">ต้องการแก้อะไร
-          <textarea className="text-input" rows={4} maxLength={1200} value={instruction} disabled={busy} onChange={(e) => setInstruction(e.target.value)} placeholder="เช่น เปลี่ยนกระเป๋าที่ชี้เป็นสีแดงทั้งใบ รวมสาย โดยคงทรง ลาย และวัสดุเดิม" />
-        </label>
-        <label className="shot-field">โมเดล AI
-          <select value={model} disabled={busy} onChange={(e) => setModel(e.target.value)}>{supported.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
+          <textarea className="text-input" rows={4} maxLength={1200} value={instruction} disabled={busy} onChange={(e) => setInstruction(e.target.value)} placeholder="เช่น เอาพร็อพออกทั้งหมด หรือ เปลี่ยนกระเป๋าเป็นสีแดงทั้งใบ รวมสาย โดยคงทรง ลาย และวัสดุเดิม" />
         </label>
         {!supported.length && <p className="note">ต้องตั้งค่า OpenAI API key ก่อนใช้การแก้เฉพาะจุด</p>}
         <p className="muted-text">ใช้ AI เพิ่ม 1 ครั้ง · เก็บเป็นรูปใหม่ ต้นฉบับยังอยู่</p>
         {error && <p className="note local-edit-error" role="alert">{error}</p>}
         {busy && <p className="muted-text" role="status">AI กำลังแก้ภาพและผสานพื้นที่เลือก...</p>}
-        <button className="btn btn-primary gen-btn" disabled={!ready || busy || drawing || !count || !instruction.trim() || !model} onClick={() => void submit()}>{busy ? 'กำลังแก้...' : 'สร้างรูปที่แก้แล้ว'}</button>
+        <button className="btn btn-primary gen-btn" disabled={!ready || busy || drawing || !instruction.trim() || !model} onClick={() => void submit()}>{busy ? 'กำลังแก้...' : 'สร้างรูปที่แก้แล้ว'}</button>
       </section>
     </div>
   </dialog>;

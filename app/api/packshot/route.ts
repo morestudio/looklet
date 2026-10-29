@@ -11,6 +11,7 @@ import { readCreativeConcept } from '@/lib/creative';
 import { buildCreativePackshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
 import { json, post } from '@/lib/route';
 import { saveImage, type SetTag } from '@/lib/storage';
+import { quotaBlock, recordUsage } from '@/lib/usage';
 
 // หน้าสินค้า (components/Packshot.tsx): หน้าเว็บส่งรูป + id ของตัวเลือก (lib/packshot.ts) server แปลงเป็นคำสั่งเอง
 // 'preset' / ไม่ส่ง = ใช้ส่วนนั้นของสไตล์ที่เลือก (เหมือน "ตามสไตล์" ของหน้านางแบบ)
@@ -54,6 +55,9 @@ export const POST = post(async (req) => {
   const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
     ? { id: req.set.id, index: req.set.index } : null;
   const finish = req.finish === 'phone' || req.finish === 'film' || req.finish === 'off' ? req.finish : null;
+
+  const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI (รวมตัววางแผนพร็อพ)
+  if (blocked) return blocked;
 
   // ช็อตต้นแบบ: เอาอะไรจากรูปนั้น (REF_MODES) · รูปฉากใช้ได้เฉพาะตอนไม่ได้ลอกฉากจากช็อตต้นแบบ
   const ref = setRef || shotType !== 'styled' ? null : image(req.ref);
@@ -182,9 +186,12 @@ export const POST = post(async (req) => {
   };
   const t0 = Date.now();
   const duration = () => `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`;
+  const usage = { page: 'product', action: 'packshot', model: String(req.model), quality: String(opt.quality) } as const;
+  let tokens = 0; // โทเคนที่ AI คิดจริง -> โควตาลูกค้า
   try {
-    let out = await generateImage(req.model, images, prompt, opt);
-    out = await servable(await cropTo(out, aspect)); // ตัดตามสัดส่วนก่อน แล้วค่อยแปลงรูปใหญ่เป็น JPEG
+    const raw = await generateImage(req.model, images, prompt, opt);
+    tokens = raw.tokens;
+    const out = await servable(await cropTo(raw, aspect)); // ตัดตามสัดส่วนก่อน แล้วค่อยแปลงรูปใหญ่เป็น JPEG
     const stylePlan = creative ? { name: creative.title, th: creative.summary } : plan ? { name: planName!, th: plan.th } : null;
     // เซฟทันที (เสียเงินไปแล้ว ห้ามหาย) — page = 'product' ให้แต่ละหน้าโชว์เฉพาะรูปของตัวเอง
     const src = await saveImage({ area: 'results' }, out.data, out.mime, {
@@ -192,9 +199,11 @@ export const POST = post(async (req) => {
       ...(stylePlan ? { stylePlan } : {}),
     });
     await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
+    await recordUsage({ ...usage, status: 'ok', tokens });
     return json(200, { src, stylePlan });
   } catch (e) {
     await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
+    await recordUsage({ ...usage, status: 'error', tokens });
     throw e;
   }
 });

@@ -3,6 +3,9 @@ import type { AccessoryInfo } from './catalog';
 import { applyFilm, filmOn, type Film } from './film';
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
+export const USAGE_EVENT = 'looklet:usage';
+const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];
+
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
@@ -10,6 +13,8 @@ export async function api<T = { src: string }>(path: string, body: unknown): Pro
   if (res.status === 401) window.location.assign('/login');
   // error ที่ไม่ได้มาจาก route ของเรา (เช่น Vercel ตอบ 413 ไฟล์ใหญ่เกิน / 504 หมดเวลา) ไม่ใช่ JSON -> บอกเป็นข้อความที่อ่านรู้เรื่อง
   const out = await res.json().catch(() => ({}));
+  // สร้างรูปแล้ว (สำเร็จหรือพัง) -> หัวเว็บอัปเดตจำนวนรูปที่เหลือของลูกค้า (useMe ใน components/ui.tsx)
+  if (USAGE_ROUTES.includes(path)) window.dispatchEvent(new Event(USAGE_EVENT));
   if (!res.ok) throw new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`));
   return out;
 }
@@ -134,14 +139,7 @@ export async function saveImageFile(blob: Blob, name: string): Promise<'shared' 
   return 'downloaded';
 }
 
-// สัดส่วนรูปที่แต่ละเจ้ารับได้ เลือกอันที่ใกล้รูปนางแบบที่สุด
-export function geminiAspect(w: number, h: number) {
-  const diff = (a: string) => {
-    const [x, y] = a.split(':').map(Number);
-    return Math.abs(Math.log(x / y / (w / h)));
-  };
-  return ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9'].reduce((best, a) => (diff(a) < diff(best) ? a : best));
-}
+// ขนาด OpenAI ตามแนวรูป (ปรับผิว: ขอขนาดตามแนวรูปเดิม)
 export const openaiSize = (w: number, h: number) => (w / h < 0.85 ? '1024x1536' : w / h > 1.18 ? '1536x1024' : '1024x1024');
 
 // ให้ AI ดูรูปของเสริม/สินค้าว่าเป็นอะไร + ตั้งชื่อ — ดูไม่ออก/เรียกไม่ได้ = null (ให้ผู้ใช้เลือกเอง)

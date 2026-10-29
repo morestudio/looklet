@@ -6,24 +6,27 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
-import { signOut } from './AuthForm';
+import { SignOutButton } from './AuthForm';
+import { PersonView } from './PersonView';
+import { PoseView } from './PoseView';
+import { StyleView } from './StyleView';
+import { PLATFORM_ASPECTS } from '@/lib/aspects';
 import {
-  IconAngle, IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPlace, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section } from './ui';
+import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
-import { authEnabled } from '@/lib/auth';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { SKIN_MODEL } from '@/lib/skin';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, geminiAspect, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
+  api, canOpenImage, canvasJpeg, finishedCanvas, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
   saveImageFile, toWebImage, uploadImage,
 } from '@/lib/browser';
 import {
-  ACCESSORIES, ACCESSORY_TYPES, ANGLES, ASPECTS, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
+  ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
   POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
-  presetLightPrompt, presetPrompt, splitLabel, type AccessoryInfo, type Item, type LightSource, type PoseMode,
+  presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode, type Preset,
 } from '@/lib/catalog';
 
 type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
@@ -43,6 +46,20 @@ const accessoryType = (a: Item) => ACCESSORY_TYPES.find((t) => t.id === a.type) 
 // ปิดไว้ (15 ต.ค.): มีตัวเลือกท่า/มุมกล้อง/ระยะ/การมองมากขึ้น หน้าในรูปใหม่หัน/ไกล/เล็กต่างจากรูปนางแบบ หน้าที่แปะไม่เข้ากับตัว
 // (14 ต.ค. เคยลองปิดแล้วรูปดูแปลกกว่า ตอนนั้นยังไม่มีตัวเลือกพวกนี้) — เปิดใหม่ = true, realFace + pasteRealFace ยังอยู่ครบ
 const REAL_FACE = false;
+
+// ตัวเลือกสีหน้าในขั้นท่าโพสต์ (FACE_MOODS) — ซ่อนไว้ก่อน (29 ต.ค. ผู้ใช้ขอ): สีหน้าเป็น "อัตโนมัติ" เสมอ
+// (ตามรูปท่า / ท่าสำเร็จรูป) โค้ดและ prompt ยังอยู่ครบ เปิดใหม่ = true
+const MOOD_PICKER = false;
+
+// การ์ด "ตามสไตล์" ในขั้นมุมมอง: วาดระยะ/มุมที่สไตล์นั้นใช้ (เดาจากชื่อไทยของสไตล์ ใช้แค่รูปประกอบ ไม่ได้ส่งให้ AI)
+const presetFraming = (p: Preset) => (p.fullBody ? 'full' : 'waist');
+const presetAngle = (p: Preset) => {
+  const label = p.angle.label;
+  return /ต่ำ/.test(label) ? 'low' : /ก้ม/.test(label) ? 'high' : /เฉียง/.test(label) ? 'side' : /สายตา/.test(label) ? 'eye' : 'chest';
+};
+
+// ใช้ภาพที่ไหน: ค่าเริ่มต้น IG · Facebook ฟีด 4:5 (ผู้ใช้ขอ 29 ต.ค. ลูกค้าส่วนใหญ่ลง IG) — AI ทำ 2:3 แล้ว server ตัดบนล่าง
+const DEFAULT_ASPECT = '4:5';
 
 const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
@@ -68,20 +85,21 @@ type SetTag = { id: string; index: number }; // ชุดภาพหลาย�
 type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
-// ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) + แผงปรับแต่ง (ขวา) รูปอยู่ตรงกลางตลอด
-type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'framing' | 'angle' | 'placement' | 'settings' | 'retouch';
+// ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
+type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'settings' | 'view' | 'output' | 'retouch';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
   { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
   { key: 'accessory', label: 'ของเสริม', title: 'ของเสริม', Icon: IconBag },
   { key: 'pose', label: 'ท่าโพสต์', title: 'ท่าโพสต์', Icon: IconPose },
   { key: 'scene', label: 'ฉากหลัง', title: 'ฉากหลัง', Icon: IconScene },
-  // ระยะ/มุมกล้องแยกออกจากสไตล์ถ่ายภาพ (สำคัญกับสินค้า: รองเท้าต้องเต็มตัว เสื้อครึ่งตัว) ไม่เลือก = ตามสไตล์
-  { key: 'framing', label: 'ระยะ', title: 'เลือกระยะ', Icon: IconFrame },
-  { key: 'angle', label: 'มุมกล้อง', title: 'เลือกมุมกล้อง', Icon: IconAngle },
-  // คนอยู่ตรงไหนของภาพ: ไม่สั่ง AI วางกลางภาพเกือบทุกรูป (ทดสอบ 21 ต.ค.) อัตโนมัติ = สุ่มซ้าย/ขวา/กลางต่อรูป
-  { key: 'placement', label: 'ตำแหน่ง', title: 'ตำแหน่งในภาพ', Icon: IconPlace },
-  { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconSettings },
+  { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconPalette },
+  // มุมมอง = ระยะ + มุมกล้อง + ตำแหน่ง รวมเป็นขั้นเดียว (29 ต.ค.) การ์ดมีภาพวาด (PersonView) · อยู่หลังสไตล์ (การ์ด "ตามสไตล์" ใช้สไตล์ที่เลือก)
+  // ระยะ/มุมกล้องแยกจากสไตล์ถ่ายภาพ (สำคัญกับสินค้า: รองเท้าต้องเต็มตัว เสื้อครึ่งตัว) ไม่เลือก = ตามสไตล์
+  // ตำแหน่ง: ไม่สั่ง AI วางกลางภาพเกือบทุกรูป (ทดสอบ 21 ต.ค.) อัตโนมัติ = สุ่มซ้าย/ขวา/กลางต่อรูป
+  { key: 'view', label: 'มุมมอง', title: 'เลือกมุมมอง', Icon: IconFrame },
+  // ตั้งค่า (แบบหน้าสินค้า 29 ต.ค.): ใช้ภาพที่ไหน + สั่งเพิ่มเติม + ขั้นสูง + ปุ่มสร้างรูปท้ายเส้นทาง
+  { key: 'output', label: 'ตั้งค่า', title: 'ตั้งค่า', Icon: IconSettings },
   { key: 'retouch', label: 'แต่งรูป', title: 'แต่งรูป', Icon: IconRetouch },
 ];
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
@@ -119,7 +137,7 @@ export default function TryOn() {
   const [lightSource, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
   const [faceMood, setFaceMood] = useState('auto'); // สีหน้า (FACE_MOODS)
   const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
-  const [aspect, setAspect] = useState(''); // '' = ตามรูปนางแบบ
+  const [aspect, setAspect] = useState(DEFAULT_ASPECT); // ใช้ภาพที่ไหน (PLATFORM_ASPECTS)
   const [heldProps, setHeldProps] = useState<string[]>([]); // พร็อพในมือ (id ใน PROPS)
   // ของเสริมที่ AI กำลังดูว่าเป็นอะไร (URL รูปชั่วคราว) ขึ้นเป็นการ์ดรอในรายการ
   const [analyzing, setAnalyzing] = useState<string[]>([]);
@@ -196,7 +214,11 @@ export default function TryOn() {
       .then((list) => {
         setAiModels(list);
         // ค่าเริ่มต้น GPT Image 2.5 Sunburst (คุณภาพ high) — ไม่มี key OpenAI ใช้ตัวแรกที่มี
-        if (list.length) chooseModel((list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id);
+        if (list.length) { // มีโมเดลเดียว (DEFAULT_AI_MODEL) เลือกเองไม่ได้แล้ว · คุณภาพเริ่มต้นตามโมเดล
+          const id = (list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id;
+          setAiModel(id);
+          setQuality(defaultQuality(id));
+        }
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
@@ -210,11 +232,6 @@ export default function TryOn() {
   }, []);
 
   // เปลี่ยนโมเดล AI -> คุณภาพกลับเป็นค่าเริ่มต้นของโมเดลนั้น (ระดับที่รุ่นหนึ่งมี อีกรุ่นอาจไม่มี)
-  function chooseModel(id: string) {
-    setAiModel(id);
-    setQuality(defaultQuality(id));
-  }
-
   function select(key: Exclude<Key, 'accessory'>, id: string | null) {
     setPick((p) => ({ ...p, [key]: id }));
     if (key === 'model') setCurrent(null); // เปลี่ยนนางแบบ -> โชว์รูปนางแบบคนใหม่เป็นตัวอย่าง
@@ -359,6 +376,7 @@ export default function TryOn() {
     if (!outfit && !accs.length && !pose && !posePreset && !scene) return setStatus('เลือกชุด ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
+    const platform = PLATFORM_ASPECTS.find((a) => a.id === aspect) ?? PLATFORM_ASPECTS.find((a) => a.id === DEFAULT_ASPECT)!;
     setStatus('');
     const modeName = POSE_MODES.find((m) => m.id === poseMode)!.name;
     const caption = [
@@ -373,6 +391,7 @@ export default function TryOn() {
       ...(moodName ? [moodName] : []),
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
+      ...(aspect !== DEFAULT_ASPECT ? [platform.name] : []),
     ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
     setBusy(set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
@@ -416,12 +435,11 @@ export default function TryOn() {
             face: moodName ?? 'ตามรูปนางแบบ',
             lightSource: shot ? LIGHT_SOURCES.find((l) => l.id === lightSource)!.name : null,
             gaze: gaze?.name ?? null,
-            props: propChoices.map((p) => p.name), aspect: aspect || 'ตามรูปนางแบบ', harmonize,
+            props: propChoices.map((p) => p.name), aspect: platform.name, harmonize,
           },
         },
-        // เลือกสัดส่วนเอง: OpenAI ได้แค่ 2:3 / 3:2 / 1:1 แนวตั้งทุกแบบเลยส่ง 1024x1536
-        aspect: aspect || geminiAspect(person.w, person.h),
-        size: aspect ? '1024x1536' : openaiSize(person.w, person.h),
+        // ใช้ภาพที่ไหน: server เลือกขนาดตามแนวภาพเอง และตัด 4:5 / 9:16 จาก 2:3 (OpenAI ทำตรงๆ ไม่ได้)
+        aspect,
         quality,
         extra: extra.trim(),
         // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ (server ให้ AI อ่านแสงให้) หรือใช้แค่แสง/โทนสีของสไตล์ที่เลือก
@@ -586,43 +604,34 @@ export default function TryOn() {
   }
 
   const cur = STEPS[step];
-  const outfitName = outfit?.name ?? 'ชุดเดิม';
-  const poseName = posePreset ? posePreset.name : pose?.name ?? 'ท่าเดิม';
-  const sceneName = shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม';
-  const accNames = accs.map((a) => a.name);
-  const aiLabel = splitLabel(aiModels?.find((m) => m.id === aiModel)?.label ?? 'ยังไม่มีโมเดล AI')[0];
+  const { chosen, mark } = useChosenSteps(cur.key);
+  const stepReady = chosen.has(cur.key) && (cur.key !== 'model' || Boolean(pick.model)); // ปุ่มถัดไปสีชมพู = ผู้ใช้เลือกในขั้นนี้แล้ว
   const retouched = tone !== null || Object.values(amounts).some((v) => v > 0);
   const displaySrc = shown?.src ?? model.src!;
   const skinOriginal = shown?.refinedFrom && results.some((r) => r.src === shown.refinedFrom) ? shown.refinedFrom : null;
   const canRefineSkin = Boolean(shown && aiModels?.some((m) => m.id === SKIN_MODEL));
   const compare = cur.key === 'retouch' && !zoomed; // ขั้นแต่งรูป: ก่อน/หลังแต่งคู่กัน (ซูมหน้าอยู่ = ดูแค่หลังแต่ง)
 
-  // ค่าที่เลือกของแต่ละขั้น (หัวแผง + สรุป) และขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดแดงบนเมนูซ้าย)
-  const stepValue: Record<StepKey, string> = {
-    model: model.name,
-    outfit: outfitName,
-    accessory: accNames.join(', ') || 'ไม่ใส่',
-    pose: poseName + (shot ? ` (${POSE_MODES.find((m) => m.id === poseMode)!.name})` : '') + (mood.id !== 'auto' ? ' · ' + mood.name : ''),
-    scene: sceneName,
-    framing: shot ? 'ตามรูปต้นแบบ' : framingChoice?.name ?? 'ตามสไตล์ · ' + preset.framing.label,
-    angle: shot ? 'ตามรูปต้นแบบ' : angleChoice?.name ?? 'ตามสไตล์ · ' + preset.angle.label,
-    placement: shot ? 'ตามรูปต้นแบบ' : keepsPlace ? 'ที่เดิม (เปลี่ยนแค่ชุด)' : placementChoice?.name ?? 'อัตโนมัติ',
-    settings: [shot ? (shotPresetLight ? 'แสง ' + preset.name : 'ตามรูปต้นแบบ') : preset.name, aiLabel, ASPECTS.find((a) => a.id === aspect)?.name, gaze?.name,
-      ...propChoices.map((p) => 'ถือ' + p.name)].filter(Boolean).join(' · '),
-    retouch: retouched ? 'แต่งแล้ว' : 'ยังไม่แต่ง',
-  };
+  // ขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดแดงบนเมนูซ้าย)
   const stepDone: Record<StepKey, boolean> = {
     model: true,
     outfit: Boolean(outfit),
     accessory: accs.length > 0,
     pose: Boolean(pose || posePreset || mood.id !== 'auto'),
     scene: Boolean(scene) || shotScene,
-    framing: Boolean(framingChoice),
-    angle: Boolean(angleChoice),
-    placement: Boolean(placementChoice),
-    settings: Boolean(presetId !== PRESETS[0].id || aspect || gaze || propChoices.length || extra.trim() || harmonize),
+    view: Boolean(framingChoice || angleChoice || placementChoice),
+    output: Boolean(aspect !== DEFAULT_ASPECT || gaze || propChoices.length || extra.trim() || harmonize),
+    settings: presetId !== PRESETS[0].id,
     retouch: retouched,
   };
+  // ขั้นที่ไม่ใช้ (แบบหน้าสินค้า): ลอกทั้งช็อต = มุมมองตามรูปต้นแบบ · ลอกทั้งช็อต + ฉาก = ฉากด้วย
+  // แสงจากรูปต้นแบบ = สไตล์ถ่ายภาพไม่ใช้ · เมนูเป็นสีเทา กดไม่ได้ (บอกเหตุผลตอนชี้) "ถัดไป" ข้ามไป
+  const unusedWhy: Partial<Record<StepKey, string>> = {
+    ...(shotScene ? { scene: 'ลอกทั้งช็อต + ฉาก: ใช้ฉากจากรูปท่าโพสต์' } : {}),
+    ...(shot && !shotPresetLight ? { settings: 'ลอกทั้งช็อต: แสงและโทนสีจากรูปท่าโพสต์' } : {}),
+    ...(shot ? { view: 'ลอกทั้งช็อต: ระยะ มุมกล้อง ตำแหน่งตามรูปท่าโพสต์' } : {}),
+  };
+  const nextStep = STEPS.findIndex((s, i) => i > step && !unusedWhy[s.key]);
 
   // ---------- แผงเลือก (ซ้าย) ----------
   const q = query.trim().toLowerCase();
@@ -684,18 +693,35 @@ export default function TryOn() {
     // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
     panel = <>
       <Section title="ท่าสำเร็จรูป">
-        <div className="options pose-presets">
-          <button type="button" className={'option' + (!pose && !posePreset ? ' active' : '')} onClick={() => select('pose', null)}>
-            <b>ท่าเดิม</b><small>ท่าเดียวกับรูปนางแบบ</small>
+        {/* การ์ดมีภาพวาดท่า (PoseView) แบบการ์ดมุมมอง/สไตล์ถ่ายภาพ (29 ต.ค.) */}
+        <div className="options view-options pose-presets">
+          <button type="button" className={'option view-option' + (!pose && !posePreset ? ' active' : '')} aria-pressed={!pose && !posePreset} onClick={() => select('pose', null)}>
+            <PoseView id="keep" /><b>ท่าเดิม</b><small>ท่าเดียวกับรูปนางแบบ</small>
           </button>
           {POSE_CHOICES.map((p) => (
-            <button key={p.id} type="button" className={'option' + (posePreset?.id === p.id ? ' active' : '')} onClick={() => select('pose', PRESET_POSE + p.id)}>
-              <b>{p.name}</b><small>{p.hint}</small>
+            <button key={p.id} type="button" className={'option view-option' + (posePreset?.id === p.id ? ' active' : '')} aria-pressed={posePreset?.id === p.id}
+              onClick={() => select('pose', PRESET_POSE + p.id)}>
+              <PoseView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
             </button>
           ))}
         </div>
+        {posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้ (ใช้เวลาเพิ่มราว 10 วินาที ไม่ถึง 5 สตางค์) — ทุกครั้งที่สร้างได้ท่าใหม่</p>}
+        {shown?.posePlan && <p className="note">ท่าที่ AI คิดให้รูปที่ดูอยู่ ({shown.posePlan.name}): {shown.posePlan.th}</p>}
       </Section>
+      {MOOD_PICKER && <Section title="สีหน้า">
+        <ChipGroup options={FACE_MOODS} value={faceMood} onChange={setFaceMood} />
+        <p className="muted-text">{mood.hint}</p>
+      </Section>}
       <Section title="ใช้รูปท่าของฉัน" note="อัปโหลด หรือเลือกจากตัวอย่าง">
+        {/* วิธีใช้รูปท่าอยู่เหนือรายการรูปเสมอ (ยังไม่เลือกรูป = กดไม่ได้) รายการรูปไม่กระโดดตอนกดเลือก */}
+        <p className="sub">ใช้รูปท่าแบบไหน</p>
+        <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => setPoseMode(v as PoseMode)} />
+        <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
+        {shot && <>
+          <p className="sub">แสง</p>
+          <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
+          <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
+        </>}
         {picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))))}
       </Section>
     </>;
@@ -705,77 +731,112 @@ export default function TryOn() {
       note: shotScene && 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้',
       muted: shotScene,
     });
-  } else if (cur.key === 'framing' || cur.key === 'angle') {
-    // ตัวเลือกแรก = ตามสไตล์ถ่ายภาพที่เลือก (บอกว่าสไตล์นั้นใช้ระยะ/มุมอะไร)
-    const isFraming = cur.key === 'framing';
-    const choices = isFraming ? FRAMINGS : ANGLES;
-    const value = (isFraming ? framingChoice : angleChoice)?.id ?? 'auto'; // ค่าที่ใช้จริง (เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์)
-    const choose = isFraming ? setFramingId : setAngleId;
+  } else if (cur.key === 'view') {
+    // 3 ส่วน การ์ดมีภาพวาดเหมือนขั้นมุมกล้อง/ระยะของหน้าสินค้า · "ตามสไตล์" วาดระยะ/มุมที่สไตล์ที่เลือกใช้
+    const card = (key: string, active: boolean, disabled: boolean, choose: () => void, art: ReactNode, title: string, hint: string) => (
+      <button key={key} type="button" className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={disabled} onClick={choose}>
+        {art}<b>{title}</b><small>{hint}</small>
+      </button>
+    );
+    const framingValue = framingChoice?.id ?? 'auto', angleValue = angleChoice?.id ?? 'auto'; // เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์
     panel = <>
-      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: {isFraming ? 'ระยะ' : 'มุมกล้อง'}ตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
-      <Section title={isFraming ? 'ระยะ' : 'มุมกล้อง'}>
-        <div className="options">
-          <button type="button" className={'option' + (value === 'auto' ? ' active' : '')} disabled={shot} onClick={() => choose('auto')}>
-            <b>ตามสไตล์</b><small>{preset.name}: {(isFraming ? preset.framing : preset.angle).label}</small>
-          </button>
-          {choices.map((c) => (
-            <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')} disabled={shot} onClick={() => choose(c.id)}>
-              <b>{c.name}</b><small>{c.hint}</small>
-            </button>
-          ))}
+      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ระยะ มุมกล้อง และตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
+      <Section title="ระยะ">
+        <div className="options view-options">
+          {card('auto', framingValue === 'auto', shot, () => setFramingId('auto'), <PersonView framing={presetFraming(preset)} />, 'ตามสไตล์', `${preset.name}: ${preset.framing.label}`)}
+          {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot, () => setFramingId(f.id), <PersonView framing={f.id} />, f.name, f.hint))}
         </div>
       </Section>
-    </>;
-  } else if (cur.key === 'placement') {
-    panel = <>
-      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
-      {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
+      <Section title="มุมกล้อง">
+        <div className="options view-options">
+          {card('auto', angleValue === 'auto', shot, () => setAngleId('auto'), <PersonView angle={presetAngle(preset)} />, 'ตามสไตล์', `${preset.name}: ${preset.angle.label}`)}
+          {ANGLES.map((a) => card(a.id, angleValue === a.id, shot, () => setAngleId(a.id), <PersonView angle={a.id} />, a.name, a.hint))}
+        </div>
+      </Section>
       <Section title="ตำแหน่งในภาพ">
-        <div className="options">
-          <button type="button" className={'option' + (!placementChoice ? ' active' : '')} disabled={shot || keepsPlace} onClick={() => setPlacementId('auto')}>
-            <b>อัตโนมัติ</b><small>สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย</small>
-          </button>
-          {PLACEMENTS.map((p) => (
-            <button key={p.id} type="button" className={'option' + (placementChoice?.id === p.id ? ' active' : '')} disabled={shot || keepsPlace} onClick={() => setPlacementId(p.id)}>
-              <b>{p.name}</b><small>{p.hint}</small>
-            </button>
-          ))}
+        {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
+        <div className="options view-options">
+          {card('auto', !placementChoice, shot || keepsPlace, () => setPlacementId('auto'), <PersonView placement="auto" />, 'อัตโนมัติ', 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
+          {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace, () => setPlacementId(p.id), <PersonView placement={p.id} />, p.name, p.hint))}
         </div>
       </Section>
     </>;
-  } else if (cur.key === 'settings') {
+  } else if (cur.key === 'output') {
+    // ตั้งค่า (29 ต.ค. แบบหน้าสินค้า): ใช้ภาพที่ไหน -> สั่งเพิ่มเติม -> ขั้นสูง -> ปุ่มสร้างรูปท้ายเส้นทาง
+    // ใช้ภาพที่ไหน: เลือกตามที่จะโพสต์แทนตัวเลขสัดส่วน (lib/aspects.ts) 4:5 / 9:16 server ทำ 2:3 แล้วตัด
     panel = <>
-      <div className="split-scroll">
-        {shot && (
-          <p className="note">{shotPresetLight
-            ? 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ใช้แค่แสงและโทนสีของสไตล์ที่เลือก มุมกล้องและระยะตามรูปต้นแบบ'
-            : 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: แสงและกล้องตามรูปต้นแบบ — อยากใช้แสงของสไตล์ด้านล่าง เลือก "ใช้แสงของสไตล์ถ่ายภาพ" ในขั้นท่าโพสต์'}</p>
+      <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect}`}>
+        <div className="options aspect-options">{PLATFORM_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
+          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => setAspect(a.id)}>
+          <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
+          <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
+        </button>)}</div>
+      </Section>
+      <Section title="สั่งเพิ่มเติม">
+        <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว" />
+      </Section>
+      <details className="advanced">
+        <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>
+        {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
+        {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
+        {aiModel.startsWith('openai:') && (
+          <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
+          </Section>
         )}
-        <Section title="สไตล์ถ่ายภาพ">
-          <div className="options">
-            {PRESETS.map((p) => (
-              <button key={p.id} type="button" className={'option' + (preset.id === p.id ? ' active' : '')} disabled={shot && !shotPresetLight} onClick={() => setPresetId(p.id)}>
-                <b>{p.name}</b><small>{p.hint}</small>
+        <Section title="การมอง" note={shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
+          <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={shot ? '' : gazeId} disabled={shot} onChange={setGazeId} />
+        </Section>
+        <Section title="พร็อพในมือ" note="เลือกได้หลายอย่าง">
+          <div className="chips">
+            {PROPS.map((p) => (
+              <button key={p.id} type="button" className={'chip' + (heldProps.includes(p.id) ? ' active' : '')}
+                onClick={() => setHeldProps((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}>
+                {p.name}
               </button>
             ))}
           </div>
         </Section>
+        <label className="check">
+          <input type="checkbox" checked={harmonize} onChange={(e) => setHarmonize(e.target.checked)} />
+          <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
+        </label>
+      </details>
+      {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป): 2 ปุ่มคู่กัน */}
+      <div className="gen-row">
+        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้าง...' : 'สร้างรูป'}</button>
+        <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+          title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
+          ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
+        </button>
       </div>
-      {/* รายละเอียดอยู่นอกส่วนที่เลื่อน: เลื่อนรายการสไตล์ได้ กล่องนี้อยู่กับที่ตลอด */}
-      {(!shot || shotPresetLight) && (
-        // วาดรายละเอียดทุกสไตล์ซ้อนกันในช่องเดียว โชว์แค่อันที่เลือก -> กล่องสูงเท่าอันที่ยาวสุดเสมอ เปลี่ยนสไตล์แล้วไม่กระโดด
-        <div className="preset-detail">
+    </>;
+  } else if (cur.key === 'settings') {
+    // การ์ดมีภาพวาด (StyleView): ฉาก ไฟ เงา โทนสีของแต่ละสไตล์ ให้เห็นความต่างโดยไม่ต้องจินตนาการ (29 ต.ค.)
+    // รายละเอียดของสไตล์ที่เลือกอยู่ใต้การ์ด (ไม่ปักไว้ล่างแผงแล้ว การ์ดได้ที่เต็มแผง)
+    panel = <>
+      {shot && (
+        <p className="note">{shotPresetLight
+          ? 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ใช้แค่แสงและโทนสีของสไตล์ที่เลือก มุมกล้องและระยะตามรูปต้นแบบ'
+          : 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: แสงและกล้องตามรูปต้นแบบ — อยากใช้แสงของสไตล์ด้านล่าง เลือก "ใช้แสงของสไตล์ถ่ายภาพ" ในขั้นท่าโพสต์'}</p>
+      )}
+      <Section title="สไตล์ถ่ายภาพ">
+        <div className="options view-options">
           {PRESETS.map((p) => (
-            <div key={p.id} className={p.id === preset.id ? '' : 'stack-hidden'} aria-hidden={p.id !== preset.id}>
-              <Section title={`ใน ${p.name} มีอะไรบ้าง`}>
-                <dl className="preset-parts">
-                  {PRESET_PARTS.map(({ key, name }) => p[key] && <div key={key}><dt>{name}</dt><dd>{p[key].label}</dd></div>)}
-                </dl>
-                <p className="muted-text">ระยะและมุมกล้องเลือกได้ในขั้นของมันเอง (ไม่เลือก = {p.framing.label} · {p.angle.label})</p>
-              </Section>
-            </div>
+            <button key={p.id} type="button" className={'option view-option' + (preset.id === p.id ? ' active' : '')} aria-pressed={preset.id === p.id}
+              disabled={shot && !shotPresetLight} onClick={() => setPresetId(p.id)}>
+              <StyleView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
+            </button>
           ))}
         </div>
+      </Section>
+      {(!shot || shotPresetLight) && (
+        <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
+          <dl className="preset-parts">
+            {PRESET_PARTS.map(({ key, name }) => preset[key] && <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
+          </dl>
+          <p className="muted-text">ระยะและมุมกล้องเลือกต่อได้ในขั้นมุมมอง (ไม่เลือก = {preset.framing.label} · {preset.angle.label})</p>
+        </Section>
       )}
     </>;
   } else {
@@ -797,6 +858,14 @@ export default function TryOn() {
               <input type="range" id={id} min={0} max={100} value={amounts[id]}
                 onChange={(e) => setAmounts((a) => ({ ...a, [id]: +e.target.value }))} />
             </div>
+          ))}
+        </div>
+        <p className="sub">สีผิว</p>
+        <div className="chips">
+          <button className={'chip' + (tone === null ? ' active' : '')} onClick={() => setTone(null)}>สีเดิม</button>
+          {SKIN_TONES.map((t) => (
+            <button key={t.color} className={'swatch' + (tone === t.color ? ' active' : '')} style={{ background: t.color }}
+              title={t.name} aria-label={t.name} onClick={() => setTone(t.color)} />
           ))}
         </div>
         <div className="retouch-actions">
@@ -823,175 +892,6 @@ export default function TryOn() {
           )}
         </div>
         <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
-      </Section>
-    </>;
-  }
-
-  // ---------- แผงปรับแต่ง (ขวา) ----------
-  const tips = (items: string[]) => <ul className="tips">{items.map((t) => <li key={t}>{t}</li>)}</ul>;
-  let inspector: ReactNode;
-  if (cur.key === 'model') {
-    inspector = <>
-      <Section title="นางแบบที่เลือก"><p className="big">{model.name}</p></Section>
-      <Section title="รูปแบบไหนได้ผลดี">
-        {tips(['เต็มตัว เห็นตั้งแต่หัวถึงเท้า', 'พื้นหลังเรียบ แสงสว่างทั่ว', 'หน้าตรง เห็นหน้าชัด ไม่ใส่แว่นดำ', 'ใส่ชุดเรียบพอดีตัว คนเดียวในรูป'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'outfit') {
-    inspector = <>
-      <Section title="ชุดที่เลือก"><p className="big">{outfitName}</p></Section>
-      <Section title="รูปแบบไหนได้ผลดี">{tips(['ภาพสินค้าไม่มีคนใส่', 'พื้นขาวหรือพื้นเรียบ', 'เห็นทั้งชุด ไม่ตัดขอบ'])}</Section>
-    </>;
-  } else if (cur.key === 'accessory') {
-    inspector = <>
-      <Section title="ของเสริมที่เลือก" note={`${accs.length}/${MAX_ACCESSORIES}`}>
-        {accs.length ? accs.map((a) => (
-          <div className="sel-row" key={idOf(a)}>
-            <img src={a.src} alt="" />
-            <div>
-              <b>{a.name}</b>
-              <button className="acc-type" title="แก้ชื่อ/ประเภท" onClick={() => setDialog({ mode: 'edit', item: a })}>{accessoryType(a).name} ✎</button>
-            </div>
-            <button className="icon-btn" title="เอาออก" aria-label="เอาออก" onClick={() => toggleAccessory(idOf(a))}>×</button>
-          </div>
-        )) : <p className="muted-text">ยังไม่ได้เลือก กดการ์ดทางซ้ายเพื่อเลือก</p>}
-      </Section>
-      <Section title="เพิ่มของเสริม">
-        {tips(['อัปโหลดรูปสินค้าชิ้นเดียว พื้นขาวหรือพื้นใส', 'AI ดูรูปแล้วตั้งชื่อ + เลือกประเภทให้', 'ประเภทไม่ถูก กด ✎ เพื่อแก้'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'pose') {
-    inspector = <>
-      {pose && (
-        <Section title="ใช้รูปท่าแบบไหน">
-          <ChipGroup options={[...POSE_MODES]} value={poseMode} onChange={(v) => setPoseMode(v as PoseMode)} />
-          <p className="muted-text">{POSE_MODES.find((m) => m.id === poseMode)!.hint}</p>
-        </Section>
-      )}
-      {shot && (
-        <Section title="แสง">
-          <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
-          <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
-        </Section>
-      )}
-      <Section title="สีหน้า">
-        <ChipGroup options={FACE_MOODS} value={faceMood} onChange={setFaceMood} />
-        <p className="muted-text">{mood.hint}</p>
-      </Section>
-      {posePreset && (
-        <Section title={posePreset.name}>
-          <p className="muted-text">{posePreset.hint} · AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้ (ใช้เวลาเพิ่มราว 10 วินาที ไม่ถึง 5 สตางค์) — ทุกครั้งที่สร้างได้ท่าใหม่</p>
-        </Section>
-      )}
-      {shown?.posePlan && (
-        <Section title="ท่าที่ AI คิดให้ (รูปที่ดูอยู่)" note={shown.posePlan.name}>
-          <p className="muted-text">{shown.posePlan.th}</p>
-        </Section>
-      )}
-      {!pose && !posePreset && (
-        <Section title="รูปแบบไหนได้ผลดี">
-          {tips(['คนเดียวเต็มตัว เห็นแขนขาชัด', 'ไม่มีตัวอักษร/ไอคอนแอปทับ', 'แคปจากมือถือ ตัดขอบแอปออกก่อน'])}
-        </Section>
-      )}
-    </>;
-  } else if (cur.key === 'scene') {
-    inspector = <>
-      <Section title="ฉากที่เลือก"><p className="big">{sceneName}</p></Section>
-      <Section title="รูปแบบไหนได้ผลดี">
-        {tips(['ฉากว่าง ไม่มีคน', 'แนวตั้ง', 'เห็นพื้นตรงที่จะให้นางแบบยืน', 'แสงในฉากเข้ากับสไตล์ถ่ายภาพที่จะเลือกในขั้นถัดไป'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'framing' || cur.key === 'angle') {
-    const isFraming = cur.key === 'framing';
-    inspector = <>
-      <Section title={isFraming ? 'ระยะที่เลือก' : 'มุมกล้องที่เลือก'}><p className="big">{stepValue[cur.key]}</p></Section>
-      <Section title="เลือกยังไงดี">
-        {tips(isFraming
-          ? ['รองเท้า กางเกง ชุดเดรส: เต็มตัว', 'เสื้อ ต่างหู แว่น: ครึ่งตัว หรือ ใกล้ เน้นสินค้า', 'อยากเห็นสถานที่: เต็มตัว เห็นฉากกว้าง',
-            'ใช้รูปท่าโพสต์ + ระยะใกล้: ขาที่อยู่นอกกรอบถูกตัดออก', 'ชุดภาพ 4 มุม ใช้ระยะของแต่ละรูปในชุดเอง']
-          : ['ไม่แน่ใจ: ตามสไตล์ (แต่ละสไตล์ตั้งมุมที่เข้ากับแสงไว้แล้ว)', 'อยากให้ขาดูยาว: มุมต่ำ มองขึ้น', 'ดูเป็นกันเองแบบเพื่อนถ่าย: มุมสูง มองลง', 'ชุดภาพ 4 มุม ใช้มุมของแต่ละรูปในชุดเอง'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'placement') {
-    inspector = <>
-      <Section title="ตำแหน่งที่เลือก"><p className="big">{stepValue.placement}</p></Section>
-      <Section title="เลือกยังไงดี">
-        {tips(['ไม่แน่ใจ: อัตโนมัติ (แต่ละรูปได้ตำแหน่งต่างกัน)', 'อยากเห็นฉากด้านหนึ่งเยอะๆ: วางคนอีกข้าง', 'ภาพสมมาตร เช่น ประตูกลางภาพ: กลาง',
-          'AI วางห่างขอบราว 40% / 60% ของความกว้าง ไม่ถึงชิดขอบ'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'settings') {
-    inspector = <>
-      <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>สร้างรูป</button>
-      <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}>
-        ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI {SET_SHOTS.length} เท่า</small>
-      </button>
-      <details className="advanced">
-        <summary>ขั้นสูง <small>โมเดล AI · สัดส่วน · การมอง · พร็อพ · สั่งเพิ่ม</small></summary>
-        <Section title="โมเดล AI">
-          <div className="options">
-            {(aiModels ?? []).map((m) => {
-              const [name, detail] = splitLabel(m.label);
-              return (
-                <button key={m.id} type="button" className={'option' + (aiModel === m.id ? ' active' : '')} onClick={() => chooseModel(m.id)}>
-                  <b>{name}</b>{detail && <small>{detail}</small>}
-                </button>
-              );
-            })}
-            {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
-          </div>
-        </Section>
-        {aiModel.startsWith('openai:') && (
-          <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
-          </Section>
-        )}
-        <Section title="สัดส่วนภาพ" note={aspect && aspect !== '2:3' && aiModel.startsWith('openai:') ? 'OpenAI ได้แค่ 2:3' : undefined}>
-          <ChipGroup value={aspect} onChange={setAspect} options={[
-            { id: '', name: 'ตามรูปนางแบบ' },
-            ...ASPECTS.map((a) => ({ id: a.id, name: <><i className="ratio" style={{ aspectRatio: a.id.replace(':', ' / ') }} />{a.name}</> })),
-          ]} />
-        </Section>
-        <Section title="การมอง" note={shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
-          <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={shot ? '' : gazeId} disabled={shot} onChange={setGazeId} />
-        </Section>
-        <Section title="พร็อพในมือ" note="เลือกได้หลายอย่าง">
-          <div className="chips">
-            {PROPS.map((p) => (
-              <button key={p.id} type="button" className={'chip' + (heldProps.includes(p.id) ? ' active' : '')}
-                onClick={() => setHeldProps((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}>
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </Section>
-        <Section title="สั่งเพิ่มเติม">
-          <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว" />
-        </Section>
-        <label className="check">
-          <input type="checkbox" checked={harmonize} onChange={(e) => setHarmonize(e.target.checked)} />
-          <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
-        </label>
-      </details>
-    </>;
-  } else {
-    inspector = <>
-      <Section title="สีผิว">
-        <div className="chips">
-          <button className={'chip' + (tone === null ? ' active' : '')} onClick={() => setTone(null)}>สีเดิม</button>
-          {SKIN_TONES.map((t) => (
-            <button key={t.color} className={'swatch' + (tone === t.color ? ' active' : '')} style={{ background: t.color }}
-              title={t.name} aria-label={t.name} onClick={() => setTone(t.color)} />
-          ))}
-        </div>
-      </Section>
-      <Section title="ตัวช่วย">
-        <div className="retouch-actions">
-          <button className={'btn btn-secondary' + (zoomed ? ' on' : '')} onClick={() => { setZoomed((z) => !z); setRetouchStatus(''); }}>
-            <IconZoom /> {zoomed ? 'ดูทั้งรูป' : 'ซูมหน้า'}
-          </button>
-          <button className="btn btn-secondary" onClick={save}><IconDownload /> ดาวน์โหลด</button>
-        </div>
       </Section>
     </>;
   }
@@ -1035,39 +935,34 @@ export default function TryOn() {
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
         </div>
         <div className="top-actions">
-          {authEnabled && <button className="btn btn-tertiary" onClick={() => void signOut()}>ออกจากระบบ</button>}
-          <button className="btn btn-secondary" onClick={save}><IconDownload /> <span className="hide-sm">ดาวน์โหลด</span></button>
-          <button className="btn btn-secondary" disabled={busy !== null || !aiModels?.length} title={SET_SHOTS.map((s) => s.name).join(' · ')}
-            onClick={() => void generate(true)}>
-            ชุดภาพ {SET_SHOTS.length} มุม
-          </button>
-          <button className="btn btn-primary" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>
-            {busy !== null ? 'กำลังสร้าง...' : 'สร้างรูป'}
-          </button>
+          {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นสไตล์ถ่ายภาพ) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
+          <TokenUsage />
+          <SignOutButton />
         </div>
       </header>
 
       <div className="workspace">
         <nav className="rail" aria-label="ขั้นตอน">
           {STEPS.map((s, i) => (
-            <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}>
+            <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}
+              disabled={Boolean(unusedWhy[s.key])} title={unusedWhy[s.key]}>
               <span className="n">{i + 1}</span>
               <s.Icon />
               <span>{s.label}</span>
-              {stepDone[s.key] && s.key !== 'model' && <i className="dot" />}
+              {!unusedWhy[s.key] && stepDone[s.key] && s.key !== 'model' && <i className="dot" />}
             </button>
           ))}
         </nav>
 
-        <aside className={'panel' + (cur.key === 'settings' ? ' split' : '')}>
+        <aside className="panel" onClickCapture={mark} onInputCapture={mark}>
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
-            {cur.key === 'accessory' && <span className="hint">เลือกได้ {MAX_ACCESSORIES} ชิ้น</span>}
+            {cur.key === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{MAX_ACCESSORIES} ชิ้น</span>}
           </div>
           {panel}
-          {step < STEPS.length - 1 && (
-            <button className="btn btn-secondary next" onClick={() => goStep(step + 1)}>ถัดไป: {STEPS[step + 1].label} →</button>
+          {nextStep >= 0 && (
+            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
           )}
         </aside>
 
@@ -1085,6 +980,7 @@ export default function TryOn() {
           </div>
           <div className="stage-tools">
             <div className="caption" title={shown?.caption}>{shown ? shown.caption : `ตัวอย่าง: ${model.name} (ยังไม่ได้สร้าง)`}</div>
+            <button className="btn btn-secondary tool" onClick={save}><IconDownload /> ดาวน์โหลด</button>
             {shown && <button className="btn btn-secondary tool" disabled={busy !== null}
               onClick={() => setLocalEdit({ src: shown.src, caption: shown.caption })}><IconRetouch /> แก้เฉพาะจุด</button>}
             {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
@@ -1104,23 +1000,10 @@ export default function TryOn() {
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
             {historyItems}
-            {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; มุมขวาบน</p>}
+            {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; ในขั้นตั้งค่า</p>}
           </div>
         </section>
 
-        <aside className="inspector">
-          {inspector}
-          {cur.key !== 'retouch' && (
-            <div className="summary">
-              <p className="sub">สรุปที่เลือก</p>
-              {STEPS.filter((s) => s.key !== 'retouch').map((s, i) => (
-                <button key={s.key} className="sum-row" onClick={() => goStep(i)}>
-                  <span>{s.label}</span><b>{stepValue[s.key] || '—'}</b>
-                </button>
-              ))}
-            </div>
-          )}
-        </aside>
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}

@@ -1,10 +1,12 @@
 import { availableModels, describeLighting, generateImage, planPose, type Img } from '@/lib/ai';
 import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
-import { buildPrompt, buildSetPrompt, harmonizePrompt, pickPlacement } from '@/lib/prompts';
+import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
+import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
-import { servable } from '@/lib/images';
+import { cropTo, servable } from '@/lib/images';
 import { saveImage, type SetTag } from '@/lib/storage';
+import { quotaBlock, recordUsage } from '@/lib/usage';
 
 // what = คำบรรยายประเภท, show = ท่าที่ทำให้ของชิ้นนี้เด่น (ทั้งคู่มาจาก ACCESSORY_TYPES)
 type Accessory = { data: string; what?: string; show?: string };
@@ -24,6 +26,8 @@ const toRef = (v: unknown): Ref => {
 
 export const POST = post(async (req) => {
   if (!availableModels().some((m) => m.id === req.model)) return json(400, { error: 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env' });
+  const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI
+  if (blocked) return blocked;
   if (!req.person) return json(400, { error: 'ไม่มีรูปนางแบบ' });
   const accessories: Accessory[] = (Array.isArray(req.accessories) ? req.accessories : []).filter((a: Accessory) => a?.data);
   if (accessories.length > MAX_ACCESSORIES) return json(400, { error: `ของเสริมใส่ได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป` });
@@ -79,6 +83,10 @@ export const POST = post(async (req) => {
   // ตำแหน่งในภาพ: เลือกเอง (ซ้าย/กลาง/ขวา) หรืออัตโนมัติ = สุ่มต่อรูป · ชุดภาพมุมที่ 2 เป็นต้นไปลอกจากรูปหลัก
   const chosenPlacement = (['left', 'center', 'right'] as const).find((p) => p === req.placement) ?? null;
   const placement = setRef ? null : chosenPlacement ?? pickPlacement();
+  // ใช้ภาพที่ไหน (lib/aspects.ts): OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> 4:5 / 9:16 ทำ 2:3 แล้วตัดกลางภาพ (cropTo) บอก AI ว่าขอบไหนจะโดนตัด
+  const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
+  const crop = String(req.model).startsWith('openai:') && !AI_ASPECTS.includes(aspect)
+    ? cropLine(aspect, setRef ? setShot!.full_body !== false : req.full_body ?? true) : null;
   const prompt = setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -86,6 +94,7 @@ export const POST = post(async (req) => {
     hasOutfit: Boolean(req.outfit),
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
     extra: req.extra,
+    crop,
   }) : buildPrompt({
     hasOutfit: Boolean(req.outfit),
     hasSceneImage: !shotScene && Boolean(req.scene_image),
@@ -110,11 +119,12 @@ export const POST = post(async (req) => {
     // ระยะ/มุมกล้องที่เลือกเอง (ไม่ใช่ตามสไตล์) -> lib/prompts.ts สั่งย้ำให้ชนะรูปท่า/รูปฉาก
     camera: text(req.camera_framing) || text(req.camera_angle) ? { framing: text(req.camera_framing), angle: text(req.camera_angle) } : null,
     placement, // ข้างที่วางคนในภาพ สุ่มต่อรูป (ไม่สั่ง = AI วางกลางภาพเสมอ)
+    crop,
   });
-  // GPT Image 2.5: ค่าเริ่มต้นรูปใหญ่ 1664×2496 (หน้า/ผิวละเอียดขึ้น) หน้าเว็บส่งขนาดมาตรฐานตามแนวรูปมา
-  const baseSize = req.size ?? '1024x1536';
-  const size = isGpt25(String(req.model)) && Object.hasOwn(GPT25_SIZES, baseSize) ? GPT25_SIZES[baseSize] : baseSize;
-  const opt = { aspect: req.aspect ?? '2:3', size, quality: req.quality ?? 'medium' };
+  // GPT Image 2.5: ค่าเริ่มต้นรูปใหญ่ 1664×2496 (หน้า/ผิวละเอียดขึ้น) · ขนาดตามแนวของสัดส่วนที่เลือก
+  const baseSize = aspectBaseSize(aspect);
+  const size = isGpt25(String(req.model)) ? GPT25_SIZES[baseSize] : baseSize;
+  const opt = { aspect, size, quality: req.quality ?? 'medium' };
 
   const harmonizeText = req.harmonize && !setRef ? harmonizePrompt(look) : null; // ชุดภาพ: รูปหลักปรับแสงมาแล้ว
 
@@ -142,6 +152,7 @@ export const POST = post(async (req) => {
     const v = text(choices[k]);
     if (v) style[k] = v;
   }
+  style.aspect = `${PLATFORM_ASPECTS.find((a) => a.id === aspect)!.name} · ${aspect}${crop ? ` (ตัดจาก ${size})` : ''}`;
   if (texts(choices.props).length) style.props = texts(choices.props);
   if (harmonizeText) style.harmonize = true;
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
@@ -172,18 +183,24 @@ export const POST = post(async (req) => {
   };
   const t0 = Date.now();
   const duration = () => `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`;
+  const usage = { page: 'model', action: 'generate', model: String(req.model), quality: String(opt.quality), calls: harmonizeText ? 2 : 1 } as const;
+  let tokens = 0; // โทเคนที่ AI คิดจริง รวมทุกครั้งที่เรียก (ปรับแสงซ้ำ = 2 ครั้ง) -> โควตาลูกค้า
   try {
-    let image = await generateImage(req.model, images, prompt, opt);
-    if (harmonizeText) image = await generateImage(req.model, [image], harmonizeText, opt);
-    image = await servable(image); // PNG ใหญ่ -> JPEG q97 ไม่งั้นเว็บจริงเปิดรูปไม่ขึ้น
+    const first = await generateImage(req.model, images, prompt, opt);
+    const again = harmonizeText ? await generateImage(req.model, [first], harmonizeText, opt) : null;
+    tokens = first.tokens + (again?.tokens ?? 0);
+    // ตัดตามสัดส่วนที่เลือกก่อน (4:5 / 9:16) แล้วค่อยแปลง PNG ใหญ่ -> JPEG q97 ไม่งั้นเว็บจริงเปิดรูปไม่ขึ้น
+    const image = await servable(await cropTo(again ?? first, aspect));
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const src = await saveImage({ area: 'results' }, image.data, image.mime,
       { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
         ...(plan ? { posePlan: { name: planName, th: plan.th } } : {}) });
     await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
+    await recordUsage({ ...usage, status: 'ok', tokens });
     return json(200, { src, posePlan: plan ? { name: planName, th: plan.th } : null });
   } catch (e) {
     await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
+    await recordUsage({ ...usage, status: 'error', tokens });
     throw e;
   }
 });

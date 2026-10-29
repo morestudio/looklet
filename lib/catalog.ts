@@ -204,11 +204,6 @@ export const PROPS: Choice[] = [
 ];
 
 // สัดส่วนภาพ (ไม่เลือก = ตามรูปนางแบบ) — OpenAI ทำได้แค่ 2:3 / 3:2 / 1:1 แนวตั้งทุกแบบจะได้ 2:3
-export const ASPECTS = [
-  { id: '4:5', name: '4:5 (ฟีด IG)' },
-  { id: '9:16', name: '9:16 (สตอรี่)' },
-  { id: '2:3', name: '2:3' },
-];
 
 // ฉาก: มี src = ส่งรูปฉากให้ AI ดู, มี prompt = บอก AI เป็นคำบรรยาย (ภาษาอังกฤษ AI เข้าใจแม่นกว่า)
 export const SCENES: Item[] = [
@@ -267,9 +262,13 @@ export const splitLabel = (label: string) => {
 // บอกเป็นภาพที่เห็น (ขอบล่างของภาพตัดตรงไหน / เห็นเพดานหรือพื้นมากขึ้น) AI ทำตามได้ดีกว่าชื่อระยะ/มุมเฉยๆ
 // เลือกเองแล้ว lib/prompts.ts สั่งย้ำท้ายคำสั่งว่าสำคัญกว่ากรอบภาพ/มุมกล้องของรูปท่าและรูปฉาก (camera)
 export type FramingChoice = { id: string; name: string; hint: string; fullBody: boolean; prompt: string };
+// เต็มตัว: คนสูงราว 60% ของภาพ มีที่ว่างเหนือหัวและใต้เท้า — เดิม "filling most of the frame height" (~75%) กับรูปฉากที่อัปโหลด
+// AI ขยับกล้องเข้าไปจนเห็นสถานที่แค่นิดเดียว คนดูตัวใหญ่ (ผู้ใช้เจอ 28 ต.ค. ร้านหน้ากระจก: คนสูง 74% ของภาพ) ใช้คำนี้ทุกที่ที่เป็นเต็มตัว
+export const FULL_BODY = 'framed full body from head to feet, the person about 60 percent of the frame height, with clear space above '
+  + 'the head and below the feet and more of the location visible around her';
 export const FRAMINGS: FramingChoice[] = [
-  { id: 'full', name: 'เต็มตัว', hint: 'หัวจรดเท้าเต็มความสูงภาพ เห็นชุดครบ', fullBody: true,
-    prompt: 'framed full body from head to feet, filling most of the frame height' },
+  { id: 'full', name: 'เต็มตัว', hint: 'หัวจรดเท้า คนสูงราว 60% ของภาพ เห็นชุดครบและสถานที่รอบตัว', fullBody: true,
+    prompt: FULL_BODY },
   { id: 'wide', name: 'เต็มตัว เห็นฉากกว้าง', hint: 'คนสูงราวครึ่งภาพ เห็นสถานที่รอบตัวเยอะ', fullBody: true,
     prompt: 'a wide shot, full body from head to feet but small in the frame: the person takes up no more than half of the frame height, '
       + 'with plenty of floor, walls and ceiling of the location around them' },
@@ -319,9 +318,9 @@ export const PRESETS: Preset[] = [
   { id: 'signature', name: 'Looklet signature', hint: 'ฟีลของ Looklet: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
     light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก เฉียงข้างนิดๆ', prompt: 'camera at chest height, level, seen from slightly to the side' },
-    framing: { label: 'เต็มตัว ราว 3/4 ของภาพ มีขอบผนังด้านหน้า', prompt: 'framed full body from head to feet, the person filling about '
-      + 'three quarters of the frame height, with the edge of a wall, column or doorway in the foreground on one side and the space '
-      + 'continuing behind' },
+    framing: { label: 'เต็มตัว ราว 60% ของภาพ มีขอบผนังด้านหน้า', prompt: 'framed full body from head to feet, the person about 60 percent '
+      + 'of the frame height with clear space above the head and below the feet, the edge of a wall, column or doorway in the foreground on '
+      + 'one side and the space continuing behind' },
     color: NEUTRAL_COLOR,
     scene: { label: 'มินิมอลมาก ผนังขาวครีม พื้นไม้อ่อน/หิน ไม่มีของรก ชุดเป็นสีหลักของภาพ', prompt:
       'Looklet signature setting, super minimal: keep only the essence of the location and show it as an almost empty, calm space. '
@@ -332,7 +331,7 @@ export const PRESETS: Preset[] = [
   { id: 'studio', name: 'Studio lookbook', hint: 'เต็มตัว ฉากสตูดิโอ ไฟนุ่ม เหมาะกับฉากสตูดิโอหรือฉากเดิม', fullBody: true,
     light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก มองตรง', prompt: 'camera at chest height, straight on' },
-    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: FULL_BODY },
     color: NEUTRAL_COLOR },
   { id: 'closeup', name: 'Product close-up', hint: 'ครึ่งตัว เน้นเนื้อผ้าและสินค้าให้ชัด', fullBody: false,
     light: { label: 'ซอฟต์บ็อกซ์ด้านหน้า + แผ่นสะท้อน + ไฟขอบหลัง', prompt:
@@ -371,7 +370,7 @@ export const PRESETS: Preset[] = [
       + 'The flash falls off quickly, so the background is noticeably darker than the person.' },
     lens: { label: '35mm ชัดทั้งภาพ', prompt: 'shot on a full-frame camera with a 35mm lens, everything in focus' },
     angle: { label: 'ต่ำกว่าระดับสายตาเล็กน้อย', prompt: "camera slightly below the model's eye level" },
-    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: 'framed full body from head to feet, filling most of the frame height' },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: FULL_BODY },
     color: { label: 'คอนทราสต์จัด สีสด ขอบภาพมืดนิดๆ', prompt: 'Punchy contrast, saturated colors, slight vignette.' } },
   { id: 'golden', name: 'Golden hour', hint: 'แดดเย็นย้อนแสง ขอบผมเรืองทอง เหมาะกับฉากกลางแจ้ง ทะเล สวน', fullBody: true,
     light: { label: 'แดดเย็นย้อนหลัง ขอบตัวเรืองทอง', prompt:
@@ -413,11 +412,11 @@ export const PRESETS: Preset[] = [
 // framing = ระยะ (แทนระยะของสไตล์ถ่ายภาพ), angle = มุมกล้อง + ท่า สำหรับรูปที่ 2 เป็นต้นไป (รูปแรกใช้ท่าที่เลือกไว้)
 export type SetShot = { id: string; name: string; fullBody: boolean; framing: string; angle: string };
 export const SET_SHOTS: SetShot[] = [
-  { id: 'front', name: 'หน้าตรง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+  { id: 'front', name: 'หน้าตรง', fullBody: true, framing: FULL_BODY,
     angle: "Camera angle: straight on at the model's chest height, the model facing the camera." },
-  { id: 'three-quarter', name: 'เฉียง 3/4', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+  { id: 'three-quarter', name: 'เฉียง 3/4', fullBody: true, framing: FULL_BODY,
     angle: 'Camera angle: a three-quarter view: the body is turned about 45 degrees away from the camera, the face turned back toward the camera.' },
-  { id: 'back', name: 'ด้านหลัง', fullBody: true, framing: 'framed full body from head to feet, filling most of the frame height',
+  { id: 'back', name: 'ด้านหลัง', fullBody: true, framing: FULL_BODY,
     angle: "Camera angle: from behind and slightly to one side, so the back of the outfit is clearly visible; the model looks back over the shoulder so part of the face shows." },
   { id: 'detail', name: 'ใกล้ เอวขึ้นไป', fullBody: false,
     framing: 'framed from the waist up so the outfit details and any accessories fill the frame, with the legs out of frame',

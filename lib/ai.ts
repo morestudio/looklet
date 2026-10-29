@@ -19,6 +19,8 @@ const AI_MODELS = [
 export const availableModels = () => AI_MODELS.filter((m) => process.env[m.key]).map(({ id, label }) => ({ id, label }));
 
 export type Img = { data: string; mime: string }; // data = base64
+// รูปที่ AI สร้าง + โทเคนที่คิดจริงของการเรียกครั้งนั้น (0 = AI ไม่บอก) -> โควตาลูกค้า (lib/usage.ts)
+export type Generated = Img & { tokens: number };
 
 // ข้อความ error ที่ส่งกลับไปให้หน้าเว็บแสดงได้ตรงๆ
 export class ApiError extends Error {}
@@ -34,7 +36,7 @@ async function post(url: string, init: RequestInit, who: string, timeout = 300_0
 
 type GeminiPart = { thought?: boolean; inlineData?: { data: string; mimeType?: string }; inline_data?: { data: string; mime_type?: string } };
 
-async function callGemini(model: string, images: Img[], prompt: string, aspect: string): Promise<Img> {
+async function callGemini(model: string, images: Img[], prompt: string, aspect: string): Promise<Generated> {
   const d = await post(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({
@@ -51,10 +53,11 @@ async function callGemini(model: string, images: Img[], prompt: string, aspect: 
   return {
     data: last.inlineData?.data ?? last.inline_data!.data,
     mime: last.inlineData?.mimeType || last.inline_data?.mime_type || 'image/png',
+    tokens: Number(d.usageMetadata?.totalTokenCount) || 0,
   };
 }
 
-async function callOpenAI(model: string, images: Img[], prompt: string, size: string, quality: string, fidelity: string | null = 'high', mask?: Img): Promise<Img> {
+async function callOpenAI(model: string, images: Img[], prompt: string, size: string, quality: string, fidelity: string | null = 'high', mask?: Img): Promise<Generated> {
   const form = new FormData();
   form.append('model', model);
   form.append('prompt', prompt);
@@ -72,7 +75,8 @@ async function callOpenAI(model: string, images: Img[], prompt: string, size: st
       headers: { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
       body: form,
     }, 'OpenAI');
-    return { data: d.data[0].b64_json, mime: 'image/png' };
+    // usage.total_tokens = รูปเข้า + ข้อความ + รูปที่ได้ (วัด 1664×2496 high รูปเข้า 1 รูป = 4,116: output/skin-2500-test)
+    return { data: d.data[0].b64_json, mime: 'image/png', tokens: Number(d.usage?.total_tokens) || 0 };
   } catch (e) {
     if (fidelity && e instanceof ApiError && e.message.includes('input_fidelity')) { // บางโมเดลไม่รับค่านี้ -> ส่งใหม่แบบไม่ใส่
       console.log(`${model} ไม่รับ input_fidelity ส่งใหม่แบบไม่ใส่`);

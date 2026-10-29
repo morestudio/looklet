@@ -10,20 +10,19 @@ import ProductLibrary from './ProductLibrary';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
 import { productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
-import { signOut } from './AuthForm';
+import { SignOutButton } from './AuthForm';
 import {
   IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
-import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section } from './ui';
+import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
-import { authEnabled } from '@/lib/auth';
 import { NO_FILM } from '@/lib/film';
 import {
   api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage,
 } from '@/lib/browser';
-import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, splitLabel, type Item } from '@/lib/catalog';
+import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
-  DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, plainShot, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
+  DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
   PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
   NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
 } from '@/lib/packshot';
@@ -50,6 +49,7 @@ type Stored = ProductPhoto & { src: string; name?: string; caption?: string; typ
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
+const downloadName = (ext: string) => `looklet-product-${Date.now()}.${ext}`; // ชื่อไฟล์ดาวน์โหลด (เรียกตอนกดเท่านั้น)
 
 // ช็อตต้นแบบ (ปิด 27 ต.ค.): ซ้ำกับภาพแรงบันดาลใจของ Creative Packshot และ "ใช้รูปฉากของฉัน" ในขั้นฉากและพื้น
 // แถมลอกทั้งช็อตแล้วขั้นอื่นใช้ไม่ได้ครึ่งเมนู · เปิดคืน = true (โค้ด UI/API ยังอยู่ครบ)
@@ -180,21 +180,87 @@ function ShotTypePreview({ id }: { id: ShotType }) {
   </svg>;
 }
 
-function AnglePreview({ id }: { id: string }) {
-  const positions: Record<string, [number, number]> = {
-    front: [48, 62], back: [48, 8], side: [84, 35], 'three-quarter': [79, 60], above: [65, 58], low: [36, 65],
-    top: [48, 35], bottom: [48, 35], auto: [48, 35],
-  };
-  const [x, y] = positions[id] ?? positions.front;
-  return <svg className="camera-preview" viewBox="0 0 96 76" aria-hidden="true" focusable="false">
-    <rect x="30" y="22" width="36" height="26" rx="4" fill="var(--secondary-bg)" stroke="var(--ash)" />
-    <path d="M34 48 H62" stroke="var(--primary)" strokeWidth="3" />
-    {id === 'auto' ? <path d="m48 26 3 6 7 3-7 3-3 6-3-6-7-3 7-3Z" fill="var(--ink-soft)" /> : <>
-      {id !== 'top' && id !== 'bottom' && <path d={`M${x} ${y} L48 35`} stroke="var(--mute)" strokeDasharray="3 3" />}
-      <circle cx={x} cy={y} r="7" fill="var(--canvas)" stroke="var(--ink-soft)" strokeWidth="1.5" strokeDasharray={id === 'bottom' ? '2 2' : undefined} />
-      <circle cx={x} cy={y} r="2.5" fill="var(--ink-soft)" />
-    </>}
-  </svg>;
+// มุมกล้อง / ระยะ: วาดภาพที่กล้องเห็นในแต่ละตัวเลือก แบบเดียวกับ ShotTypePreview (ฉากสตูดิโอ + สินค้ากล่องมีฉลาก)
+// แทนแผนผังมองจากด้านบนแบบเดิม (ผู้ใช้ขอ 28 ต.ค.: อยากได้ภาพทุกตัวเลือกเหมือนขั้นประเภทภาพ)
+const INK = '#77776f', PAPER = '#fafaf8', LABEL = '#b8b8ae', SIDE = '#e7e6df', TOPFACE = '#f1f0ea';
+const Studio = ({ horizon = 95 }: { horizon?: number }) => <>
+  <rect width="240" height="150" fill="#f3f3f0" />
+  <path d={`M0 ${horizon} Q120 ${horizon - 9} 240 ${horizon} V150 H0Z`} fill="#000" opacity=".035" />
+</>;
+const Shadow = ({ cx, cy, rx }: { cx: number; cy: number; rx: number }) => <ellipse cx={cx} cy={cy} rx={rx} ry="6" fill="#000" opacity=".1" />;
+const Label = ({ x, y, w }: { x: number; y: number; w: number }) => <path d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`} stroke={LABEL} strokeWidth="2" />;
+
+function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
+  let art: ReactNode;
+  if (framing) {
+    // ระยะ: ฉากเดิม สินค้าขนาดต่างกัน (ใกล้ = เกือบเต็มภาพแต่ยังเห็นทั้งชิ้น) · รายละเอียด = ครอปเห็นตะเข็บ ซิป และห่วงโลหะ
+    const [size, bottom] = { wide: [54, 112], medium: [84, 116], close: [116, 138] }[framing] ?? [];
+    if (size) {
+      const h = Math.round(size * 1.04), x = 120 - size / 2, y = bottom - h;
+      art = <><Studio /><Shadow cx={120} cy={y + h + 6} rx={size * 0.75} />
+        <rect x={x} y={y} width={size} height={h} rx={size / 10} fill={PAPER} stroke={INK} strokeWidth="1.2" />
+        <path d={`M${x + size * 0.17} ${y + h * 0.18} H${x + size * 0.83} M${x + size * 0.17} ${y + h * 0.31} H${x + size * 0.6}`} stroke={LABEL} strokeWidth={Math.max(2, size / 24)} /></>;
+    } else {
+      art = <><rect width="240" height="150" fill="#ecebe7" />
+        <rect x="-20" y="18" width="230" height="160" rx="16" fill={PAPER} stroke={INK} strokeWidth="1.4" />
+        <path d="M-20 40 H186 V178" fill="none" stroke={LABEL} strokeWidth="2.2" strokeDasharray="7 5" />
+        <path d="M30 70 H150" stroke={INK} strokeWidth="5" strokeLinecap="round" />
+        <path d="M34 66 v8 M44 66 v8 M54 66 v8 M64 66 v8 M74 66 v8 M84 66 v8 M94 66 v8 M104 66 v8 M114 66 v8 M124 66 v8 M134 66 v8 M144 66 v8" stroke={INK} strokeWidth="1.5" />
+        <rect x="150" y="62" width="14" height="22" rx="4" fill="#d8d6cc" stroke={INK} />
+        <circle cx="70" cy="114" r="16" fill="none" stroke={INK} strokeWidth="4" /></>;
+    }
+  } else {
+    switch (angle) {
+      case 'three-quarter': // เห็นหน้า + ด้านข้าง
+        art = <><Studio /><Shadow cx={118} cy={112} rx={40} />
+          <path d="M128 58 L152 51 V101 L128 108Z" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+          <rect x="86" y="58" width="42" height="50" rx="4" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={86} y={58} w={42} /></>;
+        break;
+      case 'side': // ด้านข้างแคบ ไม่เห็นฉลาก
+        art = <><Studio /><Shadow cx={120} cy={114} rx={24} />
+          <rect x="107" y="58" width="26" height="50" rx="4" fill={SIDE} stroke={INK} strokeWidth="1.2" /><path d="M120 62 V104" stroke={LABEL} strokeWidth="1.5" /></>;
+        break;
+      case 'back': // ด้านหลัง: ไม่มีฉลาก มีสายและห่วงด้านหลัง
+        art = <><Studio /><Shadow cx={120} cy={114} rx={38} />
+          <rect x="96" y="58" width="48" height="50" rx="5" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+          <path d="M106 62 V104 M134 62 V104" stroke={LABEL} strokeWidth="3" /><rect x="113" y="63" width="14" height="7" rx="2" fill="none" stroke={INK} /></>;
+        break;
+      case 'above': case 'high': // สูงนิดๆ มองลง: เห็นด้านบนของสินค้า เส้นขอบฉากสูงขึ้น
+        art = <><Studio horizon={74} /><Shadow cx={122} cy={115} rx={40} />
+          <path d="M96 66 L106 54 H154 L144 66Z" fill={TOPFACE} stroke={INK} strokeWidth="1.2" />
+          <path d="M144 66 L154 54 V98 L144 110Z" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+          <rect x="96" y="66" width="48" height="44" rx="3" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={66} w={48} /></>;
+        break;
+      case 'top': // มองตรงลงมา: พื้นเต็มภาพ สินค้าวางนอน
+        art = <><rect width="240" height="150" fill="#eeede8" />
+          <path d="M0 30 Q120 22 240 34 M0 120 Q120 112 240 126" stroke="#000" opacity=".04" strokeWidth="6" fill="none" />
+          <rect x="89" y="40" width="70" height="74" rx="8" fill="#000" opacity=".08" />
+          <rect x="85" y="35" width="70" height="74" rx="8" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={85} y={40} w={70} /></>;
+        break;
+      case 'bottom': // ด้านล่าง: เห็นฐานสินค้า (ปุ่มรองฐาน)
+        art = <><Studio /><Shadow cx={120} cy={116} rx={40} />
+          <rect x="90" y="50" width="60" height="58" rx="10" fill="#ecebe5" stroke={INK} strokeWidth="1.2" />
+          <rect x="102" y="62" width="36" height="34" rx="6" fill="none" stroke={LABEL} strokeWidth="1.5" strokeDasharray="4 3" />
+          <g fill={INK}><circle cx="98" cy="58" r="2.5" /><circle cx="142" cy="58" r="2.5" /><circle cx="98" cy="100" r="2.5" /><circle cx="142" cy="100" r="2.5" /></g></>;
+        break;
+      case 'low': // มุมต่ำ มองขึ้น: เส้นขอบฉากต่ำ สินค้าดูสูงสง่า (ด้านบนแคบกว่าฐาน)
+        art = <><Studio horizon={122} /><Shadow cx={120} cy={120} rx={40} />
+          <path d="M90 116 H150 L143 44 H97Z" fill={PAPER} stroke={INK} strokeWidth="1.2" strokeLinejoin="round" />
+          <path d="M104 56 H136 M105 64 H124" stroke={LABEL} strokeWidth="2" /></>;
+        break;
+      case 'auto': // อัตโนมัติ (รายละเอียด / เทียบขนาด): ระบบเลือกมุมให้
+        art = <><Studio /><Shadow cx={120} cy={114} rx={38} />
+          <rect x="96" y="58" width="48" height="50" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={58} w={48} />
+          <path d="m182 26 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z M200 54 l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill={INK} /></>;
+        break;
+      default: // หน้าตรง
+        art = <><Studio /><Shadow cx={120} cy={114} rx={38} />
+          <rect x="96" y="58" width="48" height="50" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={58} w={48} /></>;
+    }
+  }
+  // การ์ดมุมกล้องอยู่ 2 คอลัมน์ ภาพเล็กกว่าขั้นประเภทภาพ -> ขยายสินค้าให้เห็นความต่างของมุมชัดขึ้น (ฉากยังเต็มกรอบ)
+  if (!framing) art = <g transform="translate(120 84) scale(1.3) translate(-120 -84)">{art}</g>;
+  return <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">{art}</svg>;
 }
 
 export default function Packshot() {
@@ -313,7 +379,11 @@ export default function Packshot() {
       .catch(() => [] as AiModel[])
       .then((list) => {
         setAiModels(list);
-        if (list.length) chooseModel((list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id);
+        if (list.length) { // มีโมเดลเดียว (DEFAULT_AI_MODEL) เลือกเองไม่ได้แล้ว · คุณภาพเริ่มต้นตามโมเดล
+          const id = (list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id;
+          setAiModel(id);
+          setQuality(defaultQuality(id));
+        }
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
@@ -326,11 +396,6 @@ export default function Packshot() {
     setFramingId(next === 'detail' ? 'detail' : next === 'scale' ? 'medium' : PRESET);
     setAspect(next === 'styled' || next === 'creative' ? '4:5' : '1:1');
     setPick((p) => ({ ...p, ref: null, scene: null }));
-  }
-
-  function chooseModel(id: string) {
-    setAiModel(id);
-    setQuality(defaultQuality(id));
   }
 
   function select(key: Key, id: string | null) {
@@ -429,8 +494,8 @@ export default function Packshot() {
     }
   }
 
-  async function onFile(key: Key, picked: File) {
-    if (key === 'product') return onProductFiles([picked]);
+  // รูปอ้างอิง / รูปฉาก / รูปพร็อพ (สินค้าอัปโหลดผ่าน ProductLibrary -> onProductFiles)
+  async function onFile(key: Exclude<Key, 'product'>, picked: File) {
     try {
       const file = isHeic(picked) ? await toWebImage(picked) : picked;
       if (!(await canOpenImage(file))) throw new Error('เปิดรูปนี้ไม่ได้ ลองใช้ JPG หรือ PNG');
@@ -617,7 +682,7 @@ export default function Packshot() {
     try {
       const cv = await currentCanvas();
       if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
-      await saveImageFile(await outputBlob(cv), `looklet-product-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
+      await saveImageFile(await outputBlob(cv), downloadName(shown?.editedFrom ? 'png' : 'jpg'));
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
       setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
@@ -630,21 +695,11 @@ export default function Packshot() {
   }
 
   const cur = STEPS[step];
+  const { chosen, mark } = useChosenSteps(cur.key);
+  // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปสีชมพู) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
+  const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
+    : cur.key === 'shot' ? scaleReady && detailReady : true);
   const nextStep = STEPS.findIndex((s, i) => i > step && used(s.key)); // ถัดไป: ข้ามขั้นที่ประเภทภาพนี้ไม่ใช้
-  const aiLabel = splitLabel(aiModels?.find((m) => m.id === aiModel)?.label ?? 'ยังไม่มีโมเดล AI')[0];
-  const fromRef = 'ตามรูปต้นแบบ';
-  const stepValue: Record<StepKey, string> = {
-    shot: shotTypeDef.name + (isMulti ? ` · ${shotCount} มุม` : shotType === 'detail' ? ` · ${DETAIL_TARGETS.find((d) => d.id === detailTarget)!.name}` : shotType === 'scale' && scaleReady ? ` · ${dimensions.width} × ${dimensions.height} × ${dimensions.depth} ซม. · ${SCALE_REFERENCES.find((r) => r.id === scaleRef)!.name}` : ''),
-    creative: creativeConcept?.title ?? 'ยังไม่ได้เลือกไอเดีย',
-    product: product?.name ?? 'ยังไม่ได้เลือก',
-    ref: ref ? `${ref.name} · ${REF_MODES.find((m) => m.id === refMode)!.name}` : 'ไม่ใช้',
-    set: refSet ? fromRef : usePhoto ? 'รูปฉาก: ' + sceneImg!.name
-      : (background.automatic ? 'อัตโนมัติ · ' : '') + setDef.name + (colorable(setDef) && color.id !== 'set' ? ` · ${color.name}` : ''),
-    props: shot ? fromRef : propsLabel,
-    angle: shot ? fromRef : (shotType === 'styled' && angleId === PRESET ? 'ตามฉาก · ' : '') + angle.name,
-    framing: shot ? fromRef : (framingId === PRESET ? 'ตามฉาก · ' : '') + framing.name,
-    settings: [aiLabel, aspect === 'auto' ? 'อัตโนมัติ' : PRODUCT_ASPECTS.find((a) => a.id === aspect)?.name, shotType === 'creative' ? 'แสงตามไอเดีย' : ref ? 'แสง' + fromRef : light.name].join(' · '),
-  };
   const stepDone: Record<StepKey, boolean> = {
     creative: Boolean(creativeConcept), shot: true, product: Boolean(product), ref: Boolean(ref),
     set: sceneId !== PRESET || usePhoto || colorId !== 'set', props: propsId !== NO_PROPS || Boolean(ownName), angle: !automaticAngle && angleId !== PRESET, framing: framingId !== PRESET,
@@ -653,10 +708,20 @@ export default function Packshot() {
 
   const canGenerate = busy === null && !planning && creativeReady && !groupBusy && !saving.some((s) => s.key === 'product') && Boolean(aiModels?.length) && Boolean(product) && scaleReady && detailReady;
 
+  // ปุ่มสร้างรูปท้ายขั้นตั้งค่า (+ เหตุผลที่ยังกดไม่ได้) — ปุ่มสร้างรูปมุมขวาบนใช้ได้ทุกขั้น
+  const generateLabel = isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูป';
+  const genButtons = <>
+    <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้าง...' : generateLabel}</button>
+    {isMulti && <p className="muted-text">{selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป</p>}
+    {!creativeReady && <p className="note">เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป</p>}
+    {!scaleReady && <p className="note">กรอกขนาดจริงให้ครบในขั้นประเภทภาพ</p>}
+    {!detailReady && <p className="note">ระบุฟีเจอร์ในขั้นประเภทภาพ</p>}
+  </>;
+
   // ---------- แผงเลือก (ซ้าย) ----------
   const q = query.trim().toLowerCase();
   const visible = (key: Key) => lists[key].filter((i) => !q || i.name.toLowerCase().includes(q));
-  const picker = (key: Key, kind: string, { special, muted = false }: { special?: ReactNode; muted?: boolean } = {}) => (
+  const picker = (key: Exclude<Key, 'product'>, kind: string, { special, muted = false }: { special?: ReactNode; muted?: boolean } = {}) => (
     <>
       <label className="search">
         <IconSearch />
@@ -669,7 +734,6 @@ export default function Packshot() {
             onDelete={() => void deleteUpload(key, item)}
  />
         ))}
-        {key === 'product' && analyzing.map((url) => <PendingCard key={url} src={url} />)}
         {saving.filter((x) => x.key === key).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
         <AddCard onFile={(f) => void onFile(key, f)} />
       </div>
@@ -747,7 +811,13 @@ export default function Packshot() {
       </>}
     </>;
   } else if (cur.key === 'ref') {
-    panel = picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!ref} onClick={() => select('ref', null)} /> });
+    panel = <>
+      {picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!ref} onClick={() => select('ref', null)} /> })}
+      {ref && <Section title="เอาอะไรจากรูปต้นแบบ">
+        <ChipGroup options={[...REF_MODES]} value={refMode} onChange={(v) => setRefMode(v as RefMode)} />
+        <p className="muted-text">{REF_MODES.find((m) => m.id === refMode)!.hint}</p>
+      </Section>}
+    </>;
   } else if (cur.key === 'set') {
     const chooseScene = (id: string) => {
       setSceneId(id); select('scene', null);
@@ -817,156 +887,58 @@ export default function Packshot() {
     panel = <>
       {shotNote('มุมกล้อง')}
       {automaticAngle ? <Section title={angle.name}>
-        <div className="option active camera-auto"><AnglePreview id="auto" /><b>{angle.name}</b><small>{angle.hint}</small></div>
+        <div className="option active view-option camera-auto"><ViewPreview angle="auto" /><b>{angle.name}</b><small>{angle.hint}</small></div>
         <p className="muted-text">{shotType === 'detail'
           ? 'เปลี่ยนจุดที่ต้องการเน้นในขั้นประเภทภาพ เช่น โลโก้ถ่ายตรง ซิปหรืออะไหล่เอียงเล็กน้อยให้เห็นรูปทรง'
           : 'เปลี่ยนวิธีเทียบขนาดในขั้นประเภทภาพ กล้องจะปรับให้เห็นสัดส่วนจริง ลดภาพหลอกตา'}</p>
       </Section> : <>
         <p className="note">{shotType === 'styled' ? 'เริ่มจากมุมที่เข้ากับฉาก แล้วปรับได้ตามภาพที่ต้องการ' : 'แนะนำหน้าตรงสำหรับภาพหลัก เลือกมุมอื่นเพื่อแสดงทรงและด้านต่างๆ'}</p>
-        <div className="options camera-options">
-          {shotType === 'styled' && <button type="button" className={'option camera-option' + (angleId === PRESET ? ' active' : '')}
+        <div className="options view-options">
+          {shotType === 'styled' && <button type="button" className={'option view-option' + (angleId === PRESET ? ' active' : '')}
             aria-pressed={angleId === PRESET} disabled={shot} onClick={() => setAngleId(PRESET)}>
-            <AnglePreview id={recommended.id} /><b>ตามฉาก (แนะนำ)</b><small>{setDef.name} · {recommended.name}</small>
+            <ViewPreview angle={recommended.id} /><b>ตามฉาก (แนะนำ)</b><small>{setDef.name} · {recommended.name}</small>
           </button>}
-          {shotAngles(shotType).map((a) => <button key={a.id} type="button" className={'option camera-option' + ((shotType === 'styled' ? angleId === a.id : angle.id === a.id) ? ' active' : '')}
+          {shotAngles(shotType).map((a) => <button key={a.id} type="button" className={'option view-option' + ((shotType === 'styled' ? angleId === a.id : angle.id === a.id) ? ' active' : '')}
             aria-pressed={shotType === 'styled' ? angleId === a.id : angle.id === a.id} disabled={shot} onClick={() => setAngleId(a.id)}>
-            <AnglePreview id={a.id} /><b>{a.name}{shotType === 'clean' && a.id === 'front' ? ' (แนะนำ)' : ''}</b><small>{a.hint}</small>
+            <ViewPreview angle={a.id} /><b>{a.name}{shotType === 'clean' && a.id === 'front' ? ' (แนะนำ)' : ''}</b><small>{a.hint}</small>
           </button>)}
         </div>
-        <p className="muted-text">แผนผังมองจากด้านบน · เส้นแดง = หน้าสินค้า · วงกลม = กล้อง</p>
       </>}
     </>;
   } else if (cur.key === 'framing') {
-    panel = <>{shotNote('ระยะ')}{options(shotFramings(shotType), framingId, setFramingId, { presetName: PRODUCT_FRAMINGS.find((f) => f.id === preset.framing)!.name, disabled: shot })}</>;
+    // ระยะ: การ์ดมีภาพเหมือนมุมกล้อง (ภาพเดียวกัน ขนาดสินค้าในภาพต่างกัน)
+    const framingCard = (id: string, active: boolean, title: string, hint: string, value: string) => <button key={id} type="button"
+      className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={shot} onClick={() => setFramingId(value)}>
+      <ViewPreview framing={id} /><b>{title}</b><small>{hint}</small>
+    </button>;
+    panel = <>{shotNote('ระยะ')}<div className="options view-options">
+      {framingCard(preset.framing, framingId === PRESET, 'ตามฉาก (แนะนำ)', `${setDef.name}: ${PRODUCT_FRAMINGS.find((f) => f.id === preset.framing)!.name}`, PRESET)}
+      {shotFramings(shotType).map((f) => framingCard(f.id, framingId === f.id, f.name, f.hint, f.id))}
+    </div></>;
   } else if (cur.key === 'settings') {
     panel = <>
-      <Section title="สัดส่วนภาพ" note={aspect !== 'auto' && !['2:3', '1:1', '3:2'].includes(aspect) && aiModel.startsWith('openai:') ? 'OpenAI: สร้าง 2:3 แล้วตัดให้' : undefined}>
-        <ChipGroup value={aspect} onChange={setAspect} options={[
-          { id: 'auto', name: 'อัตโนมัติ' },
-          ...PRODUCT_ASPECTS.map((a) => ({ id: a.id, name: <><i className="ratio" style={{ aspectRatio: a.id.replace(':', ' / ') }} />{a.name}</> })),
-        ]} />
-        <p className="muted-text">อัตโนมัติ = 4:5 (ฟีด IG) · ลอกทั้งช็อต = สัดส่วนใกล้รูปต้นแบบที่สุด</p>
+      {/* เลือกตามที่จะโพสต์ (IG / Facebook / TikTok / ร้านค้า) แทนตัวเลขสัดส่วน — กรอบเล็กวาดตามสัดส่วนจริง (28 ต.ค.) */}
+      <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect === 'auto' ? '4:5' : aspect}`}>
+        <div className="options aspect-options">{PRODUCT_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
+          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => setAspect(a.id)}>
+          <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
+          <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
+        </button>)}</div>
       </Section>
       <Section title="สั่งเพิ่มเติม">
         <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
       </Section>
-    </>;
-  }
-
-  // ---------- แผงปรับแต่ง (ขวา) ----------
-  const tips = (items: string[]) => <ul className="tips">{items.map((t) => <li key={t}>{t}</li>)}</ul>;
-  const generateLabel = isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูป';
-  const genButtons = <>
-    <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={() => void generate()}>{generateLabel}</button>
-    {isMulti && <p className="muted-text">{selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป</p>}
-    {!creativeReady && <p className="note">เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป</p>}
-    {!scaleReady && <p className="note">กรอกขนาดจริงให้ครบในขั้นประเภทภาพ</p>}
-    {!detailReady && <p className="note">ระบุฟีเจอร์ในขั้นประเภทภาพ</p>}
-  </>;
-  let inspector: ReactNode = null;
-  if (cur.key === 'product') {
-    inspector = <>
-      <Section title="สินค้าที่เลือก">
-        {selectedGroup ? <><p className="big">{selectedGroup.name}</p><p className="muted-text">{selectedGroup.photos.length} รูป</p></>
-          : <p className="muted-text">กด &quot;+ เพิ่มสินค้าใหม่&quot; หรือเลือกจากสินค้าของฉัน</p>}
-      </Section>
-      <Section title="รูปสินค้าแบบไหนได้ผลดี">
-        {tips(['เห็นสินค้าทั้งชิ้น พื้นเรียบ แสงสว่าง', 'เพิ่มด้านหลัง ด้านข้าง และรายละเอียด (โลโก้ ซิป) AI จะทำสินค้าได้ตรงกว่า',
-          'เลือกหลายรูปพร้อมกัน = สินค้าชิ้นเดียวกัน · สินค้าคนละชิ้นเพิ่มทีละครั้ง'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'creative') {
-    inspector = <>
-      <Section title={creativeConcept?.title ?? 'ให้ AI เป็นผู้กำกับภาพ'}><p className="muted-text">{creativeConcept?.summary ?? 'คิดฉาก พร็อพ แสง และองค์ประกอบให้เข้ากันเป็นไอเดียเดียว เลือก 1 ไอเดียก่อนสร้างรูป'}</p></Section>
-      {genButtons}
-    </>;
-  } else if (cur.key === 'shot') {
-    inspector = <>
-      <Section title={shotTypeDef.name}><p className="big">{shotTypeDef.hint}</p><p className="muted-text">{shotTypeDef.usage}</p></Section>
-      <Section title="ตัวเลือกที่เข้ากัน">{tips(shotType === 'creative' ? ['ให้ AI คิด 3 ไอเดีย บอกสิ่งที่อยากได้หรือใส่ภาพแรงบันดาลใจช่วยได้', 'เลือก 1 ไอเดีย แล้วสร้างรูปได้เลย ไม่ต้องตั้งค่าฉากหรือมุมทีละอย่าง'] : shotType === 'styled'
-        ? ['เลือกฉาก แล้วแสง โทนสี พร็อพ มุม และระยะที่เข้ากันจะจับคู่ให้', 'ปรับแต่ละส่วนได้ในขั้นถัดไป']
-        : [plainShot(shotType) ? 'พื้นเรียบ ไม่มีพร็อพ สินค้าเด่นชัด' : shotType === 'detail' ? 'ระยะมาโคร เน้นจุดที่เลือก ไม่เพิ่มฟีเจอร์ใหม่' : 'ใช้ขนาดจริงกำหนดสัดส่วนกับวัตถุเทียบ', 'แสงนุ่ม สีสินค้าตรง ไม่ใส่เกรนเป็นค่าเริ่มต้น'])}</Section>
-    </>;
-  } else if (cur.key === 'ref') {
-    inspector = <>
-      {ref && (
-        <Section title="เอาอะไรจากรูปต้นแบบ">
-          <ChipGroup options={[...REF_MODES]} value={refMode} onChange={(v) => setRefMode(v as RefMode)} />
-          <p className="muted-text">{REF_MODES.find((m) => m.id === refMode)!.hint}</p>
-        </Section>
-      )}
-      <Section title="ช็อตต้นแบบคืออะไร">
-        {tips(['รูปสินค้าของแบรนด์ที่ชอบ (แคปจาก IG ได้)', 'AI เปลี่ยนสินค้าในรูปเป็นของเรา ไม่เอาสินค้าของเขามา', 'ตัดแถบแอป ตัวนับ 1/2 ออกก่อนจะดีกว่า',
-          'ไม่ใช้ = สร้างตามตัวเลือกในขั้นอื่น'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'set') {
-    inspector = <>
-      <Section title="ฉากและพื้นที่เลือก"><p className="big">{stepValue.set}</p>
-        {refSet && ref?.src ? <img className="scene-photo-preview" src={ref.src} alt="ฉากจากช็อตต้นแบบ" />
-          : usePhoto && sceneImg?.src ? <img className="scene-photo-preview" src={sceneImg.src} alt="รูปฉากที่เลือก" />
-          : <><ScenePreview id={setDef.id} color={color.swatch} large /><p className="muted-text">ภาพจำลองฉากและสี · ดูภาพจริงหลังสร้าง</p></>}
-      </Section>
-      <Section title="การจับคู่ฉากกับสินค้า">
-        <p className="muted-text">{refSet || usePhoto ? 'ใช้แสงและมุมมองของรูปอ้างอิง จัดเงาสัมผัสให้สินค้าดูวางอยู่จริง' : `แสงที่ใช้: ${light.name} · ${background.automatic ? 'ฉากปรับตามประเภทภาพ' : 'แสงจับคู่กับฉากให้อัตโนมัติ'}`}</p>
-        <p className="muted-text">{shotType === 'detail' ? 'ฉากไม่แย่งจุดเด่น เบลออย่างนุ่มนวล โดยรายละเอียดสินค้ายังคม' : 'รักษาสีสินค้าจริง แยกขอบสินค้าออกจากพื้นหลังด้วยแสงและเงาที่เป็นธรรมชาติ'}</p>
-      </Section>
-      {shotType === 'styled' && !usePhoto && <Section title="ฉากนี้จับคู่ให้">
-        <dl className="preset-parts">{([
-          ['แสง', light.name], ['มุมกล้อง', angle.name], ['ระยะ', framing.name],
-        ] as const).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-        <p className="muted-text">เปลี่ยนแต่ละอย่างได้ในขั้นของมันเอง (ไม่เปลี่ยน = ตามฉาก)</p>
-      </Section>}
-      {shotType === 'styled' && <Section title="รูปฉากแบบไหนได้ผลดี">
-        {tips(['ว่าง ไม่มีสินค้าอื่นวางอยู่', 'เห็นพื้นผิวตรงที่จะวางสินค้า', 'แสงในรูปฉากคือแสงที่สินค้าจะได้'])}
-      </Section>}
-    </>;
-  } else if (cur.key === 'props') {
-    inspector = <>
-      <Section title="AI วางพร็อพให้">
-        <p className="muted-text">เลือกแนวพร็อพแล้ว AI ดูรูปสินค้ากับฉาก แล้วคิดพร็อพที่สีรับกับสินค้าให้ทุกครั้งที่สร้าง (เพิ่มราว 5–10 วินาที ไม่ถึง 5 สตางค์) — ได้พร็อพไม่ซ้ำกันทุกรูป</p>
-      </Section>
-      <Section title="พร็อพของฉัน">
-        {tips(['พิมพ์ชื่อของพร้อมสีและวัสดุให้ชัด เช่น แก้วเซรามิกสีครีม', 'รูปพร็อพ: ถ่ายของชิ้นเดียวบนพื้นเรียบ เห็นทั้งชิ้น',
-          'โลโก้หรือลายพิมพ์บนพร็อพของฉัน AI จะคงไว้ตามรูป'])}
-      </Section>
-      {shown?.stylePlan && (
-        <Section title="พร็อพที่ AI คิดให้ (รูปที่ดูอยู่)" note={shown.stylePlan.name}><p className="muted-text">{shown.stylePlan.th}</p></Section>
-      )}
-    </>;
-  } else if (cur.key === 'angle' || cur.key === 'framing') {
-    inspector = <>
-      <Section title={cur.key === 'angle' ? 'มุมกล้องที่เลือก' : 'ระยะที่เลือก'}><p className="big">{stepValue[cur.key]}</p></Section>
-      <Section title="เลือกยังไงดี">
-        {tips(cur.key === 'angle'
-          ? automaticAngle ? [angle.hint, 'มุมกล้องปรับตามจุดหรือวัตถุเทียบที่เลือกในขั้นประเภทภาพ'] : ['หน้าตรง: ภาพหลักที่เห็นรูปทรงชัด', '45°: เห็นด้านหน้าและความลึก', 'ด้านหลัง / ด้านล่าง: เพิ่มรูปสินค้าด้านนั้นเพื่อให้รายละเอียดตรงจริง', 'ภาพประกอบแสดงตำแหน่งกล้อง เส้นแดงคือด้านหน้าสินค้า']
-          : ['รูปฟีดแบบมินิมอล: กว้าง ที่ว่างเยอะ', 'โชว์รายละเอียดหนัง/อะไหล่/โลโก้: ใกล้มาก', 'ใส่ข้อความทีหลัง: กว้าง เหลือที่ว่างไว้'])}
-      </Section>
-    </>;
-  } else if (cur.key === 'settings') {
-    inspector = <>
-      {genButtons}
       <details className="advanced">
-        <summary>ขั้นสูง <small>โมเดล AI · คุณภาพ</small></summary>
-        <Section title="โมเดล AI">
-          <div className="options">
-            {(aiModels ?? []).map((m) => {
-              const [name, detail] = splitLabel(m.label);
-              return (
-                <button key={m.id} type="button" className={'option' + (aiModel === m.id ? ' active' : '')} onClick={() => chooseModel(m.id)}>
-                  <b>{name}</b>{detail && <small>{detail}</small>}
-                </button>
-              );
-            })}
-            {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
-          </div>
-        </Section>
+        <summary>ขั้นสูง <small>คุณภาพ</small></summary>
+        {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
+        {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
           <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
             <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
           </Section>
         )}
       </details>
+      {genButtons}
     </>;
   }
 
@@ -1010,11 +982,9 @@ export default function Packshot() {
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
         </div>
         <div className="top-actions">
-          {authEnabled && <button className="btn btn-tertiary" onClick={() => void signOut()}>ออกจากระบบ</button>}
-          <button className="btn btn-secondary" disabled={empty} onClick={save}><IconDownload /> <span className="hide-sm">ดาวน์โหลด</span></button>
-          <button className="btn btn-primary" disabled={!canGenerate} onClick={() => void generate()}>
-            {busy !== null ? 'กำลังสร้าง...' : generateLabel}
-          </button>
+          {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
+          <TokenUsage />
+          <SignOutButton />
         </div>
       </header>
 
@@ -1031,14 +1001,14 @@ export default function Packshot() {
           ))}
         </nav>
 
-        <aside className="panel">
+        <aside className="panel" onClickCapture={mark} onInputCapture={mark}>
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
           </div>
           {panel}
           {nextStep >= 0 && (
-            <button className="btn btn-secondary next" onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
+            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
           )}
         </aside>
 
@@ -1052,6 +1022,7 @@ export default function Packshot() {
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
+            <button className="btn btn-secondary tool" disabled={empty} onClick={save}><IconDownload /> ดาวน์โหลด</button>
             {shown && <button className="btn btn-secondary tool" disabled={busy !== null || planning}
               onClick={() => setLocalEdit(shown)}><IconRetouch /> แก้เฉพาะจุด</button>}
             {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
@@ -1065,17 +1036,6 @@ export default function Packshot() {
           </div>
         </section>
 
-        <aside className="inspector">
-          {inspector}
-          <div className="summary">
-            <p className="sub">สรุปที่เลือก</p>
-            {STEPS.map((s, i) => used(s.key) && (
-              <button key={s.key} className="sum-row" onClick={() => goStep(i)}>
-                <span>{s.label}</span><b>{stepValue[s.key] || '—'}</b>
-              </button>
-            ))}
-          </div>
-        </aside>
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}

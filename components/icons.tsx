@@ -39,4 +39,12 @@ export const IconPalette = () => (
   <Svg><path d="M12 3a9 9 0 0 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-1.2-1-1.6-1-2.6 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7" r="1" /><circle cx="15" cy="7.5" r="1" /></Svg>
 );
 export const IconCopy = () => <Svg><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Svg>;
+// แก้เฉพาะจุด (components/LocalEditDialog.tsx): แปรงระบาย / ยางลบ
+export const IconBrush = () => (
+  <Svg size={20}><path d="M20 4 12.5 11.5" /><path d="m10.5 10.5 3 3" /><path d="M10 13.5c-2.6-.6-4.6 1-4.9 3.6-.2 1.6-1.1 2.5-2.1 2.9 2.6 1 6.4.6 7.6-2.3.6-1.4.4-2.9-.6-4.2z" /></Svg>
+);
+export const IconEraser = () => (
+  <Svg size={20}><path d="M14.6 4.4a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10 19H6.2l-2.4-2.4a2 2 0 0 1 0-2.8z" /><path d="m9 10 5 5" /><path d="M10 19h10" /></Svg>
+);
+export const IconSignOut = () => <Svg size={18}><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3" /><path d="m16 17 5-5-5-5M21 12H9" /></Svg>;
 export const IconLeaf = () => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;

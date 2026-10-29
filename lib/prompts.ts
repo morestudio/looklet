@@ -73,12 +73,22 @@ export type PromptInput = {
   // ทดสอบ 21 ต.ค.: ใส่แค่ในบรรทัดแรก/ใน Camera: AI ยึดรูปท่าเต็มตัว (ท่าจับเท้า) และระดับสายตาของรูปฉาก ระยะ/มุมแทบไม่เปลี่ยน
   camera?: { framing: string | null; angle: string | null } | null;
   placement?: Placement | null; // ข้างที่วางคนในภาพ (server สุ่ม) null = ไม่สั่ง (AI วางกลาง)
+  crop?: string | null; // cropLine() เมื่อ server จะตัดรูปเป็น 4:5 / 9:16
 };
+
+// สัดส่วนที่ OpenAI ทำไม่ได้ (4:5 / 9:16): ทำ 2:3 แล้ว server ตัดกลางภาพ -> บอก AI ว่าขอบไหนจะโดนตัด ไม่ให้หัว/เท้าหาย
+// 4:5 ตัดบนล่าง (ไม่บอกให้วางกลางภาพ ไม่งั้นทับตำแหน่งซ้าย/ขวาที่เลือก) · 9:16 ตัดซ้ายขวา
+export function cropLine(aspect: string, fullBody: boolean) {
+  const [w, h] = aspect.split(':').map(Number);
+  return w / h > 2 / 3
+    ? `The top and bottom of this photo will be trimmed to make a ${aspect} frame, so ${fullBody ? 'leave clear space above the head and below the feet' : 'keep the head well below the top edge'}.`
+    : `The left and right edges of this photo will be trimmed to make a ${aspect} frame, so keep the person and anything important away from the side edges.`;
+}
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
-  posePlan = null, camera = null, placement = null,
+  posePlan = null, camera = null, placement = null, crop = null,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -243,6 +253,7 @@ export function buildPrompt({
       + '(the pose photo, the model photo or the location photo): '
       + [camera.framing && `frame it as ${camera.framing}`, camera.angle && `with the ${camera.angle}`].filter(Boolean).join(', ') + '.');
   }
+  if (crop) lines.push(crop);
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }
@@ -252,9 +263,10 @@ export function buildPrompt({
 // ไม่ใส่ REALISM/แสงของสไตล์ถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
 export type SetPromptInput = {
   framing: string; angle: string; fullBody: boolean; hasOutfit: boolean; accessories?: string[]; extra?: string | null;
+  crop?: string | null; // cropLine() เมื่อ server จะตัดรูป
 };
 
-export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessories = [], extra }: SetPromptInput) {
+export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessories = [], extra, crop = null }: SetPromptInput) {
   const lines = [
     `Create one fashion photograph, ${framing}.`,
     'Image 1 is a photo from the same photo shoot. Keep everything from image 1 the same: the same person (face, hairstyle, '
@@ -279,6 +291,7 @@ export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessorie
   lines.push('It must look like the next frame from the same real photo shoot, not a new composite. '
     + 'Keep the existing skin texture; do not smooth it.');
   if (fullBody) lines.push('Show the full body from head to feet.');
+  if (crop) lines.push(crop);
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }

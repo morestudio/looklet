@@ -25,6 +25,7 @@ function load(file) {
     '@/lib/images': { cropTo: async (o) => o, servable: async (o) => o },
     '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }) },
     '@/lib/storage': { saveImage: async () => '/test/result.jpg' },
+    '@/lib/usage': { quotaBlock: async () => null, recordUsage: async () => {} },
     '@/lib/genlog': { localTime: () => 'test', sentences: (s) => s, writeGenerateLog: async () => {} },
   };
   new Function('require', 'module', 'exports', code)((id) => {
@@ -32,6 +33,7 @@ function load(file) {
     if (id === '@/lib/creative') return load('lib/creative.ts');
     if (id === '@/lib/packshot') return load('lib/packshot.ts');
     if (id === '@/lib/packshot-prompts') return load('lib/packshot-prompts.ts');
+    if (id === './aspects' || id === '@/lib/aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
     return require(id);
   }, loaded, loaded.exports);
   cache.set(file, loaded.exports);
