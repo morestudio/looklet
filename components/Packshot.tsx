@@ -9,7 +9,7 @@ import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
-import { productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
+import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
   IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
@@ -265,7 +265,7 @@ function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
 }
 
 export default function Packshot() {
-  const [lists, setLists] = useState<Record<Key, ProductPhoto[]>>({ product: [], ref: [], scene: [], prop: [] });
+  const [lists, setLists] = useState<Record<Key, ProductPhoto[]>>({ product: PRODUCT_SAMPLES, ref: [], scene: [], prop: [] });
   const [pick, setPick] = useState<Record<Key, string | null>>({ product: null, ref: null, scene: null, prop: null });
   const [shotType, setShotType] = useState<ShotType>('clean');
   const [creativeIdea, setCreativeIdea] = useState('');
@@ -366,7 +366,8 @@ export default function Packshot() {
           .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): ProductPhoto => ({ ...u, name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
-        const next = { product: uploaded('product'), ref: uploaded('ref'), scene: uploaded('scene'), prop: uploaded('prop') };
+        // สินค้าตัวอย่างอยู่ก่อน (เก่าสุด) รายการแสดงใหม่สุดก่อน -> สินค้าของผู้ใช้ขึ้นก่อน ตัวอย่างต่อท้าย · ยังไม่มีสินค้าเลย = เลือกตัวอย่างไว้ให้
+        const next = { product: [...PRODUCT_SAMPLES, ...uploaded('product')], ref: uploaded('ref'), scene: uploaded('scene'), prop: uploaded('prop') };
         setLists(next);
         setPick((p) => (p.product || !next.product.length ? p : { ...p, product: productGroups(next.product).at(-1)?.id ?? null })); // เลือกสินค้าล่าสุดไว้ให้
       })

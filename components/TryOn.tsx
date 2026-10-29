@@ -659,7 +659,7 @@ export default function TryOn() {
         <IconSearch />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${cur.label}...`} />
       </label>
-      {filters.length > 0 && <ChipGroup options={filters} value={filter} onChange={setFilter} />}
+      <ChipGroup options={filters} value={filter} onChange={setFilter} />
       {note && <p className="note">{note}</p>}
       <div className={'grid ' + kind + (muted ? ' muted' : '')}>
         {showSpecial && special}
@@ -734,7 +734,6 @@ export default function TryOn() {
   } else if (cur.key === 'scene') {
     panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
       special: <Card item={{ name: 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
-      filters: [], // ไม่มีฉากตัวอย่างแล้ว (SCENES ว่าง) ทุกใบคือรูปที่อัปโหลดเอง ไม่ต้องมีชิปกรอง
       note: shotScene && 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้',
       muted: shotScene,
     });
