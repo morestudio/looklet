@@ -12,6 +12,7 @@ export const POST = post(async (req) => {
   const supports: Img[] = Array.isArray(req.support_images) ? req.support_images.slice(0, 5).map(image).filter((v: Img | null): v is Img => Boolean(v)) : [];
   const concepts = await planCreativeConcepts({
     product, supports, inspiration, what: productType(req.product_type).prompt, idea,
+    name: typeof req.product_name === 'string' ? req.product_name.trim().slice(0, 120) : '', // ชื่อสินค้า: บอกว่าชิ้นไหนคือสินค้า เมื่อรูปมีหลายชิ้น
     facts: typeof req.facts === 'string' ? req.facts.trim().slice(0, 1200) : '',
     previous: Array.isArray(req.previous) ? req.previous.filter((v: unknown): v is string => typeof v === 'string').slice(0, 12).map((v: string) => v.slice(0, 100)) : [],
   });

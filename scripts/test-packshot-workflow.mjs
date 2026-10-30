@@ -164,6 +164,7 @@ out = await shoot({ shot_type: 'creative', creative_concept: creative, props: 'f
 assert.equal(out.result.status, 200);
 assert.match(out.call.prompt, /Selected art direction: An editorial photograph/);
 assert.match(out.call.prompt, /polished silver tray/);
+assert.match(out.call.prompt, /Show exactly one product/); // รูปสินค้ามีหลายชิ้นได้: เอาเฉพาะชิ้นที่ไอเดียพูดถึง
 assert.doesNotMatch(out.call.prompt, /No props:|raw plywood|camera low|One very large, soft/);
 assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'back']);
 assert.equal(out.result.body.stylePlan.name, creative.title);

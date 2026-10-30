@@ -137,6 +137,8 @@ export function buildCreativePackshotPrompt(p: { what: string; concept: string; 
   return [
     `Create one creative editorial still-life product photograph of ${p.what} from Image 1.`,
     fidelity(1),
+    // รูปสินค้ามีหลายชิ้น/หลายสีได้ (กระเป๋าสองใบในรูปเดียว): เอาเฉพาะชิ้นที่ไอเดียพูดถึง
+    'Show exactly one product, the one the art direction describes; leave out any other items or color variants that appear in the product photos.',
     `Selected art direction: ${p.concept}`,
     PRODUCT_REALISM,
     'Follow this art direction as one coordinated scene. Keep the product the hero and its existing label legible. Do not add ingredient, scent or benefit claims, new lettering or graphic overlays.',

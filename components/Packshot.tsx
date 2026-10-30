@@ -541,7 +541,7 @@ export default function Packshot() {
         inspiration ? jpegBase64(inspiration.src!) : null,
       ]);
       const out = await api<{ concepts: CreativeConcept[] }>('/api/creative-concepts', {
-        product: main.data, support_images: extraPhotos, product_type: productType(product.type).id,
+        product: main.data, support_images: extraPhotos, product_type: productType(product.type).id, product_name: product.name,
         inspiration: inspirationImage?.data ?? null, idea: creativeIdea, facts: creativeFacts,
         previous: concepts.map((c) => c.title),
       });
