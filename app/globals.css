@@ -142,6 +142,8 @@ button, select, input, textarea { font-family: inherit; }
 .option.active::after { content: "✓"; position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r-full); background: var(--primary); color: var(--on-primary); font-size: 12px; font-weight: 500; line-height: 1; pointer-events: none; }
 .option.active:not(:has(> .scene-preview:first-child)) { padding-right: 36px; }
 .option.active:has(> .scene-preview:first-child)::after { top: 0; left: 0; right: 0; width: auto; height: auto; aspect-ratio: 240 / 150; border-radius: 0; background: var(--tick-overlay); font-size: 16px; }
+/* ฉากเดียว (เช่น Clean Packshot): การ์ดแนวนอน ภาพวาดอยู่ซ้าย 110px -> มืดลงเฉพาะภาพวาด ติ๊กอยู่กลางภาพ (เดิมคลุมทั้งการ์ด ติ๊กล้นขอบล่าง 30 ต.ค.) */
+.scene-options > .option:only-child.active::after { right: auto; bottom: 0; width: 110px; aspect-ratio: auto; }
 
 /* ปุ่มกลุ่ม */
 .chips { display: flex; flex-wrap: wrap; gap: var(--space-6); margin-bottom: var(--space-12); }
