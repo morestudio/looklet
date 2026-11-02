@@ -4,11 +4,11 @@ import { localTime, sentences, writeGenerateLog, type LogImage, type PackshotLog
 import { cropTo, servable } from '@/lib/images';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, plainShot, shotFramings, resolveProductAngle, resolveProductBackground,
-  AUTO_PROP_STYLE, AUTO_PROPS, LENS, NO_PROPS, PRODUCT_ANGLES, PRODUCT_FRAMINGS, PRODUCT_SET_SHOTS, REF_MODES,
-  isProductAspect, pickOne, productPreset, productType, propStyle, type RefMode,
+  AUTO_PROP_STYLE, AUTO_PROPS, HAND_MODES, LENS, NO_PROPS, PRODUCT_ANGLES, PRODUCT_FRAMINGS, PRODUCT_LIGHTS, PRODUCT_SET_SHOTS, REF_MODES,
+  handshotSingle, isProductAspect, pickOne, productPreset, productType, propStyle, resolveHandPose, type RefMode,
 } from '@/lib/packshot';
 import { readCreativeConcept } from '@/lib/creative';
-import { buildCreativePackshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
+import { HANDSHOT_SET, buildCreativePackshotPrompt, buildHandshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
 import { json, post } from '@/lib/route';
 import { saveImage, type SetTag } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
@@ -35,6 +35,10 @@ export const POST = post(async (req) => {
   if (!shotType) return json(400, { error: 'ไม่มีประเภทภาพนี้' });
   const creative = shotType === 'creative' ? readCreativeConcept(req.creative_concept) : null;
   if (shotType === 'creative' && (!creative || req.set_ref)) return json(400, { error: 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป' });
+  // Handshot: สร้างทีละรูป (ไม่มีชุดภาพหลายมุม) · ท่าที่ไม่เข้ากับสินค้า -> ท่าแรกที่ใช้ได้ (resolveHandPose ตัวเดียวกับหน้าเว็บ)
+  const handshot = shotType === 'handshot';
+  if (handshot && req.set_ref) return json(400, { error: 'Handshot สร้างทีละรูป ไม่มีชุดภาพหลายมุม' });
+  const handPose = handshot ? resolveHandPose(type.id, req.hand_pose) : null;
   const preset = productPreset(shotType === 'styled' ? req.preset : 'clean');
   const detail = DETAIL_TARGETS.find((d) => d.id === req.detail_target) ?? DETAIL_TARGETS[0];
   if (shotType === 'detail' && detail.id === 'feature' && !text(req.feature)?.trim()) return json(400, { error: 'ระบุฟีเจอร์ที่ต้องการถ่าย' });
@@ -109,7 +113,10 @@ export const POST = post(async (req) => {
     ? `The product is naturally held or worn: ${scale.prompt}. It has real weight, natural contact and gravity.`
     : flat ? type.flat : type.stand;
   const lens = framing.lens ?? LENS;
-  let prompt = creative ? buildCreativePackshotPrompt({ what: type.prompt, concept: creative.prompt, crop, extra: req.extra }) : setRef ? buildPackshotSetPrompt({ what: type.prompt, place, flat, lens, angle: angle.prompt, framing: framing.prompt, crop, extra: req.extra })
+  const handLight = PRODUCT_LIGHTS.find((l) => l.id === 'window')!; // Handshot ใช้แสงหน้าต่างนุ่มเสมอ (ตามที่ทดสอบ)
+  let prompt = creative ? buildCreativePackshotPrompt({ what: type.prompt, concept: creative.prompt, crop, extra: req.extra })
+    : handPose ? buildHandshotPrompt({ what: type.prompt, single: handshotSingle(type.id), mode: handPose.mode, pose: handPose.prompt, short: handPose.short, light: handLight.prompt, crop, extra: req.extra })
+    : setRef ?buildPackshotSetPrompt({ what: type.prompt, place, flat, lens, angle: angle.prompt, framing: framing.prompt, crop, extra: req.extra })
     : buildPackshotPrompt({
       what: type.prompt, place, flat, refMode, hasSetImage: Boolean(setImage), hasPropImage: Boolean(propImage), set: setText, props,
       light: ref || setImage ? null : light.prompt, refLight, sceneLight, lens, angle: angle.prompt, framing: (props && framing.withProps) || framing.prompt,
@@ -117,7 +124,7 @@ export const POST = post(async (req) => {
       detail: shotType === 'detail', scale: shotType === 'scale' ? scale.prompt : null,
     });
 
-  if (!setRef && !ref && !setImage && background.color.id === 'match') prompt += ' Choose a background color that complements the product while keeping a visible luminance contrast along its edges. Preserve the exact product color, without tinting it with the backdrop color.';
+  if (!handshot && !setRef && !ref && !setImage && background.color.id === 'match') prompt += ' Choose a background color that complements the product while keeping a visible luminance contrast along its edges. Preserve the exact product color, without tinting it with the backdrop color.';
   if (shotType === 'detail') prompt += ' Use a plain, visually quiet neutral background, softly out of focus, while keeping the selected product detail sharp and readable.';
   if (plainShot(shotType)) prompt += ' This is a catalog packshot: exactly one product on a plain seamless background, no props, no decoration, no text overlays. Preserve accurate product colors and keep every view at consistent photographic magnification, ground line and lighting; do not resize each view independently to fill the frame.';
   if (shotType === 'detail') prompt += ` This is a macro detail photograph. Focus specifically on ${detail.prompt}. ${text(req.feature) ?? ''} Show only that area at high detail; do not invent features absent from the source photos. The rest of the product may extend outside the frame.`;
@@ -156,11 +163,14 @@ export const POST = post(async (req) => {
     const i = inputs.findIndex((x) => x.role === role);
     return i < 0 ? undefined : logAt(i);
   };
-  const styleLog: PackshotLog['style'] = {
+  const styleLog: PackshotLog['style'] = handPose ? {
+    preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${handPose.name}`, pose: handPose.name,
+    angle: 'ตามท่าถือ', framing: HAND_MODES.find((m) => m.id === handPose.mode)!.name, aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
+  } : {
     preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${creative?.title ?? preset.name}`, angle: creative ? 'ตามคอนเซปต์' : angle.name, framing: creative?.composition ?? framing.name, aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
   };
-  if (!ref && !setRef) styleLog.light = creative?.lighting ?? light.name;
-  if (color && setText) styleLog.color = color.name;
+  if (!ref && !setRef) styleLog.light = handPose ? handLight.name : creative?.lighting ?? light.name;
+  if (color && setText && !handPose) styleLog.color = color.name;
   if (creative) styleLog.color = creative.palette.join(' · ');
   if (variant) styleLog.plinth = variant;
   if (refLight) styleLog.refLight = refLight;
@@ -172,7 +182,7 @@ export const POST = post(async (req) => {
     ai: { model: String(req.model), params: (openai ? { size, quality: String(opt.quality), input_fidelity: 'high' } : { aspectRatio: aspect }) as Record<string, string> },
     product: logOf('product')!,
     element: {
-      set: creative ? { name: creative.scene, text: creative.prompt } : setRef ? 'ใช้ฉากจากรูปแรกของชุด' : refMode === 'shot' || refMode === 'set-light' ? 'ตามช็อตต้นแบบ'
+      set: creative ? { name: creative.scene, text: creative.prompt } : handPose ? { name: 'พื้นเรียบสีเข้ากับสินค้า', text: HANDSHOT_SET } : setRef ?'ใช้ฉากจากรูปแรกของชุด' : refMode === 'shot' || refMode === 'set-light' ? 'ตามช็อตต้นแบบ'
         : logOf('scene') ?? { name: setDef.name, text: setText ?? '' },
       ...(ref ? { reference: { mode: refModeName ?? '', ...logOf('ref') } } : {}),
       props: {

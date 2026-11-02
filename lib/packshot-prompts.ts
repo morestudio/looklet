@@ -7,15 +7,16 @@ import type { RefMode } from './packshot';
 
 // สินค้าต้องเหมือนรูปสินค้าทุกรายละเอียด: AI ชอบวาดของ "คล้ายๆ" ใหม่ (บทเรียนเดียวกับ ACCESSORY_RULES ของหน้านางแบบ)
 // รูปตัวอย่างโชว์รายละเอียดชัด: ผิวหนังเม็ด/เรียบ ฝีเข็มสีตัด สีขอบหนัง อะไหล่ทอง โลโก้ปั๊มนูน ตัวอักษรปั๊มทองเล็กๆ
-const fidelity = (n: number) => `Image ${n} is the product photo. Reproduce this exact product, not a similar one: the same silhouette and `
+// threeD = ประโยคบอกให้ถ่ายสินค้าเป็นของสามมิติ (Handshot ใช้แบบสั้นที่ไม่พูดถึงฉาก/ตำแหน่งกล้อง ตามที่ทดสอบ 2 พ.ย.)
+const fidelity = (n: number, threeD = 'Treat the product as a real three-dimensional object, turn it on the set and photograph it fresh from the camera position described here, '
+  + 'showing its real depth (side panels, base, thickness and the far side of any handle or strap in perspective). ') => `Image ${n} is the product photo. Reproduce this exact product, not a similar one: the same silhouette and `
   + 'proportions, the same color, the same leather grain or material texture (pebbled or smooth exactly as in the photo), the same stitching '
   + 'color and spacing, edge paint, hardware shape and finish, and any embossed, printed or foil logo or lettering in the same place and size. '
   + 'Keep exactly the handles, straps, pockets and hardware it has, no more and no fewer, and do not add, remove or redesign any logo or text. '
   + `Use only the product itself from Image ${n}: ignore its background, surface, lighting, hands, mannequin and packaging.`
   // รูปสินค้าส่วนใหญ่ถ่ายหน้าตรงพื้นขาว: ไม่บอก = AI ยึดมุมนั้นแล้ววางรูปแบนๆ บนฉาก ไม่ว่าเลือกมุมไหน (ผู้ใช้ทดสอบ 26 ต.ค.)
   + ` Image ${n} shows the product from one viewpoint only: use it for the product's design and details, never for the camera angle. `
-  + 'Treat the product as a real three-dimensional object, turn it on the set and photograph it fresh from the camera position described here, '
-  + 'showing its real depth (side panels, base, thickness and the far side of any handle or strap in perspective). '
+  + threeD
   + `Never paste or copy the flat view of Image ${n}.`;
 
 // ให้ดูเป็นรูปถ่ายจริง (แบบ REALISM ของหน้านางแบบ แต่เป็นเรื่องของวางบนฉาก): น้ำหนัก เงาสัมผัสพื้น ผิวฉากจริง สีหม่น
@@ -130,6 +131,61 @@ export function buildPackshotSetPrompt(p: PackshotSetInput) {
   if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, 400)}`);
   out.push(`Most important: ${p.angle}, with ${p.framing}.`);
   return out.join(' ');
+}
+
+// ---------- Handshot: มือ/คนถือสินค้า (ท่าใน HAND_POSES ของ lib/packshot.ts) ----------
+// คำสั่งชุดนี้ผ่านการทดสอบ 6 รูปก่อนใส่ (2 พ.ย. ผู้ใช้อนุมัติ) แก้แล้วควรทดสอบใหม่ · รูปที่ส่ง: 1 สินค้า (+ รูปสินค้าเพิ่มเติมต่อท้ายใน route)
+// มือ = หญิงไทยผิวกลางๆ เล็บนู้ด ไม่มีเครื่องประดับ แขนเสื้อถักสีครีม · ลำตัว = ตัดใต้คาง เสื้อถักครีม กางเกงสีอ่อน ไม่มีโลโก้
+const HAND_SHOT = {
+  hand: {
+    framing: 'a close shot: the hand and the product fill most of the frame, the product large and sharp in the middle, the hand and wrist entering from the lower edge of the frame',
+    who: 'The hand belongs to a young Thai woman with a natural light-medium skin tone: slender fingers, short neat nails with a sheer nude polish, no rings, bracelets or watch, '
+      + 'and real skin texture with fine creases at the knuckles, not waxy or airbrushed. A plain cream knit sleeve ends at the wrist.',
+  },
+  body: {
+    framing: "a medium shot of the person's body cropped from just below the chin to mid-thigh, the product at the visual center of the frame",
+    who: 'The person is a young Thai woman with a natural light-medium skin tone; her face is never shown, the frame starts below her chin. '
+      + 'She wears a plain cream knit top and simple light trousers with no logos or prints, so the product stands out. '
+      + 'Short neat nails with a sheer nude polish, no rings, bracelets or watch, real skin texture, not waxy or airbrushed.',
+  },
+} as const;
+const HAND_LENS = 'shot on a full-frame camera with an 85mm lens at f/4, at the height of the product, natural perspective with no wide-angle distortion; '
+  + 'the product and the holding fingers sharp, the background softly out of focus';
+const HAND_REALISM = 'It must look like an unretouched photo by a professional photographer with a real camera, not a CGI render or an AI image. '
+  + 'The product has real weight and is naturally supported by the hand, with slight pressure where the fingers touch it; handles and straps obey gravity. '
+  + 'The product keeps its true real-world size next to the hand. Soft finger shadows fall on the product where the light would put them. '
+  + 'Hands are anatomically correct: each hand has exactly five fingers in natural, relaxed positions, with real knuckles and nail beds. '
+  + 'Not oversaturated, not over-sharpened, no glow, no invented reflections, nothing floating.';
+export const HANDSHOT_SET = 'a plain seamless backdrop in a soft color that complements the product';
+
+export type HandshotInput = {
+  what: string; // ประเภทสินค้า (PRODUCT_TYPES prompt)
+  single: string | null; // สินค้ามาเป็นคู่ (รองเท้า) -> ถือข้างเดียว
+  mode: 'hand' | 'body';
+  pose: string; // HAND_POSES prompt
+  short: string; // HAND_POSES short
+  light: string; // PRODUCT_LIGHTS prompt (แสงหน้าต่าง)
+  crop?: string | null;
+  extra?: string | null;
+};
+
+export function buildHandshotPrompt(p: HandshotInput) {
+  const m = HAND_SHOT[p.mode];
+  return [
+    `A professional handheld product photograph of ${p.single ?? p.what} from Image 1 for a brand's Instagram feed: ${m.framing}.`,
+    fidelity(1, 'Treat the product as a real three-dimensional object and photograph it fresh as described here, showing its real depth. '),
+    p.single ? `Image 1 shows ${p.what}: show only ${p.single}, never both.` : 'Show exactly one product.',
+    `Pose: ${p.pose}`,
+    m.who,
+    `Set: ${HANDSHOT_SET} while keeping a visible luminance contrast along its edges. No props, no text. Preserve the exact product color, without tinting it with the backdrop color.`,
+    `Camera: ${HAND_LENS}.`,
+    `Lighting: ${p.light}`,
+    HAND_REALISM,
+    p.crop ? `The photo will be cropped to ${p.crop}: keep the product and the hand holding it well inside the middle of the frame, away from the edges that will be cut.` : '',
+    p.extra?.trim() ? `Also: ${p.extra.trim().slice(0, 400)}` : '',
+    // ย้ำท่าและระยะเป็นบรรทัดสุดท้าย เหมือน "Most important" ของ buildPackshotPrompt
+    `Most important: ${p.single ? 'only ' + p.single : 'exactly one product'}, ${p.short}, with ${m.framing}.`,
+  ].filter(Boolean).join(' ');
 }
 
 // ใช้แผนกำกับภาพชุดเดียว ไม่เติมฉาก/แสง/เลนส์จาก preset ซ้ำจนคำสั่งขัดกัน

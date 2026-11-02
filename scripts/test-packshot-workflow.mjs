@@ -48,7 +48,7 @@ async function shoot(options) {
   const result = await POST({ ...base, ...options });
   return { result, call: calls[0] };
 }
-assert.equal(catalog.SHOT_TYPES.length, 6);
+assert.equal(catalog.SHOT_TYPES.length, 7);
 assert.deepEqual(catalog.PRODUCT_SET_SHOTS.map((s) => s.id), ['front', 'back', 'side', 'three-quarter', 'top', 'bottom']);
 for (const shot of catalog.SHOT_TYPES) {
   const preset = catalog.productPreset('clean');
@@ -198,4 +198,33 @@ assert.doesNotMatch(out.call.prompt, /own prop/);
 out = await shoot({ shot_type: 'styled', props: 'none', framing: 'medium' });
 assert.match(out.call.prompt, /the product about 60 percent of the frame width, with some space of the set around it, the product centered horizontally/);
 assert.match(out.call.prompt, /No props: nothing in the frame/);
-console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups and own props.');
+// Handshot: ท่าถือตามประเภทสินค้า (UI กับ API ใช้ resolveHandPose ตัวเดียวกัน) · รองเท้าถือข้างเดียว · ไม่มีฉาก/พร็อพ/ชุดภาพ
+assert.deepEqual(catalog.handPoses('bag').map((p) => p.id), ['hold', 'handle', 'chest', 'arm', 'side']);
+assert.deepEqual(catalog.handPoses('shoes').map((p) => p.id), ['hold', 'palm', 'chest']);
+assert.equal(catalog.resolveHandPose('shoes', 'handle').id, 'hold');
+assert.equal(catalog.resolveHandPose('tote', 'arm').id, 'arm');
+out = await shoot({ shot_type: 'handshot', product_type: 'shoes', hand_pose: 'palm', aspect: '4:5', props: 'fruit', set_id: 'plinth', set_image: 'room', ref: 'style', support_images: ['side'] });
+assert.equal(out.result.status, 200);
+assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'side']);
+assert.match(out.call.prompt, /^A professional handheld product photograph of one single shoe from the pair from Image 1/);
+assert.match(out.call.prompt, /show only one single shoe from the pair, never both/);
+assert.match(out.call.prompt, /Pose: The product rests on a flat, open palm/);
+assert.match(out.call.prompt, /hand and wrist entering from the lower edge/);
+assert.match(out.call.prompt, /plain seamless backdrop in a soft color that complements the product/);
+assert.match(out.call.prompt, /Soft natural daylight from a large window/);
+assert.match(out.call.prompt, /exactly five fingers/);
+assert.match(out.call.prompt, /Images 2 are additional photographs/);
+assert.match(out.call.prompt, /Most important: only one single shoe from the pair, resting on an open palm/);
+assert.doesNotMatch(out.call.prompt, /Props:|small pear|sculptural plinth|reference photo by another brand|Image 2 is the set/);
+assert.equal(planned.length, 0);
+out = await shoot({ shot_type: 'handshot', product_type: 'shoes', hand_pose: 'arm' }); // ท่ากระเป๋ากับรองเท้า -> ถือโชว์
+assert.match(out.call.prompt, /Pose: One hand holds the product up toward the camera/);
+out = await shoot({ shot_type: 'handshot', product_type: 'bag', hand_pose: 'arm' });
+assert.match(out.call.prompt, /crook of a bent forearm/);
+assert.match(out.call.prompt, /her face is never shown/);
+assert.match(out.call.prompt, /Show exactly one product/);
+assert.doesNotMatch(out.call.prompt, /never both/);
+out = await shoot({ shot_type: 'handshot', set_ref: 'hero', set_shot: 'back' });
+assert.equal(out.result.status, 400);
+assert.equal(calls.length, 0);
+console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props and handshot poses.');

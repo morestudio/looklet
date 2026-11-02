@@ -401,6 +401,7 @@ export const SHOT_TYPES = [
   { id: 'detail', name: 'Detail / Close-up', hint: 'ซูมวัสดุ โลโก้ ตะเข็บ ซิป หรืออะไหล่', usage: 'PDP / แสดงคุณภาพและฟีเจอร์' },
   { id: 'scale', name: 'Scale / Size Reference', hint: 'เทียบขนาดกับมือ คน หรือวัตถุที่รู้ขนาด', usage: 'PDP / ช่วยเข้าใจขนาดจริง' },
   { id: 'styled', name: 'Custom Packshot', hint: 'เลือกฉาก พร็อพ มุมกล้อง และระยะเองทีละส่วน', usage: 'PDP / Social / Campaign' },
+  { id: 'handshot', name: 'Handshot', hint: 'มือหรือคนถือสินค้า เลือกท่าถือได้ ไม่เห็นหน้า', usage: 'Social / UGC / PDP' },
 ] as const;
 export type ShotType = (typeof SHOT_TYPES)[number]['id'];
 export const DETAIL_TARGETS: Choice[] = [
@@ -417,6 +418,41 @@ export const SCALE_REFERENCES: Choice[] = [
   { id: 'paper', name: 'กระดาษ A4', hint: '21 × 29.7 ซม.', prompt: 'one flat A4 sheet measuring exactly 21 by 29.7 cm, beside the product on the same plane' },
   { id: 'laptop', name: 'Laptop', hint: 'ระบุขนาดเครื่องจริงด้านล่าง', prompt: 'a laptop beside the product on the same surface, using the reference dimensions supplied by the user' },
 ];
+// ---------- Handshot (2 พ.ย.): มือ/คนถือสินค้า ผู้ใช้เลือกแค่ท่าถือ ----------
+// ฉาก (พื้นเรียบสีเข้ากับสินค้า) แสงหน้าต่าง หน้าตามือ และชุดเป็นค่าตายตัวใน lib/packshot-prompts.ts (ผู้ใช้เลือกเองแค่ท่า)
+// ทดสอบ 6 รูป 3 สินค้าก่อนใส่ (2 พ.ย. ผู้ใช้อนุมัติ): สินค้าตรง นิ้วครบทุกรูป ไม่เห็นหน้า · ตัวหนังสือเล็กบนฉลากเพี้ยนได้ในท่าเห็นลำตัว (สินค้าเล็กในภาพ)
+// types = ประเภทสินค้า (PRODUCT_TYPES) ที่ท่านี้ใช้ได้ ไม่ใส่ = ทุกประเภท · short = คำสั้นๆ ที่ย้ำในบรรทัดสุดท้ายของคำสั่ง
+export type HandMode = 'hand' | 'body';
+export type HandPose = Choice & { mode: HandMode; short: string; types?: string[] };
+const BAG_TYPES = ['bag', 'soft-bag', 'tote'];
+export const HAND_MODES: { id: HandMode; name: string; hint: string }[] = [
+  { id: 'hand', name: 'มืออย่างเดียว', hint: 'ระยะใกล้ สินค้าใหญ่ ฉลากและตัวหนังสือชัดที่สุด' },
+  { id: 'body', name: 'เห็นแขนและลำตัว', hint: 'ตัดใต้คาง ไม่เห็นหน้า · ตัวหนังสือเล็กบนสินค้าอาจเพี้ยน' },
+];
+export const HAND_POSES: HandPose[] = [
+  { id: 'hold', mode: 'hand', name: 'ถือโชว์', hint: 'มือเดียวยกสินค้าหันหน้าเข้ากล้อง', short: 'held up in one hand',
+    prompt: 'One hand holds the product up toward the camera, the fingers wrapped naturally around it and the thumb on the side, its front and label facing the camera; the fingers cover as little of the label or logo as possible.' },
+  { id: 'palm', mode: 'hand', name: 'วางบนฝ่ามือ', hint: 'สินค้าวางบนฝ่ามือที่แบออก', short: 'resting on an open palm',
+    types: ['shoes', 'small', 'jewelry', 'beauty', 'other'],
+    prompt: 'The product rests on a flat, open palm held out toward the camera, the fingers relaxed and slightly curved around its edge, its weight pressing gently into the palm.' },
+  { id: 'handle', mode: 'hand', name: 'หิ้วหูกระเป๋า', hint: 'มือจับหูกระเป๋า กระเป๋าห้อยลงตามน้ำหนัก', short: 'carried by its handle in one hand',
+    types: BAG_TYPES,
+    prompt: 'One hand grips the bag by its handle, the bag hanging straight down below the hand under its own weight, its front facing the camera.' },
+  { id: 'chest', mode: 'body', name: 'ถือระดับอก', hint: 'สองมือถือสินค้าไว้หน้าอก', short: 'held with both hands in front of the chest',
+    prompt: 'The person holds the product with both hands in front of the chest, its front and label facing the camera, the elbows relaxed against the body.' },
+  { id: 'arm', mode: 'body', name: 'คล้องแขน', hint: 'กระเป๋าห้อยอยู่ที่แขนท่อนล่างที่งอไว้', short: 'hanging from the crook of a bent forearm',
+    types: BAG_TYPES,
+    prompt: "The bag's handle hangs over the person's bent forearm, the hand relaxed in front of the waist, the bag hanging below the arm under its own weight with its front facing the camera." },
+  { id: 'side', mode: 'body', name: 'ถือข้างลำตัว', hint: 'หิ้วกระเป๋าแขนแนบข้างตัว ระดับสะโพก', short: 'carried by its handle at the side of the body',
+    types: BAG_TYPES,
+    prompt: "The person's arm hangs relaxed at their side, the hand holding the bag by its handle at hip height, the bag hanging straight down under its own weight with its front facing the camera." },
+];
+export const handPoses = (type: unknown) => HAND_POSES.filter((p) => !p.types || p.types.includes(productType(type).id));
+// ใช้ทั้งหน้าเว็บและ API: ท่าที่ไม่เข้ากับสินค้า (เช่นเปลี่ยนสินค้าหลังเลือกท่า) -> ท่าแรกที่ใช้ได้
+export const resolveHandPose = (type: unknown, id: unknown) => handPoses(type).find((p) => p.id === id) ?? handPoses(type)[0];
+// รองเท้ามาเป็นคู่: ถือได้ข้างเดียว (ทดสอบแล้วได้ข้างเดียวตามสั่ง)
+export const handshotSingle = (type: unknown) => (productType(type).id === 'shoes' ? 'one single shoe from the pair' : null);
+
 export const plainShot = (id: unknown) => id === 'clean' || id === 'multi';
 // มุมที่เสนอให้เลือกตามจุดประสงค์ของภาพ ไม่มีมุมสูงที่ความหมายซ้ำกัน
 export const automaticProductAngle = (id: unknown) => id === 'detail' || id === 'scale';

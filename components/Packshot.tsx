@@ -12,8 +12,9 @@ import { type CreativeConcept } from '@/lib/creative';
 import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
-  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
+import { HandArt, HandView } from './HandView';
 import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
@@ -26,6 +27,7 @@ import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
   PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
   NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
+  HAND_MODES, HAND_POSES, handPoses, resolveHandPose,
 } from '@/lib/packshot';
 
 type Key = 'product' | 'ref' | 'scene' | 'prop';
@@ -38,7 +40,7 @@ const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 }; /
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // ยังไม่มีรูปให้โชว์
 // เปิดตัวรอบแรก (27 ต.ค.): ใช้ได้แค่ 3 ประเภท เรียงตามนี้ · ที่เหลือยังโชว์แต่เป็นสีเทา กดไม่ได้
 // เปิดคืน = เพิ่ม id ในนี้ (UI/API/เทสต์ของประเภทที่ปิดยังอยู่ครบ)
-const OPEN_SHOT_TYPES: ShotType[] = ['clean', 'styled', 'creative'];
+const OPEN_SHOT_TYPES: ShotType[] = ['clean', 'styled', 'creative', 'handshot']; // Handshot เปิด 2 พ.ย.
 const SHOT_TYPE_ORDER = [
   ...OPEN_SHOT_TYPES.map((id) => SHOT_TYPES.find((t) => t.id === id)!),
   ...SHOT_TYPES.filter((t) => !OPEN_SHOT_TYPES.includes(t.id)),
@@ -56,11 +58,12 @@ const downloadName = (ext: string) => `snapads-product-${Date.now()}.${ext}`; //
 // แถมลอกทั้งช็อตแล้วขั้นอื่นใช้ไม่ได้ครึ่งเมนู · เปิดคืน = true (โค้ด UI/API ยังอยู่ครบ)
 const REF_SHOT = false;
 
-type StepKey = 'creative' | 'shot' | 'product' | 'ref' | 'set' | 'props' | 'angle' | 'framing' | 'settings';
+type StepKey = 'creative' | 'hand' | 'shot' | 'product' | 'ref' | 'set' | 'props' | 'angle' | 'framing' | 'settings';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = ([
   { key: 'product', label: 'สินค้า', title: 'เลือกสินค้า', Icon: IconBag },
   { key: 'shot', label: 'ประเภทภาพ', title: 'เลือกประเภทภาพ', Icon: IconFrame },
   { key: 'creative', label: 'ไอเดียภาพ', title: 'ไอเดียภาพ', Icon: IconPalette },
+  { key: 'hand', label: 'ท่าถือ', title: 'เลือกท่าถือ', Icon: () => <IconHand size={22} /> }, // Handshot เท่านั้น
   // ช็อตต้นแบบอยู่ก่อนฉาก/พร็อพ/มุม: ลอกทั้งช็อตแล้วขั้นพวกนั้นไม่ถูกใช้ จะได้รู้ก่อนไปเลือก
   { key: 'ref', label: 'ช็อตต้นแบบ', title: 'ช็อตต้นแบบ', Icon: IconCopy },
   { key: 'set', label: 'ฉากและพื้น', title: 'เลือกฉากและพื้น', Icon: IconScene },
@@ -72,7 +75,8 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
 // ขั้นที่ประเภทภาพนี้ใช้ · เมนูแสดงครบทุกขั้นเสมอ (ขั้นที่ไม่ใช้เป็นสีเทา) จะได้ไม่ขยับ/เปลี่ยนเลขตอนเปลี่ยนประเภทภาพ
 function stepUsed(key: StepKey, type: ShotType) {
   if (type === 'creative') return ['product', 'shot', 'creative', 'settings'].includes(key);
-  if (key === 'creative') return false;
+  if (type === 'handshot') return ['product', 'shot', 'hand', 'settings'].includes(key); // ฉาก แสง มุม ระยะ = อัตโนมัติตามท่าถือ
+  if (key === 'creative' || key === 'hand') return false;
   if (key === 'ref' || key === 'props') return type === 'styled';
   if (key === 'angle') return type !== 'multi';
   if (key === 'framing') return type === 'styled' || type === 'scale';
@@ -124,6 +128,7 @@ function ShotTypePreview({ id }: { id: ShotType }) {
   const studio = <><rect width="240" height="150" fill={WALL} /><path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".03" /></>;
   return <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
     {id === 'clean' && <>{studio}<Box x={96} y={58} /></>}
+    {id === 'handshot' && <HandArt pose="hold" />}
     {id === 'styled' && <>
       <rect width="240" height="150" fill="#e7decf" />
       <path d="M22 0 H66 L112 91 H68Z" fill="#fff" opacity=".3" />
@@ -277,6 +282,7 @@ export default function Packshot() {
   const [detailTarget, setDetailTarget] = useState('texture');
   const [feature, setFeature] = useState('');
   const [scaleRef, setScaleRef] = useState('hand');
+  const [handPoseId, setHandPoseId] = useState('hold'); // Handshot: ท่าถือ (HAND_POSES)
   const [dimensions, setDimensions] = useState({ width: '', height: '', depth: '' });
   const [referenceSize, setReferenceSize] = useState({ width: '', depth: '' });
   const [extraAngles, setExtraAngles] = useState<string[]>([]);
@@ -321,6 +327,8 @@ export default function Packshot() {
   const groups = productGroups(lists.product);
   const selectedGroup = groups.find((g) => g.id === pick.product);
   const product = selectedGroup?.main ? { ...selectedGroup.main, name: selectedGroup.name, type: selectedGroup.type } : undefined;
+  // ท่าที่เลือกไว้ไม่เข้ากับสินค้าที่เปลี่ยนมา (เช่น หิ้วหูกระเป๋า -> รองเท้า) = ท่าแรกที่ใช้ได้ ตรงกับที่ API ทำ
+  const handPose = resolveHandPose(product?.type, handPoseId);
   const inspiration = shotType === 'creative' ? find(lists.ref, pick.ref) : undefined; // ภาพแรงบันดาลใจ (ไม่บังคับ)
   const creativeScope = JSON.stringify([selectedGroup?.id, selectedGroup?.main?.src, selectedGroup?.photos.map((p) => p.src), creativeIdea, creativeFacts, inspiration?.src]);
   const concepts = conceptState?.scope === creativeScope ? conceptState.concepts : [];
@@ -396,7 +404,7 @@ export default function Packshot() {
     setSceneId(next === 'styled' ? 'table' : PRESET); setColorId(next === 'styled' ? 'match' : 'white'); // Custom เริ่มที่โต๊ะขาว (Still life ผลไม้ เดิม)
     setPropsId(NO_PROPS); setAngleId(PRESET);
     setFramingId(next === 'detail' ? 'detail' : next === 'scale' ? 'medium' : PRESET);
-    setAspect(next === 'styled' || next === 'creative' ? '4:5' : '1:1');
+    setAspect(next === 'styled' || next === 'creative' || next === 'handshot' ? '4:5' : '1:1');
     setPick((p) => ({ ...p, ref: null, scene: null }));
   }
 
@@ -571,7 +579,8 @@ export default function Packshot() {
     if (!choice) return;
     setStatus('');
     const shotsAfter = selectedShots.slice(1);
-    const caption = [
+    const caption = shotType === 'handshot' ? [product.name, shotTypeDef.name, handPose.name, HAND_MODES.find((m) => m.id === handPose.mode)!.name]
+      .join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}` : [
       product.name, shotTypeDef.name,
       ...(ref ? [`${REF_MODES.find((m) => m.id === refMode)!.name}จากต้นแบบ`] : []),
       ...(shotType === 'creative' ? [creativeConcept!.title] : shot || shotType === 'styled' ? [] : [preset.name]),
@@ -593,7 +602,7 @@ export default function Packshot() {
       const body = {
         creative_concept: shotType === 'creative' ? creativeConcept : null,
         shot_type: shotType, detail_target: detailTarget, feature: feature.trim(),
-        scale_reference: scaleRef, dimensions, reference_size: referenceSize,
+        scale_reference: scaleRef, dimensions, reference_size: referenceSize, hand_pose: handPose.id,
         support_images: supportImages, product_group: selectedGroup!.id,
         model: choice.id, quality, aspect: finalAspect, extra: extra.trim(), finish: 'off',
         product: productImg.data, product_type: productType(product.type).id, preset: preset.id,
@@ -700,7 +709,7 @@ export default function Packshot() {
     : cur.key === 'shot' ? scaleReady && detailReady : true);
   const nextStep = STEPS.findIndex((s, i) => i > step && used(s.key)); // ถัดไป: ข้ามขั้นที่ประเภทภาพนี้ไม่ใช้
   const stepDone: Record<StepKey, boolean> = {
-    creative: Boolean(creativeConcept), shot: true, product: Boolean(product), ref: Boolean(ref),
+    creative: Boolean(creativeConcept), hand: handPose.id !== handPoses(product?.type)[0].id, shot: true, product: Boolean(product), ref: Boolean(ref),
     set: sceneId !== PRESET || usePhoto || colorId !== 'set', props: propsId !== NO_PROPS || Boolean(ownName), angle: !automaticAngle && angleId !== PRESET, framing: framingId !== PRESET,
     settings: aspect !== 'auto' || Boolean(extra.trim()),
   };
@@ -808,6 +817,20 @@ export default function Packshot() {
         </Section>}
         <p className="muted-text">ภาพ AI ช่วยสื่อสัดส่วนโดยประมาณ ควรแสดงขนาดจริงบนหน้าสินค้าด้วย</p>
       </>}
+    </>;
+  } else if (cur.key === 'hand') {
+    // ท่าถือ (Handshot): 2 กลุ่ม มืออย่างเดียว / เห็นแขนและลำตัว · ซ่อนท่าที่ไม่เข้ากับประเภทสินค้า (handPoses)
+    const poses = handPoses(product?.type);
+    panel = <>
+      <p className="note">ฉากพื้นเรียบสีเข้ากับสินค้า แสงหน้าต่างนุ่ม ไม่เห็นหน้า{poses.length < HAND_POSES.length ? ' · แสดงเฉพาะท่าที่เหมาะกับสินค้าชิ้นนี้' : ''}</p>
+      {HAND_MODES.map((m) => poses.some((p) => p.mode === m.id) && <Section key={m.id} title={m.name} note={m.hint}>
+        <div className="options view-options">
+          {poses.filter((p) => p.mode === m.id).map((p) => <button key={p.id} type="button" aria-pressed={handPose.id === p.id}
+            className={'option view-option' + (handPose.id === p.id ? ' active' : '')} onClick={() => setHandPoseId(p.id)}>
+            <HandView pose={p.id} /><b>{p.name}</b><small>{p.hint}</small>
+          </button>)}
+        </div>
+      </Section>)}
     </>;
   } else if (cur.key === 'ref') {
     panel = <>
