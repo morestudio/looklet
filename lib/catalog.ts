@@ -322,7 +322,17 @@ const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', 
 const NEUTRAL_COLOR: PresetPart = { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' };
 
 export const PRESETS: Preset[] = [
-  // ฟีลประจำของ SnapAds (ค่าเริ่มต้น = ตัวแรก): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
+  // Normal (ค่าเริ่มต้น = ตัวแรก ตั้งแต่ 2 พ.ย. ผู้ใช้ขอ): ภาพถ่ายธรรมดา ไม่จัดไฟ ไม่เกรดสี ไม่แต่งฉาก — แสงที่มีในสถานที่จริง เลนส์มาตรฐาน ระดับสายตา
+  // (SnapAds signature เก็บฉากให้มินิมอล + ไฟซอฟต์บ็อกซ์ f/8 ภาพออกมาดูจัดฉากเกินไปสำหรับงานทั่วไป)
+  { id: 'normal', name: 'Normal', hint: 'ภาพถ่ายธรรมดา แสงตามสถานที่จริง สีจริง ไม่จัดไฟ ไม่แต่งฉาก', fullBody: true,
+    light: { label: 'แสงที่มีในสถานที่ ไม่เพิ่มไฟ', prompt:
+      "Only the light that is already at the location (daylight from windows or the sky, or the room's own lamps), with no added studio "
+      + 'lights, reflectors or flash. Brightness, shadows and contrast are exactly what that light naturally makes.' },
+    lens: { label: '50mm มาตรฐาน', prompt: 'shot on a full-frame camera with a 50mm lens at f/4' },
+    angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: FULL_BODY },
+    color: { label: 'สีจริง ไม่แต่งสี', prompt: 'True-to-life, natural colors with the white balance of the location; no color grading or filter look.' } },
+  // ฟีลประจำของ SnapAds (ค่าเริ่มต้นเดิมจนถึง 2 พ.ย.): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
   // แสง/เลนส์/โทนสีของ Studio lookbook ให้สีกลางๆ อมเย็นนิดๆ ตรงรูปตัวอย่างโดยไม่ต้องเกรดสีเพิ่ม (แสงอุ่นแบบเดิมออกมาเหลือง/สว่างเกิน)
   // + ระยะ 3/4 ของภาพ มีขอบผนังด้านหน้า + ฉากมินิมอล (ฉากที่รกจะถูกเก็บให้เรียบ เห็นผลชัดกับฉากถนน/ร้าน)
   { id: 'signature', name: 'SnapAds signature', hint: 'ฟีลของ SnapAds: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,

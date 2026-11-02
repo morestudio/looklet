@@ -39,6 +39,15 @@ export function StyleView({ id }: { id: string }) {
 
   let art: ReactNode;
   switch (id) {
+    case 'normal': // ภาพถ่ายธรรมดา: ห้องจริงตามที่เป็น หน้าต่างให้แสงธรรมชาติ ไม่มีไฟเสริม ไม่เกรดสี กล้องระดับสายตา
+      art = <>
+        <rect width="240" height="150" fill="#f1eee8" />
+        <rect y="106" width="240" height="44" fill="#ddd6ca" />
+        <rect x="172" y="16" width="46" height="64" rx="2" fill="#f7f9fb" {...stroke} /><path d="M195 16 V80 M172 48 H218" {...stroke} />
+        <rect x="20" y="80" width="46" height="26" rx="2" fill="#e6ddcf" {...stroke} /><path d="M43 80 V106" {...stroke} />
+        {softShadow(122, 26)}{figure()}
+      </>;
+      break;
     case 'studio': // ฉากกระดาษขาวโค้ง ซอฟต์บ็อกซ์ซ้าย แผ่นสะท้อนขวา เงาจาง
       art = <>
         <rect width="240" height="150" fill="#faf7f2" />
