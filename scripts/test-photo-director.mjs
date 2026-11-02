@@ -99,7 +99,7 @@ function deliveryDeps(reviews = [review()]) {
   } };
 }
 const meta = { name: 'test', th: 'ทดสอบ', director: parse() };
-const failed = () => review({ support: 'fail', correction_en: 'Restore visible mattress contact.' });
+const failed = () => review({ camera_crop: 'fail', correction_en: 'Pull back so both feet are inside the frame.' });
 
 test('save the first result before one repair, recheck the crop and return an improved result', async () => {
   const { events, deps } = deliveryDeps([failed(), review()]);
@@ -120,6 +120,21 @@ test('keep the original when repair fails or the repaired image is worse', async
   out = await deliverDirectedImage(img('first'), meta, true, setup.deps);
   assert.equal(out.src, '/first.jpg');
   assert.equal(setup.events.filter((e) => e === 'repair').length, 1);
+});
+
+test('minor failures (support, scene, details) are only flagged, never repaired', async () => {
+  for (const check of ['support', 'scene', 'details']) {
+    const { deps, events } = deliveryDeps([review({ [check]: 'fail', correction_en: 'Use a light fingertip touch instead of a planted palm.' })]);
+    const out = await deliverDirectedImage(img('first'), meta, true, deps);
+    assert.equal(out.src, '/first.jpg');
+    assert.equal(out.posePlan.review.status, 'needs_review');
+    assert(!events.includes('repair'));
+  }
+  for (const check of ['identity', 'outfit', 'anatomy', 'camera_crop']) {
+    const { deps, events } = deliveryDeps([review({ [check]: 'fail', support: 'fail', correction_en: 'Fix it.' }), review()]);
+    await deliverDirectedImage(img('first'), meta, true, deps);
+    assert.equal(events.filter((e) => e === 'repair').length, 1);
+  }
 });
 
 test('no repair on opt-out, exhausted quota, uncertain-only review, or checker failure', async () => {

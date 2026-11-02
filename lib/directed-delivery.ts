@@ -8,6 +8,10 @@ type DeliveryDependencies = {
   canRepair: () => Promise<boolean>;
 };
 
+// Only these failures pay for a repair: wrong face, wrong outfit, broken hands/limbs, or required body parts cut off.
+// Support, scene and detail failures only mark the image for review (2 Nov: a palm-instead-of-fingertips repair barely changed the image).
+export const SERIOUS_CHECKS = ['identity', 'outfit', 'anatomy', 'camera_crop'] as const;
+
 // Preserve the paid original before attempting a bounded repair. A failed checker or repair never loses it.
 export async function deliverDirectedImage(image: Img, plan: StoredPosePlan, allowRepair: boolean, deps: DeliveryDependencies) {
   const check = async (img: Img) => {
@@ -17,7 +21,7 @@ export async function deliverDirectedImage(image: Img, plan: StoredPosePlan, all
   const originalPlan = { ...plan, review, repaired: false };
   const src = await deps.save(image, originalPlan);
   const original = { src, posePlan: originalPlan };
-  if (!allowRepair || !Object.values(review.checks).includes('fail') || !review.correction) return original;
+  if (!allowRepair || !SERIOUS_CHECKS.some((k) => review.checks[k] === 'fail') || !review.correction) return original;
   try {
     if (!await deps.canRepair()) return original;
     const correction = review.correction + (review.checks.camera_crop === 'fail'
