@@ -10,7 +10,9 @@ import { SignOutButton } from './AuthForm';
 import { PersonView } from './PersonView';
 import { PoseView } from './PoseView';
 import { ShotPlanView } from './ShotPlanView';
-import type { BackgroundMode, PhotoGoal, StoredPosePlan } from '@/lib/photo-director';
+import { ShotChoiceDialog } from './ShotChoiceDialog';
+import type { BackgroundMode, PhotoGoal, ShotProposal, StoredPosePlan } from '@/lib/photo-director';
+import { generateSelectedShots } from '@/lib/shot-batch';
 import { StyleView } from './StyleView';
 import { PLATFORM_ASPECTS } from '@/lib/aspects';
 import {
@@ -146,6 +148,9 @@ export default function TryOn() {
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('explore');
   const [photoGoal, setPhotoGoal] = useState<PhotoGoal>('lifestyle');
   const [autoRepair, setAutoRepair] = useState(true);
+  const [shotChoice, setShotChoice] = useState<{
+    proposal: ShotProposal; references: { src: string; name: string }[]; choose: (ids: string[]) => void;
+  } | null>(null);
   const [lightSource, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
   const [faceMood, setFaceMood] = useState('auto'); // สีหน้า (FACE_MOODS)
   const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
@@ -407,7 +412,7 @@ export default function TryOn() {
       ...(aspect !== DEFAULT_ASPECT ? [platform.name] : []),
     ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
-    setBusy(isDirector ? 'AI กำลังคิดท่าและมุมกล้อง สร้างรูป แล้วตรวจภาพ...'
+    setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
       : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
         : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
@@ -482,6 +487,34 @@ export default function TryOn() {
       };
       const setId = set ? newSetId() : null;
       const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
+      if (isDirector && !set) {
+        const { proposal } = await api<{ proposal: ShotProposal }>('/api/generate', { ...body, plan_only: true });
+        setBusy('เลือกไอเดียภาพที่ต้องการสร้าง');
+        const selected = await new Promise<string[]>((resolve) => setShotChoice({
+          proposal,
+          references: [model, outfit, scene].filter((r): r is Item => Boolean(r?.src)).map((r) => ({ src: r.src!, name: r.name })),
+          choose: (ids) => { setShotChoice(null); resolve(ids); },
+        }));
+        if (!selected.length) { setStatus('ยกเลิกแล้ว ยังไม่ได้สร้างรูป'); return; }
+        const batch = await generateSelectedShots(selected, async (id, index) => {
+          const title = proposal.plan.candidates.find((c) => c.id === id)!.title;
+          setBusy(`AI กำลังสร้างและตรวจรูป ${index + 1}/${selected.length} · ${title}`);
+          const shotCaption = `${title} · ${caption}`;
+          const result = await api<{ src: string; posePlan: PosePlan }>('/api/generate', {
+            ...body, shot_proposal: proposal.token, shot_id: id, caption: shotCaption,
+          });
+          return { src: result.src, caption: shotCaption, finish: body.finish, posePlan: result.posePlan };
+        }, (result) => {
+          setResults((r) => [result, ...r]);
+          setCurrent(0);
+          prepare(result.src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message}`));
+        });
+        const needsReview = batch.results.filter((r) => r.posePlan.review?.status !== 'passed').length;
+        setStatus(batch.error ? `สร้างได้ ${batch.results.length}/${selected.length} รูป · รูปที่เสร็จแล้วเก็บไว้ในคลัง · ${batch.error}`
+          : `สร้างครบ ${batch.results.length} รูป${needsReview ? ` · ${needsReview} รูปควรตรวจภาพก่อนใช้` : ' · ผ่านการตรวจด้วย AI'}`);
+        if (batch.results.length) frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
       const out = await api<{ src: string; posePlan: PosePlan | null }>('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
       const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined }]; // server เซฟไว้ใน results/ แล้ว
       if (out.posePlan) setStatus(out.posePlan.review
@@ -722,7 +755,7 @@ export default function TryOn() {
           ))}
         </div>
         {isDirector ? <div className="director-settings">
-          <p className="muted-text">AI ดูนางแบบ ชุด และฉาก คิด 3 ไอเดีย แล้วเลือกท่าและมุมกล้องให้ พร้อมตรวจภาพที่สร้าง</p>
+          <p className="muted-text">AI ดูนางแบบ ชุด และฉาก คิด 3 ไอเดียให้เลือก สร้างเฉพาะไอเดียที่คุณเลือก แล้วตรวจภาพให้</p>
           <p className="sub">ใช้ฉากแบบไหน</p>
           <ChipGroup options={[{ id: 'explore', name: 'สำรวจมุมใหม่' }, { id: 'keep', name: 'คงมุมฉากเดิม' }]} value={backgroundMode} onChange={(v) => setBackgroundMode(v as BackgroundMode)} />
           <p className="muted-text">{backgroundMode === 'explore' ? 'เปลี่ยนมุมกล้องได้ เช่น มุมสูงเหนือเตียง ส่วนที่มองไม่เห็นในรูปฉากจะให้ AI คาดคะเน' : 'ใช้มุมกล้องและตำแหน่งเฟอร์นิเจอร์ตามรูปฉาก จัดท่าภายในพื้นที่ที่เห็น'}</p>
@@ -833,7 +866,7 @@ export default function TryOn() {
       </details>
       {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป): 2 ปุ่มคู่กัน */}
       <div className="gen-row">
-        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้าง...' : 'สร้างรูป'}</button>
+        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{busy !== null ? 'กำลังทำงาน...' : isDirector ? 'คิด 3 ไอเดียให้เลือก' : 'สร้างรูป'}</button>
         <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
           title={SET_SHOOT ? `${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า` : 'ยังไม่เปิดให้ใช้'}>
           ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOOT ? `ค่า AI ${SET_SHOTS.length} เท่า` : 'เร็วๆ นี้'}</small>
@@ -1038,6 +1071,7 @@ export default function TryOn() {
 
       </div>
 
+      {shotChoice && <ShotChoiceDialog proposal={shotChoice.proposal} references={shotChoice.references} onChoose={shotChoice.choose} />}
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {

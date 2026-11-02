@@ -153,7 +153,7 @@ test('generation route wires director constraints, final crop, stored reviews an
   const saved = [], usage = [], prompts = [], quotaChecks = [], plannerInputs = [];
   let validPlan = true;
   let reviews = [failed(), review()];
-  const app = appLoader({ overrides: {
+  const app = appLoader({ env: { OPENAI_API_KEY: 'proposal-test-only' }, overrides: {
     'lib/route.ts': { post: (fn) => fn, json: (status, body) => ({ status, body }) },
     'lib/ai.ts': {
       availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
@@ -206,4 +206,63 @@ test('generation route wires director constraints, final crop, stored reviews an
   for (const instruction of ['manual close crop', 'manual high angle', 'manual expression', 'manual gaze', 'manual held prop', 'manual additional instruction']) {
     assert(prompts.at(-1).prompt.includes(instruction));
   }
+  const beforePlanning = prompts.length;
+  out = await POST({ ...body, plan_only: true });
+  assert.equal(out.status, 200);
+  const proposal = out.body.proposal;
+  assert.equal(proposal.plan.candidates.length, 3);
+  assert.equal(prompts.length, beforePlanning); // viewing ideas creates no images
+  const plansAsked = plannerInputs.length;
+  reviews = [review()];
+  out = await POST({ ...body, shot_proposal: proposal.token, shot_id: 'shot-2', auto_repair: false });
+  assert.equal(out.status, 200);
+  assert.equal(out.body.posePlan.director.selectedId, 'shot-2');
+  assert.match(prompts.at(-1).prompt, /Lie supported on the mattress/);
+  assert.equal(plannerInputs.length, plansAsked); // choose the exact idea, do not replan
+  const renders = prompts.length;
+  for (const bad of [
+    { shot_id: 'shot-99' }, { shot_proposal: proposal.token + 'tampered' }, { outfit: 'different-outfit' }, { aspect: '1:1' },
+  ]) {
+    out = await POST({ ...body, shot_proposal: proposal.token, shot_id: 'shot-1', ...bad });
+    assert.equal(out.status, 400);
+    assert.equal(prompts.length, renders);
+    assert.equal(plannerInputs.length, plansAsked);
+  }
+});
+
+test('shot proposals are bound to the caller, references and expiry; infeasible ideas cannot be selected', () => {
+  const { createShotProposal, readShotProposal } = appLoader({ env: { OPENAI_API_KEY: 'proposal-test-only' } })('lib/director-proposal.ts');
+  const now = 1_000_000;
+  const plan = parse();
+  plan.candidates[2].feasible = false;
+  const proposal = createShotProposal(plan, input, 'account-a', now);
+  assert.equal(readShotProposal(proposal.token, 'shot-2', input, 'account-a', now).selectedId, 'shot-2');
+  assert.equal(readShotProposal(proposal.token, 'shot-1', input, 'account-b', now), null);
+  assert.equal(readShotProposal(proposal.token, 'shot-1', { ...input, person: img('different-model') }, 'account-a', now), null);
+  assert.equal(readShotProposal(proposal.token, 'shot-1', input, 'account-a', now + 30 * 60_000), null);
+  assert.equal(readShotProposal(proposal.token, 'shot-3', input, 'account-a', now), null);
+  const [payload, signature] = proposal.token.split('.');
+  const tampered = JSON.parse(Buffer.from(payload, 'base64url').toString());
+  tampered.plan.candidates[0].interaction = 'User-added manual pose';
+  assert.equal(readShotProposal(Buffer.from(JSON.stringify(tampered)).toString('base64url') + '.' + signature, 'shot-1', input, 'account-a', now), null);
+});
+
+test('selected ideas render once each; cancelling spends nothing and partial results survive a later failure', async () => {
+  const { generateSelectedShots } = load('lib/shot-batch.ts');
+  const calls = [], saved = [];
+  let out = await generateSelectedShots([], async (id) => calls.push(id), (r) => saved.push(r));
+  assert.equal(out.results.length, 0);
+  assert.equal(calls.length, 0);
+  out = await generateSelectedShots(['shot-2', 'shot-2', 'shot-3'], async (id) => { calls.push(id); return id; }, (r) => saved.push(r));
+  assert.deepEqual(out.results, ['shot-2', 'shot-3']);
+  assert.deepEqual(saved, ['shot-2', 'shot-3']);
+  calls.length = 0;
+  out = await generateSelectedShots(['shot-1', 'shot-2', 'shot-3'], async (id) => {
+    calls.push(id);
+    if (id === 'shot-2') throw new Error('Quota exhausted');
+    return id;
+  }, (r) => saved.push(r));
+  assert.deepEqual(calls, ['shot-1', 'shot-2']);
+  assert.deepEqual(out.results, ['shot-1']);
+  assert.equal(out.error, 'Quota exhausted');
 });

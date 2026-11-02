@@ -1,6 +1,8 @@
 import { availableModels, describeLighting, directPhoto, generateImage, planPose, reviewShot, type Img } from '@/lib/ai';
 import { selectedShot, shotInstruction, type DirectorInput, type StoredPosePlan } from '@/lib/photo-director';
 import { deliverDirectedImage } from '@/lib/directed-delivery';
+import { createShotProposal, readShotProposal } from '@/lib/director-proposal';
+import { me } from '@/lib/account';
 import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
@@ -83,12 +85,18 @@ export const POST = post(async (req) => {
     aspect, framing: null, angle: null, placement: null,
     expression: null, gaze: null, props: [], extra: null, previous: texts(req.previous_shots),
   } : null;
+  const planningOnly = req.plan_only === true;
+  if (planningOnly && !directorInput) return json(400, { error: 'เลือก AI จัดท่าและมุมกล้องก่อนขอไอเดียภาพ' });
+  const hasSelection = req.shot_proposal !== undefined || req.shot_id !== undefined;
+  const caller = me()?.id ?? 'local-team';
+  const selectedPlan = hasSelection && directorInput ? readShotProposal(req.shot_proposal, req.shot_id, directorInput, caller) : null;
+  if (hasSelection && (!selectedPlan || planningOnly)) return json(400, { error: 'ไอเดียภาพหมดอายุหรือไม่ตรงกับรูปที่เลือก กรุณาคิดไอเดียใหม่' });
   // สุ่มจังหวะของท่า 1 แบบ (POSE_PRESETS moments) — ไม่สุ่ม = AI ตัววางแผนให้ท่าเดิมซ้ำทุกรูป
   const presetDef = POSE_PRESETS.find((p) => p.id === posePreset);
   const moment = presetDef ? pickMoment(presetDef) : null;
   const [refLight, sceneLight, plan, director] = await Promise.all([
-    !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
-    !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
+    !planningOnly && !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
+    !planningOnly && !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
     posePreset && !directorInput ? planPose({
       location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
       locationIsModelPhoto: !req.scene_image && !sceneText0,
@@ -98,9 +106,10 @@ export const POST = post(async (req) => {
       preset: posePreset,
       moment,
     }) : null,
-    directorInput ? directPhoto(directorInput) : null,
+    directorInput ? selectedPlan ?? directPhoto(directorInput) : null,
   ]);
   if (directorInput && !director) return json(503, { error: 'AI ยังวางแผนภาพที่ใช้ได้ไม่สำเร็จ กรุณาลองอีกครั้ง (ยังไม่ได้สร้างรูป)' });
+  if (planningOnly && director && directorInput) return json(200, { proposal: createShotProposal(director, directorInput, caller) });
   const directedShot = director ? selectedShot(director) : null;
   const planName = directedShot?.title ?? (plan ? (POSE_PRESETS.find((p) => p.id === plan.preset)?.name ?? POSE_AUTO.name) : null);
   const poseInstruction = director ? shotInstruction(director) : plan?.en ?? null;

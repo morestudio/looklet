@@ -50,6 +50,7 @@ export type DirectorPlan = {
   candidates: ShotCandidate[];
   selectedId: string;
 };
+export type ShotProposal = { plan: DirectorPlan; token: string };
 export type ShotReview = {
   status: 'passed' | 'needs_review' | 'unavailable';
   checks: Record<string, 'pass' | 'fail' | 'uncertain'>;
