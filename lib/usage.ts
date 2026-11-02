@@ -2,6 +2,7 @@
 // route ที่สร้างรูป (generate / packshot / local-edit / refine-skin): quotaBlock() ก่อนเรียก AI, recordUsage() หลังได้ผล (สำเร็จหรือพัง)
 import 'server-only';
 import { isCustomer, me } from './account';
+import type { GenerateLog, PackshotLog } from './genlog';
 import { serviceClient, supabaseEnabled } from './storage-supabase';
 
 // ค่า AI โดยประมาณต่อรูป (บาท): GPT Image 2.5 คุณภาพสูง ~฿2 ต่อรูป (ทดสอบจริง 27 ต.ค.) ต่ำกว่านั้นถูกลงตามสัดส่วน
@@ -53,6 +54,7 @@ export type UsageEntry = {
   page: 'model' | 'product'; action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin';
   model: string; quality: string; status: 'ok' | 'error'; calls?: number; // calls = เรียก AI สร้างรูปกี่ครั้ง (harmonize = 2)
   tokens?: number; // โทเคนที่ AI คิดจริงรวมทุกครั้ง (0/ไม่มี = ไม่รู้ -> ESTIMATED_TOKENS)
+  log?: GenerateLog | PackshotLog; // สิ่งที่ส่งให้ AI (พรอมต์ รูป ค่าที่เลือก) -> หน้าตรวจงาน /admin/audit · result = log.result
 };
 
 // บันทึกไม่ได้ห้ามทำให้การสร้างรูปพัง (จ่ายเงินไปแล้ว รูปต้องถึงมือผู้ใช้)
@@ -60,11 +62,14 @@ export async function recordUsage(entry: UsageEntry) {
   if (!supabaseEnabled) return;
   const account = me();
   try {
-    const { error } = await serviceClient().from('usage').insert({
+    const row = {
       user_id: account?.id ?? null, email: account?.email ?? 'local', page: entry.page, action: entry.action,
       model: entry.model, quality: entry.quality, status: entry.status, tokens: entry.tokens || null,
       cost_thb: entry.status === 'ok' ? estimateCost(entry.model, entry.quality, entry.calls) : 0,
-    });
+    };
+    let { error } = await serviceClient().from('usage').insert({ ...row, result: entry.log?.result ?? null, log: entry.log ?? null });
+    // ฐานข้อมูลยังไม่มีคอลัมน์ result/log (ยังไม่ได้รัน db-apply หลัง 2 พ.ย.) -> บันทึกแบบเดิม โควตาต้องนับต่อได้เสมอ
+    if (error && /column.*\b(result|log)\b|\b(result|log)\b.*column/i.test(error.message)) ({ error } = await serviceClient().from('usage').insert(row));
     if (error) console.error('บันทึกการใช้งานไม่สำเร็จ', error.message);
   } catch (e) {
     console.error('บันทึกการใช้งานไม่สำเร็จ', e);

@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ownerMeta, visibleTo } from './account';
+import { me, ownerMeta, visibleTo } from './account';
 import { sbDelete, sbList, sbMeta, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
 
 const ROOT = process.cwd();
@@ -115,10 +115,12 @@ function resolveFile(parts: string[]) {
   return type ? { full: path.join(/*turbopackIgnore: true*/ folder, file), key: [...parts.slice(0, -1), file].join('/'), type } : null;
 }
 
+// superadmin เปิดรูปของทุกบัญชีได้เมื่อรู้ชื่อไฟล์ (หน้าตรวจงาน /admin/audit) แต่รายการรูปในคลัง (listImages) ยังเห็นเฉพาะของตัวเองเหมือนเดิม
 export async function readImage(parts: string[]) {
   const f = resolveFile(parts);
   if (!f) return null;
-  const data = supabaseEnabled ? await sbRead(f.key, (meta) => visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
+  const auditor = me()?.role === 'superadmin';
+  const data = supabaseEnabled ? await sbRead(f.key, (meta) => auditor || visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
 }
 

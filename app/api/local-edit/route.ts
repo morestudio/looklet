@@ -59,12 +59,12 @@ export const POST = post(async (req) => {
       ...(product ? { page: 'product' as const, ...(original.stylePlan ? { stylePlan: original.stylePlan } : {}) } : {}),
     };
     const src = await saveImage({ area: 'results' }, blended.data, blended.mime, meta);
-    await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
-    await recordUsage({ ...usage, status: 'ok', tokens });
+    const entry = await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
+    await recordUsage({ ...usage, status: 'ok', tokens, log: entry });
     return json(200, { src, ...meta });
   } catch (err) {
-    await writeGenerateLog({ ...log, status: 'พัง', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, error: (err as Error).message });
-    await recordUsage({ ...usage, status: 'error', tokens });
+    const entry = await writeGenerateLog({ ...log, status: 'พัง', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, error: (err as Error).message });
+    await recordUsage({ ...usage, status: 'error', tokens, log: entry });
     throw err;
   }
 });

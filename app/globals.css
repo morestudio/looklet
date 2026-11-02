@@ -503,6 +503,51 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 .admin-create { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-12); margin-top: var(--space-16); }
 .admin-create label { display: grid; gap: var(--space-4); color: var(--mute); font-size: var(--text-xs); }
 .admin-create .text-input { width: 120px; height: var(--control-height); min-height: 0; }
+.admin-tabs a { text-decoration: none; }
+
+/* หน้า /admin/audit (ตรวจงาน): ตารางรูปที่สร้าง + กล่องดูพรอมต์ของรูปนั้น */
+.audit-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8) var(--space-16); margin: var(--space-12) 0 var(--space-16); }
+.audit-filters .chips { margin: 0; }
+.audit-filters select { height: var(--chip-height); padding: 0 var(--space-8); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--canvas); color: var(--ink); font: inherit; font-size: var(--text-sm); }
+.audit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: var(--space-12); }
+.audit-card { display: flex; flex-direction: column; min-width: 0; padding: 0; border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas); color: inherit; font: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.audit-card:hover { border-color: var(--ink); }
+.audit-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.audit-thumb { display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 5; background: #fff; }
+.audit-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.audit-thumb.failed { padding: var(--space-12); background: var(--danger-soft); color: var(--danger); font-size: var(--text-xs); text-align: center; overflow-wrap: anywhere; }
+.audit-info { display: grid; gap: 2px; padding: var(--space-8) var(--space-10) var(--space-10); color: var(--mute); font-size: var(--text-2xs); }
+.audit-info b { overflow: hidden; color: var(--ink); font-size: var(--text-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.audit-tag { justify-self: start; margin-top: var(--space-4); padding: 1px var(--space-6); border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); }
+.audit-more { display: block; margin: var(--space-16) auto 0; }
+dialog.audit-dialog { width: min(1180px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: var(--space-20); overflow: auto; }
+.audit-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-12); margin-bottom: var(--space-14); }
+.audit-dialog-head h2 { margin: 0; }
+.audit-detail { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-24); align-items: start; }
+.audit-result { display: block; width: 100%; border-radius: var(--r-image); background: #fff; }
+.audit-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-4) var(--space-12); margin: var(--space-14) 0 0; font-size: var(--text-xs); }
+.audit-facts dt { color: var(--mute); }
+.audit-facts dd { margin: 0; color: var(--ink-soft); overflow-wrap: anywhere; white-space: pre-wrap; }
+.audit-error { color: var(--danger) !important; }
+.audit-section + .audit-section, .audit-section + .audit-raw { margin-top: var(--space-20); }
+.audit-section h3 { display: flex; align-items: center; justify-content: space-between; gap: var(--space-8); margin: 0 0 var(--space-8); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; }
+.audit-section h3 .btn { height: 30px; padding: 0 var(--space-12); font-size: var(--text-xs); gap: var(--space-4); }
+.audit-section h3 .btn svg { width: 14px; height: 14px; }
+.audit-section .audit-facts { margin: 0; }
+.audit-inputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--space-10); }
+.audit-inputs figure { margin: 0; min-width: 0; }
+.audit-inputs img, .audit-noimg { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--hairline-soft); border-radius: var(--r-thumb); background: #fff; color: var(--ash); font-size: var(--text-2xs); }
+.audit-inputs figcaption { margin-top: var(--space-4); color: var(--mute); font-size: var(--text-2xs); line-height: 1.4; overflow-wrap: anywhere; }
+.audit-inputs figcaption b { color: var(--ink); font-weight: 600; }
+.audit-prompt { margin: 0; padding-left: var(--space-24); color: var(--body); font-size: var(--text-sm); line-height: 1.55; }
+.audit-prompt li { margin-bottom: var(--space-4); }
+.audit-raw summary { color: var(--mute); font-size: var(--text-xs); cursor: pointer; }
+.audit-raw pre { max-height: 360px; margin: var(--space-8) 0 0; padding: var(--space-12); overflow: auto; border-radius: var(--r-sm); background: var(--surface-soft); color: var(--ink-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-2xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .audit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .audit-detail { grid-template-columns: 1fr; }
+  dialog.audit-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: var(--space-12); }
+}
 
 /* ---------- หน้าต้อนรับลูกค้า (components/Welcome.tsx): มินิมอล "Welcome" ตามด้วยชื่อ ตัว Instrument Serif ปกติ (เดิมลายมือ เปลี่ยน 29 ต.ค.) ----------
    แต่ละคำมี 2 ชั้นซ้อนกัน: เส้นปากกา (ขอบตัวอักษร) นำ แล้วหมึกตามหลัง ~0.2 วิ เผยจากซ้ายไปขวาด้วย mask ขอบนุ่ม (เหมือนหมึกกำลังไหล)

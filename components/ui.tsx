@@ -141,6 +141,14 @@ export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin'
   </nav>;
 }
 
+// แท็บในหน้าแอดมิน: ภาพรวม (โค้ดเชิญ/การใช้งาน) | ตรวจงาน (ทุกรูปที่สร้าง + พรอมต์)
+export function AdminTabs({ current }: { current: 'overview' | 'audit' }) {
+  const tab = (id: 'overview' | 'audit', href: string, label: string) => (
+    <Link href={href} className={'chip' + (current === id ? ' active' : '')} aria-current={current === id ? 'page' : undefined}>{label}</Link>
+  );
+  return <nav className="chips admin-tabs" aria-label="หน้าแอดมิน">{tab('overview', '/admin', 'ภาพรวม')}{tab('audit', '/admin/audit', 'ตรวจงาน')}</nav>;
+}
+
 // ลูกค้า: แถบโทเคนใช้ไป / ทั้งหมด มุมขวาบนข้างปุ่มออกจากระบบ (โควตาเป็นโทเคนแทนจำนวนรูป 28 ต.ค.)
 // อัปเดตเองหลังสร้างรูปทุกครั้ง (USAGE_EVENT) · ใช้ไป ≥ 90% เป็นสีดินเผา (--danger)
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }); // 4116 -> 4.1K, 200000 -> 200K

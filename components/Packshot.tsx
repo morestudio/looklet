@@ -603,6 +603,7 @@ export default function Packshot() {
         ref: refImg?.data ?? null, ref_mode: refMode, prop_text: ownProp, prop_image: propB?.data ?? null,
         refs: {
           product: { ...refOf(product, productImg), type: productType(product.type).name }, ref: refOf(ref, refImg), set_image: refOf(sceneImg, sceneB), prop_image: refOf(propImg, propB),
+          supports: supporting.map((i) => ({ name: i.name, src: i.src })), // รูปสินค้าเพิ่มเติมที่ส่งไป -> log / หน้าตรวจงาน
         },
       };
       const shootId = set ? newSetId() : null;

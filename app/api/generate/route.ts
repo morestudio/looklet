@@ -195,12 +195,12 @@ export const POST = post(async (req) => {
     const src = await saveImage({ area: 'results' }, image.data, image.mime,
       { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
         ...(plan ? { posePlan: { name: planName, th: plan.th } } : {}) });
-    await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
-    await recordUsage({ ...usage, status: 'ok', tokens });
+    const log = await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
+    await recordUsage({ ...usage, status: 'ok', tokens, log });
     return json(200, { src, posePlan: plan ? { name: planName, th: plan.th } : null });
   } catch (e) {
-    await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
-    await recordUsage({ ...usage, status: 'error', tokens });
+    const log = await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
+    await recordUsage({ ...usage, status: 'error', tokens, log });
     throw e;
   }
 });

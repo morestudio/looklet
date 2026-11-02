@@ -1,4 +1,5 @@
-// genlog.ts — บันทึกสิ่งที่ส่งให้ AI ทุกครั้งที่เจนรูป (สำเร็จหรือพังก็บันทึก) ใช้ฝั่ง server เท่านั้น ไม่โชว์ในหน้าเว็บ
+// genlog.ts — บันทึกสิ่งที่ส่งให้ AI ทุกครั้งที่เจนรูป (สำเร็จหรือพังก็บันทึก) ใช้ฝั่ง server เท่านั้น ไม่โชว์ในหน้าเว็บของลูกค้า
+// (เก็บซ้ำในตาราง usage ด้วย recordUsage: superadmin ดูได้ที่หน้าตรวจงาน /admin/audit เพราะไฟล์ logs/ บน Vercel หาย)
 // 1 รูป = 1 ไฟล์ใน logs/ (JSON จัดย่อหน้า เปิดใน VS Code แล้วพับ/กางทีละ section ได้)
 //   ชื่อไฟล์ = ชื่อรูปผลลัพธ์: results/20261015-152904-f43438.jpg -> logs/20261015-152904-f43438.json
 //   สร้างไม่สำเร็จ (ไม่มีรูป) -> logs/<วันเวลา>-<สุ่ม>-error.json
@@ -48,6 +49,7 @@ export type PackshotLog = {
     props: { style: string; moment?: string; plan_th?: string; plan_en?: string; own?: string; image?: LogImage }; // own/image = พร็อพของฉัน
   };
   set?: { shot: string } & Partial<LogImage>;
+  supports?: LogImage[]; // รูปสินค้าเพิ่มเติม (มุมอื่น) ที่ส่งไปต่อท้าย
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
 };
@@ -65,7 +67,8 @@ function logName(entry: GenerateLog | PackshotLog) {
   return `${stamp}-${randomUUID().replaceAll('-', '').slice(0, 6)}-error`;
 }
 
-export async function writeGenerateLog(entry: GenerateLog | PackshotLog) {
+// คืน entry เดิม ให้ route ส่งต่อไปเก็บกับแถวการใช้งาน (recordUsage -> หน้าตรวจงาน /admin/audit)
+export async function writeGenerateLog<T extends GenerateLog | PackshotLog>(entry: T): Promise<T> {
   const file = path.join(LOG_DIR, logName(entry) + '.json');
   try {
     await fs.mkdir(LOG_DIR, { recursive: true });
@@ -75,4 +78,5 @@ export async function writeGenerateLog(entry: GenerateLog | PackshotLog) {
   }
   console.log(`[generate] ${entry.status} · ${entry.ai.model} · ${entry.duration}`
     + `${entry.error ? ' · ' + entry.error : ''} (log: logs/${path.basename(file)})`);
+  return entry;
 }

@@ -131,7 +131,7 @@ export const POST = post(async (req) => {
     { role: 'ref', data: ref, ref: toRef(refs.ref) },
     { role: 'scene', data: setImage, ref: toRef(refs.set_image) },
     { role: 'prop', data: propImage, ref: toRef(refs.prop_image) },
-    ...supports.map((data) => ({ role: 'product-detail', data, ref: {} as Ref })),
+    ...supports.map((data, i) => ({ role: 'product-detail', data, ref: toRef(Array.isArray(refs.supports) ? refs.supports[i] : null) })),
   ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string');
   const supportIndexes = inputs.flatMap((x, i) => x.role === 'product-detail' ? [i + 1] : []);
   if (supportIndexes.length) prompt += ` Images ${supportIndexes.join(', ')} are additional photographs of the SAME product, showing real sides and fine details. Use them as authoritative design evidence, never as styling or background references. Preserve the actual back, sides, base and features; do not invent details.`;
@@ -145,14 +145,16 @@ export const POST = post(async (req) => {
       return src;
     }
   };
-  const logOf = (role: string): LogImage | undefined => {
-    const i = inputs.findIndex((x) => x.role === role);
-    if (i < 0) return undefined;
+  const logAt = (i: number): LogImage => {
     const { ref: r, data } = inputs[i];
     return {
       image: i + 1, name: r.name, ...(r.type ? { type: r.type } : {}), file: readable(r.src),
       sent: [r.w && r.h ? `${r.w}×${r.h}` : null, `${Math.round((data.length * 0.75) / 1024)} KB`].filter(Boolean).join(' · '),
     };
+  };
+  const logOf = (role: string): LogImage | undefined => {
+    const i = inputs.findIndex((x) => x.role === role);
+    return i < 0 ? undefined : logAt(i);
   };
   const styleLog: PackshotLog['style'] = {
     preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${creative?.title ?? preset.name}`, angle: creative ? 'ตามคอนเซปต์' : angle.name, framing: creative?.composition ?? framing.name, aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
@@ -181,6 +183,8 @@ export const POST = post(async (req) => {
       },
     },
     ...(setRef ? { set: { shot: setShot!.name, ...logOf('set') } } : {}),
+    // รูปสินค้าเพิ่มเติม (มุมอื่นของสินค้าชิ้นเดียวกัน) — รูปพวกนี้เคยดึงทั้งท่าวาง/สีให้เพี้ยน (30 ต.ค.) ต้องตรวจย้อนได้ว่าส่งรูปไหนไป
+    ...(supportIndexes.length ? { supports: supportIndexes.map((n) => logAt(n - 1)) } : {}),
     style: styleLog,
     prompt: sentences(prompt),
   };
@@ -198,12 +202,12 @@ export const POST = post(async (req) => {
       page: 'product', caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
       ...(stylePlan ? { stylePlan } : {}),
     });
-    await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
-    await recordUsage({ ...usage, status: 'ok', tokens });
+    const log = await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
+    await recordUsage({ ...usage, status: 'ok', tokens, log });
     return json(200, { src, stylePlan });
   } catch (e) {
-    await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
-    await recordUsage({ ...usage, status: 'error', tokens });
+    const log = await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
+    await recordUsage({ ...usage, status: 'error', tokens, log });
     throw e;
   }
 });
