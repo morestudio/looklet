@@ -5,6 +5,7 @@
 //   รูปถ่ายจริงเงียบๆ สินค้าชิ้นเดียวกลางภาพ ที่ว่างเยอะ · แสงนุ่ม เงาจาง · สีหม่น คอนทราสต์ต่ำ · สีฉากเลือกให้เข้ากับสินค้า
 //   กล้องอยู่ระดับเดียวกับสินค้า หรือมองตรงลงมา (แฟลตเลย์) · พร็อพไม่มีเลย หรือ still life เล็กๆ ที่สีรับกับสินค้า
 // ยังไม่ได้ทดสอบเทียบกับรูปตัวอย่าง (ผู้ใช้ให้ข้ามการทดสอบ 26 ต.ค. จะลองเองบนเว็บทดสอบ)
+import { describeTurn, turnSummary, type Turn } from './turntable';
 
 // ---------- ประเภทสินค้า: AI ดูรูปตอนอัปโหลดแล้วเลือกให้ (lib/ai.ts describeProduct) ----------
 // stand = วางบนฉากยังไง (มุมปกติ), flat = วางนอนยังไง (มุมมองตรงลงมา)
@@ -484,6 +485,15 @@ export function resolveProductAngle(shot: unknown, requested: unknown, presetAng
   const fallback = choices.find((a) => a.id === presetAngle) ?? choices.find((a) => a.id === 'above') ?? choices[0];
   return shot === 'multi' ? choices[0] : choices.find((a) => a.id === requested) ?? (shot === 'styled' ? fallback : choices[0]);
 }
+// ---------- ตั้งมุมเอง (2 พ.ย. ลูกค้าขอหมุนสินค้าเอง): Clean / Custom เท่านั้น · หมุนตัวแทนสามมิติ (lib/turntable.ts) ----------
+// หน้าเว็บส่ง angle = 'custom' + turn { yaw, elev } · server เขียนคำบรรยายมุมจากตัวเลข + ส่งภาพไกด์มุมให้ AI
+export const CUSTOM_ANGLE = 'custom';
+export const customAngleShot = (shot: unknown) => shot === 'clean' || shot === 'styled';
+export function turntableAngle(type: unknown, turn: Turn): AngleChoice {
+  const yaw = turn.yaw > 0 ? `+${turn.yaw}` : String(turn.yaw);
+  return { id: CUSTOM_ANGLE, name: `ตั้งมุมเอง (หมุน ${yaw}° · กล้อง ${turn.elev}°)`, hint: turnSummary(type, turn), prompt: describeTurn(type, turn) };
+}
+
 export const shotFramings = (id: unknown) => PRODUCT_FRAMINGS.filter((f) => id === 'detail' ? f.id === 'detail' : id === 'styled' || f.id !== 'detail');
 export const automaticProductSet = (id: unknown) => id === 'detail' || id === 'scale';
 export const shotSets = (id: unknown, reference?: unknown) => SETS.filter((s) => id === 'styled'

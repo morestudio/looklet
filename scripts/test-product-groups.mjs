@@ -23,6 +23,7 @@ function load(file) {
     if (id === '@/lib/route') return { post: (fn) => fn, json };
     if (id.startsWith('@/lib/')) return load(id.slice(2) + '.ts');
     if (id === './aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
+    if (id === './turntable') return load('lib/turntable.ts'); // packshot.ts ใช้คำบรรยายมุมของตั้งมุมเอง
     return require(id);
   };
   new Function('require', 'module', 'exports', 'process', code)(customRequire, loaded, loaded.exports, { cwd: () => root });

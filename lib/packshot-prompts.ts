@@ -4,6 +4,7 @@
 // เขียนเป็นภาษาอังกฤษเพราะโมเดลเจนรูปเข้าใจแม่นกว่า
 import 'server-only';
 import type { RefMode } from './packshot';
+import { guideSentence } from './turntable';
 
 // สินค้าต้องเหมือนรูปสินค้าทุกรายละเอียด: AI ชอบวาดของ "คล้ายๆ" ใหม่ (บทเรียนเดียวกับ ACCESSORY_RULES ของหน้านางแบบ)
 // รูปตัวอย่างโชว์รายละเอียดชัด: ผิวหนังเม็ด/เรียบ ฝีเข็มสีตัด สีขอบหนัง อะไหล่ทอง โลโก้ปั๊มนูน ตัวอักษรปั๊มทองเล็กๆ
@@ -48,6 +49,7 @@ export type PackshotInput = {
   grade: string | null; // โทนสีของสไตล์ null = ตามช็อตต้นแบบ
   crop?: string | null; // สัดส่วนสุดท้ายที่ server จะตัด (OpenAI ทำ 4:5 / 9:16 ไม่ได้) null = ไม่ตัด
   extra?: string | null;
+  guideFor?: string | null; // ตั้งมุมเอง: ประเภทสินค้าของภาพไกด์มุม (รูปต่อจากรูปพร็อพของฉัน) null = ไม่มีไกด์
 };
 
 // รูปต้นแบบมักแคปจาก IG: มีตัวนับ 1/2 ไอคอน ตัวอักษรทับ -> บอกให้ไม่สนใจ
@@ -110,6 +112,8 @@ export function buildPackshotPrompt(p: PackshotInput) {
       + 'away from the edges that will be cut.');
   }
   if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, 400)}`);
+  // ไกด์มุม (ตั้งมุมเอง): รูปต่อจาก สินค้า / ช็อตต้นแบบ / รูปฉาก / รูปพร็อพ — route ต้องเรียงรูปตามนี้ · อยู่ก่อนบรรทัด Most important แบบที่ทดสอบ
+  if (p.guideFor != null && !shot) out.push(guideSentence(p.guideFor, (propImage ?? setImage ?? (ref ? 2 : 1)) + 1));
   // ย้ำมุม/ระยะเป็นบรรทัดสุดท้าย: บทเรียน camera ของหน้านางแบบ (21 ต.ค.) ไม่ย้ำ = AI ยึดกรอบภาพ/มุมของรูปที่ส่งไปแทน
   if (!shot) out.push(`Most important: ${p.angle}, with ${p.framing}.`);
   return out.join(' ');

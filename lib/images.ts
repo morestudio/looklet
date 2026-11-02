@@ -21,6 +21,11 @@ export async function servable(img: Img): Promise<Img> {
 
 // ตัดตรงกลางให้ได้สัดส่วนที่เลือก (หน้าสินค้า): OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 แต่ฟีด IG ใช้ 4:5 — สัดส่วนตรงอยู่แล้ว (Gemini) = รูปเดิม
 // ใช้ก่อน servable (รูปที่ตัดแล้วยังใหญ่ ค่อยแปลงเป็น JPEG) · ตัดไม่ได้ = เก็บรูปเดิม (จ่ายเงินแล้ว ห้ามหาย)
+// ภาพ SVG ที่เราวาดเอง (ไกด์มุมของ "ตั้งมุมเอง" lib/turntable.ts) -> JPEG base64 สำหรับส่งให้ AI
+export async function svgJpeg(svg: string): Promise<string> {
+  return (await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer()).toString('base64');
+}
+
 export async function cropTo(img: Img, aspect: string): Promise<Img> {
   const [aw, ah] = aspect.split(':').map(Number);
   if (!aw || !ah) return img;

@@ -1,9 +1,11 @@
 import { availableModels, describeLighting, generateImage, planStyling, type Img } from '@/lib/ai';
 import { GPT25_SIZES, isGpt25 } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type LogImage, type PackshotLog } from '@/lib/genlog';
-import { cropTo, servable } from '@/lib/images';
+import { cropTo, servable, svgJpeg } from '@/lib/images';
+import { readTurn, turnFill, turnPlace, turntableSvg } from '@/lib/turntable';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, plainShot, shotFramings, resolveProductAngle, resolveProductBackground,
+  CUSTOM_ANGLE, customAngleShot, turntableAngle,
   AUTO_PROP_STYLE, AUTO_PROPS, HAND_MODES, LENS, NO_PROPS, PRODUCT_ANGLES, PRODUCT_FRAMINGS, PRODUCT_LIGHTS, PRODUCT_SET_SHOTS, REF_MODES,
   handshotSingle, isProductAspect, pickOne, productPreset, productType, propStyle, resolveHandPose, type RefMode,
 } from '@/lib/packshot';
@@ -60,6 +62,10 @@ export const POST = post(async (req) => {
     ? { id: req.set.id, index: req.set.index } : null;
   const finish = req.finish === 'phone' || req.finish === 'film' || req.finish === 'off' ? req.finish : null;
 
+  // ตั้งมุมเอง (Clean / Custom): ต้องมีตัวเลขมุมที่ใช้ได้ ตรวจก่อนเรียก AI · ประเภทอื่น / มุมที่ 2 ของชุดภาพ ไม่ใช้
+  const wantsTurn = req.angle === CUSTOM_ANGLE && customAngleShot(shotType) && !setRef;
+  if (wantsTurn && !readTurn(req.turn)) return json(400, { error: 'มุมที่ตั้งเองไม่ถูกต้อง ลองหมุนใหม่อีกครั้ง' });
+
   const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI (รวมตัววางแผนพร็อพ)
   if (blocked) return blocked;
 
@@ -73,7 +79,9 @@ export const POST = post(async (req) => {
   const propImage = ownProps ? image(req.prop_image) : null;
   const own = propText || propImage ? `the user's own prop${propText ? ` (${propText})` : ''}${propImage ? ', the exact object from the prop photo' : ''}` : null;
 
-  const angle = setShot ? part(PRODUCT_ANGLES, setShot.angle, 'front') : resolveProductAngle(shotType, req.angle, preset.angle, detail.id, scale.id);
+  const turn = wantsTurn && refMode !== 'shot' ? readTurn(req.turn) : null; // ลอกทั้งช็อต = มุมตามรูปต้นแบบ ไม่ใช้มุมที่ตั้ง
+  const angle = setShot ? part(PRODUCT_ANGLES, setShot.angle, 'front') : turn ? turntableAngle(type.id, turn)
+    : resolveProductAngle(shotType, req.angle, preset.angle, detail.id, scale.id);
   const framing = setShot ? part(PRODUCT_FRAMINGS, setShot.framing, 'medium') : part(shotFramings(shotType), req.framing, shotType === 'detail' ? 'detail' : preset.framing);
   const background = resolveProductBackground(shotType, preset, req.set_id, req.set_color, req.light, scale.id);
   const light = background.light;
@@ -111,7 +119,10 @@ export const POST = post(async (req) => {
   const flat = Boolean(angle.flat);
   const place = shotType === 'scale' && (scale.id === 'hand' || scale.id === 'person')
     ? `The product is naturally held or worn: ${scale.prompt}. It has real weight, natural contact and gravity.`
-    : flat ? type.flat : type.stand;
+    : turn ? turnPlace(type.id, type.stand) : flat ? type.flat : type.stand;
+  // ภาพไกด์มุม (ตั้งมุมเอง): วาดด้วยตัวเดียวกับหน้าเว็บ ขนาดตามสัดส่วนที่สร้าง + สินค้าใหญ่ตามระยะที่เลือก
+  const orient = aw < ah ? 'portrait' : aw > ah ? 'landscape' : 'square';
+  const guide = turn ? await svgJpeg(turntableSvg(type.id, turn, { orient, fill: turnFill(framing.id, Boolean(props && framing.withProps)) })) : null;
   const lens = framing.lens ?? LENS;
   const handLight = PRODUCT_LIGHTS.find((l) => l.id === 'window')!; // Handshot ใช้แสงหน้าต่างนุ่มเสมอ (ตามที่ทดสอบ)
   let prompt = creative ? buildCreativePackshotPrompt({ what: type.prompt, concept: creative.prompt, crop, extra: req.extra })
@@ -121,7 +132,7 @@ export const POST = post(async (req) => {
       what: type.prompt, place, flat, refMode, hasSetImage: Boolean(setImage), hasPropImage: Boolean(propImage), set: setText, props,
       light: ref || setImage ? null : light.prompt, refLight, sceneLight, lens, angle: angle.prompt, framing: (props && framing.withProps) || framing.prompt,
       grade: ref ? null : preset.grade, crop, extra: req.extra,
-      detail: shotType === 'detail', scale: shotType === 'scale' ? scale.prompt : null,
+      detail: shotType === 'detail', scale: shotType === 'scale' ? scale.prompt : null, guideFor: guide ? type.id : null,
     });
 
   if (!handshot && !setRef && !ref && !setImage && background.color.id === 'match') prompt += ' Choose a background color that complements the product while keeping a visible luminance contrast along its edges. Preserve the exact product color, without tinting it with the backdrop color.';
@@ -138,6 +149,7 @@ export const POST = post(async (req) => {
     { role: 'ref', data: ref, ref: toRef(refs.ref) },
     { role: 'scene', data: setImage, ref: toRef(refs.set_image) },
     { role: 'prop', data: propImage, ref: toRef(refs.prop_image) },
+    { role: 'angle-guide', data: guide, ref: { name: 'ไกด์มุม (ตั้งมุมเอง)', w: orient === 'landscape' ? 1536 : 1024, h: orient === 'portrait' ? 1536 : 1024 } },
     ...supports.map((data, i) => ({ role: 'product-detail', data, ref: toRef(Array.isArray(refs.supports) ? refs.supports[i] : null) })),
   ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string');
   const supportIndexes = inputs.flatMap((x, i) => x.role === 'product-detail' ? [i + 1] : []);
@@ -170,6 +182,7 @@ export const POST = post(async (req) => {
     preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${creative?.title ?? preset.name}`, angle: creative ? 'ตามคอนเซปต์' : angle.name, framing: creative?.composition ?? framing.name, aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
   };
   if (!ref && !setRef) styleLog.light = handPose ? handLight.name : creative?.lighting ?? light.name;
+  if (turn) styleLog.angleView = angle.hint; // ตั้งมุมเอง: เห็นด้านไหน + กล้องสูงเท่าไหร่ (ภาษาไทย)
   if (color && setText && !handPose) styleLog.color = color.name;
   if (creative) styleLog.color = creative.palette.join(' · ');
   if (variant) styleLog.plinth = variant;
@@ -193,6 +206,7 @@ export const POST = post(async (req) => {
       },
     },
     ...(setRef ? { set: { shot: setShot!.name, ...logOf('set') } } : {}),
+    ...(guide ? { angleGuide: logOf('angle-guide') } : {}),
     // รูปสินค้าเพิ่มเติม (มุมอื่นของสินค้าชิ้นเดียวกัน) — รูปพวกนี้เคยดึงทั้งท่าวาง/สีให้เพี้ยน (30 ต.ค.) ต้องตรวจย้อนได้ว่าส่งรูปไหนไป
     ...(supportIndexes.length ? { supports: supportIndexes.map((n) => logAt(n - 1)) } : {}),
     style: styleLog,

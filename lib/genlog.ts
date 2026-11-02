@@ -52,6 +52,7 @@ export type PackshotLog = {
   };
   set?: { shot: string } & Partial<LogImage>;
   supports?: LogImage[]; // รูปสินค้าเพิ่มเติม (มุมอื่น) ที่ส่งไปต่อท้าย
+  angleGuide?: LogImage; // ตั้งมุมเอง: ภาพไกด์มุม (ตัวแทนสามมิติ) ที่ server วาดเอง ไม่ได้เก็บไฟล์
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
 };

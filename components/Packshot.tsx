@@ -15,6 +15,8 @@ import {
   IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
 import { HandArt, HandView } from './HandView';
+import Turntable, { turnSrc } from './Turntable';
+import { defaultTurn, turnFill, type Turn } from '@/lib/turntable';
 import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
@@ -27,7 +29,7 @@ import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
   PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
   NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
-  HAND_MODES, HAND_POSES, handPoses, resolveHandPose,
+  HAND_MODES, HAND_POSES, handPoses, resolveHandPose, CUSTOM_ANGLE, customAngleShot, turntableAngle,
 } from '@/lib/packshot';
 
 type Key = 'product' | 'ref' | 'scene' | 'prop';
@@ -291,6 +293,7 @@ export default function Packshot() {
   const [colorId, setColorId] = useState('white'); // สีฉาก (BACKDROP_COLORS)
   const [propsId, setPropsId] = useState(NO_PROPS); // เริ่มที่ไม่มีพร็อพ (ไม่มี "ตามฉาก" / "AI เลือกให้" ในขั้นพร็อพแล้ว 27 ต.ค.)
   const [angleId, setAngleId] = useState(PRESET);
+  const [turn, setTurn] = useState<Turn | null>(null); // ตั้งมุมเอง (angleId = 'custom') · null = มุมเริ่มต้นของประเภทสินค้า
   const [framingId, setFramingId] = useState(PRESET);
   const [refMode, setRefMode] = useState<RefMode>('shot');
   const [aspect, setAspect] = useState('1:1');
@@ -353,9 +356,16 @@ export default function Packshot() {
   const propsName = propStyle(propsId)?.name ?? '';
   const propsLabel = propsId === NO_PROPS && ownName ? ownName : propsName + (ownName ? ` + ${ownName}` : ''); // ไม่มีพร็อพ + ของฉัน = มีแค่ของฉัน
   const light = background.light;
-  const angle = resolveProductAngle(shotType, angleId, preset.angle, detailTarget, scaleRef);
+  // ตั้งมุมเอง (Clean / Custom): มุมมาจากตัวเลขที่หมุน ไม่ใช่รายการมุม · ช็อตต้นแบบลอกทั้งช็อตไม่ใช้มุมที่ตั้ง (API ก็ไม่ใช้)
+  const customAngle = customAngleShot(shotType) && angleId === CUSTOM_ANGLE && !shot;
+  const curTurn = turn ?? defaultTurn(product?.type);
+  const angle = customAngle ? turntableAngle(product?.type, curTurn) : resolveProductAngle(shotType, angleId, preset.angle, detailTarget, scaleRef);
   const automaticAngle = automaticProductAngle(shotType);
   const framing = PRODUCT_FRAMINGS.find((f) => f.id === (framingId === PRESET ? preset.framing : framingId))!;
+  // ภาพตั้งมุม: สัดส่วนเดียวกับรูปที่จะสร้าง + สินค้าใหญ่ตามระยะ (ตรงกับที่ API วาดส่ง AI)
+  const [aw, ah] = (aspect === 'auto' ? '4:5' : aspect).split(':').map(Number);
+  const turnOrient = aw < ah ? 'portrait' : aw > ah ? 'landscape' : 'square';
+  const turnFillAmount = turnFill(framing.id, propsId !== NO_PROPS || Boolean(ownName));
   const shown = current === null ? null : results[current];
 
   const { canvasRef, fullRef, fullSrcRef } = useRetouchCanvas(
@@ -602,7 +612,7 @@ export default function Packshot() {
       const body = {
         creative_concept: shotType === 'creative' ? creativeConcept : null,
         shot_type: shotType, detail_target: detailTarget, feature: feature.trim(),
-        scale_reference: scaleRef, dimensions, reference_size: referenceSize, hand_pose: handPose.id,
+        scale_reference: scaleRef, dimensions, reference_size: referenceSize, hand_pose: handPose.id, turn: customAngle ? curTurn : null,
         support_images: supportImages, product_group: selectedGroup!.id,
         model: choice.id, quality, aspect: finalAspect, extra: extra.trim(), finish: 'off',
         product: productImg.data, product_type: productType(product.type).id, preset: preset.id,
@@ -924,7 +934,18 @@ export default function Packshot() {
             aria-pressed={shotType === 'styled' ? angleId === a.id : angle.id === a.id} disabled={shot} onClick={() => setAngleId(a.id)}>
             <ViewPreview angle={a.id} /><b>{a.name}{shotType === 'clean' && a.id === 'front' ? ' (แนะนำ)' : ''}</b><small>{a.hint}</small>
           </button>)}
+          {/* ตั้งมุมเอง (2 พ.ย.): ภาพการ์ด = มุมที่ตั้งอยู่ (ตัวแทนสามมิติเดียวกับที่ส่ง AI) */}
+          {customAngleShot(shotType) && <button type="button" className={'option view-option' + (customAngle ? ' active' : '')}
+            aria-pressed={customAngle} disabled={shot} onClick={() => setAngleId(CUSTOM_ANGLE)}>
+            <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
+              <image href={turnSrc(product?.type, curTurn, 'landscape', 0.42)} width="240" height="150" preserveAspectRatio="xMidYMid slice" />
+            </svg>
+            <b>ตั้งมุมเอง</b><small>{customAngle ? angle.hint : 'หมุนสินค้าและปรับความสูงกล้องเอง'}</small>
+          </button>}
         </div>
+        {customAngle && <Section title="ตั้งมุมเอง" note="ลากภาพ หรือใช้แถบเลื่อน">
+          <Turntable type={product?.type} turn={curTurn} onChange={setTurn} orient={turnOrient} fill={turnFillAmount} />
+        </Section>}
       </>}
     </>;
   } else if (cur.key === 'framing') {
