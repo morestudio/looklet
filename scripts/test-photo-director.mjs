@@ -170,7 +170,8 @@ test('generation route wires director constraints, final crop, stored reviews an
   } });
   const { POST } = app('app/api/generate/route.ts');
   const body = { model: 'openai:gpt-image-2.5-sunburst', person: 'model-original', outfit: 'outfit-original', scene_image: 'room-original',
-    pose_preset: 'auto', background_mode: 'explore', photo_goal: 'lifestyle', aspect: '4:5', camera_framing: 'full body', camera_angle: 'high angle', placement: 'left', extra: 'Relaxed morning', previous_shots: ['Old shot'] };
+    pose_preset: 'auto', background_mode: 'explore', photo_goal: 'lifestyle', aspect: '4:5', camera_framing: 'manual close crop', camera_angle: 'manual high angle', placement: 'left',
+    face: 'manual expression', gaze: 'manual gaze', props: ['manual held prop'], extra: 'manual additional instruction', previous_shots: ['Old shot'] };
   let out = await POST(body);
   assert.equal(out.status, 200);
   assert.equal(out.body.src, '/result-2.jpg');
@@ -185,8 +186,9 @@ test('generation route wires director constraints, final crop, stored reviews an
   assert.match(prompts[1].prompt, /Image 4 is the failed draft/);
   assert.match(prompts[0].prompt, /planned body contact surfaces/);
   assert.equal(plannerInputs[0].person.data, 'model-original');
-  assert.equal(plannerInputs[0].framing, 'full body');
-  assert.equal(plannerInputs[0].placement, 'left');
+  for (const field of ['framing', 'angle', 'placement', 'expression', 'gaze', 'extra']) assert.equal(plannerInputs[0][field], null);
+  assert.deepEqual(plannerInputs[0].props, []);
+  for (const generated of prompts) assert.doesNotMatch(generated.prompt, /manual close crop|manual high angle|manual expression|manual gaze|manual held prop|manual additional instruction/);
   assert.deepEqual(plannerInputs[0].previous, ['Old shot']);
   validPlan = false;
   const count = prompts.length;
@@ -198,4 +200,10 @@ test('generation route wires director constraints, final crop, stored reviews an
   out = await POST({ ...body, auto_repair: false, background_mode: 'keep' });
   assert.equal(out.status, 200);
   assert.equal(plannerInputs.at(-1).backgroundMode, 'keep');
+  // Switching away from AI restores manual direction; previously selected choices remain usable.
+  out = await POST({ ...body, pose_preset: null, auto_pose: true });
+  assert.equal(out.status, 200);
+  for (const instruction of ['manual close crop', 'manual high angle', 'manual expression', 'manual gaze', 'manual held prop', 'manual additional instruction']) {
+    assert(prompts.at(-1).prompt.includes(instruction));
+  }
 });

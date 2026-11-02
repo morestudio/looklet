@@ -67,7 +67,8 @@ export const POST = post(async (req) => {
   const posePreset = !setRef && !req.pose && (req.pose_preset === POSE_AUTO.id || POSE_PRESETS.some((p) => p.id === req.pose_preset))
     ? String(req.pose_preset) : null;
   const sceneText0 = text(req.scene_text);
-  const chosenPlacement = (['left', 'center', 'right'] as const).find((p) => p === req.placement) ?? null;
+  const isDirector = posePreset === POSE_AUTO.id;
+  const chosenPlacement = isDirector ? null : (['left', 'center', 'right'] as const).find((p) => p === req.placement) ?? null;
   const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
   const directorInput: DirectorInput | null = posePreset === POSE_AUTO.id ? {
     person: { data: req.person, mime: 'image/jpeg' },
@@ -78,8 +79,9 @@ export const POST = post(async (req) => {
     accessories: accessories.map((a) => ({ img: { data: a.data, mime: 'image/jpeg' }, what: String(a.what || 'an accessory').slice(0, 200) })),
     backgroundMode: req.background_mode === 'keep' ? 'keep' : 'explore',
     goal: req.photo_goal === 'outfit' || req.photo_goal === 'editorial' ? req.photo_goal : 'lifestyle',
-    aspect, framing: text(req.camera_framing), angle: text(req.camera_angle), placement: chosenPlacement,
-    expression: text(req.face), gaze: text(req.gaze), props: texts(req.props), extra: text(req.extra), previous: texts(req.previous_shots),
+    // AI mode owns all direction. Ignore stale/manual overrides even from older clients.
+    aspect, framing: null, angle: null, placement: null,
+    expression: null, gaze: null, props: [], extra: null, previous: texts(req.previous_shots),
   } : null;
   // สุ่มจังหวะของท่า 1 แบบ (POSE_PRESETS moments) — ไม่สุ่ม = AI ตัววางแผนให้ท่าเดิมซ้ำทุกรูป
   const presetDef = POSE_PRESETS.find((p) => p.id === posePreset);
@@ -115,13 +117,13 @@ export const POST = post(async (req) => {
     fullBody: setShot!.full_body !== false,
     hasOutfit: Boolean(req.outfit),
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
-    extra: req.extra,
+    extra: isDirector ? null : req.extra,
     crop,
   }) : buildPrompt({
     hasOutfit: Boolean(req.outfit),
     hasSceneImage: !shotScene && Boolean(req.scene_image),
     sceneText: shotScene ? null : req.scene_text,
-    extra: req.extra,
+    extra: isDirector ? null : req.extra,
     look,
     fullBody: req.full_body ?? true,
     accessories: accessories.map((a) => String(a.what || 'an accessory').slice(0, 200)),
@@ -133,9 +135,9 @@ export const POST = post(async (req) => {
     poseHints: accessories.map((a) => String(a.show ?? '').slice(0, 200)).filter(Boolean),
     poseMode,
     framing: directedShot?.framing ?? text(req.framing),
-    gaze: text(req.gaze),
-    props: texts(req.props),
-    face: text(req.face),
+    gaze: isDirector ? null : text(req.gaze),
+    props: isDirector ? [] : texts(req.props),
+    face: isDirector ? null : text(req.face),
     faceFromRef: Boolean(req.face_from_ref),
     refLight,
     sceneLight,
@@ -173,15 +175,16 @@ export const POST = post(async (req) => {
   const choices = (refs.choices && typeof refs.choices === 'object' ? refs.choices : {}) as Record<string, unknown>;
   const style: GenerateLog['style'] = { placement: (placement ?? 'ไม่สั่ง (AI วางกลาง)') + (chosenPlacement ? ' · เลือกเอง' : ' · อัตโนมัติ') };
   for (const k of ['preset', 'light', 'lens', 'angle', 'framing', 'color', 'scene', 'face', 'lightSource', 'gaze', 'aspect'] as const) {
+    if (isDirector && ['lens', 'angle', 'framing', 'face', 'gaze'].includes(k)) continue;
     const v = text(choices[k]);
     if (v) style[k] = v;
   }
   style.aspect = `${PLATFORM_ASPECTS.find((a) => a.id === aspect)!.name} · ${aspect}${crop ? ` (ตัดจาก ${size})` : ''}`;
-  if (texts(choices.props).length) style.props = texts(choices.props);
+  if (!isDirector && texts(choices.props).length) style.props = texts(choices.props);
   if (harmonizeText) style.harmonize = true;
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
   if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
-  if (text(req.extra)) style.extra = text(req.extra)!;
+  if (!isDirector && text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
     ? { aspectRatio: opt.aspect }

@@ -176,18 +176,18 @@ export default function TryOn() {
   const shot = Boolean(pose) && poseMode !== 'pose';
   const shotScene = Boolean(pose) && poseMode === 'shot-scene';
   const shotPresetLight = shot && lightSource === 'preset'; // ลอกทั้งช็อตแต่ใช้แสง/โทนสีของสไตล์ถ่ายภาพ
-  const mood = FACE_MOODS.find((m) => m.id === faceMood) ?? FACE_MOODS[0];
+  const mood = FACE_MOODS.find((m) => m.id === (isDirector ? 'auto' : faceMood)) ?? FACE_MOODS[0];
   const moodName = mood.id !== 'auto' ? mood.name : pose ? 'สีหน้าตามรูปท่า' : null; // null = ตามรูปนางแบบ ไม่ต้องบอก
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
   // ลอกทั้งช็อต = มุม/ระยะตามรูปต้นแบบ ไม่ใช้ที่เลือก
   // ใช้รูปท่าโพสต์ + ระยะใกล้ (เข่า/ครึ่งตัว/ใกล้) ได้: ส่วนของท่าที่อยู่นอกกรอบ (ขา/เท้า) ถูกตัดออก — ไม่เลือก = ตามสไตล์ (เต็มตัว)
-  const framingChoice = shot ? undefined : FRAMINGS.find((f) => f.id === framingId);
-  const angleChoice = shot ? undefined : ANGLES.find((a) => a.id === angleId);
+  const framingChoice = shot || isDirector ? undefined : FRAMINGS.find((f) => f.id === framingId);
+  const angleChoice = shot || isDirector ? undefined : ANGLES.find((a) => a.id === angleId);
   // ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด) = คนอยู่ที่เดิม server ไม่สั่งตำแหน่ง (lib/prompts.ts)
   const keepsPlace = !pose && !posePreset && !scene;
-  const placementChoice = shot || keepsPlace ? undefined : PLACEMENTS.find((p) => p.id === placementId);
-  const gaze = shot ? undefined : GAZES.find((c) => c.id === gazeId);
-  const propChoices = PROPS.filter((p) => heldProps.includes(p.id));
+  const placementChoice = shot || keepsPlace || isDirector ? undefined : PLACEMENTS.find((p) => p.id === placementId);
+  const gaze = shot || isDirector ? undefined : GAZES.find((c) => c.id === gazeId);
+  const propChoices = isDirector ? [] : PROPS.filter((p) => heldProps.includes(p.id));
   const accs = pick.accessory.map((id) => find(lists.accessory, id)).filter((a): a is Item => a !== undefined);
   const shown = current === null ? null : results[current];
   const finishLook: FilmLook = finish === 'auto' ? shown?.finish ?? 'film' : finish; // รูปเก่าที่ไม่ได้เก็บลุคไว้ = ฟิล์ม
@@ -460,7 +460,7 @@ export default function TryOn() {
         // ใช้ภาพที่ไหน: server เลือกขนาดตามแนวภาพเอง และตัด 4:5 / 9:16 จาก 2:3 (OpenAI ทำตรงๆ ไม่ได้)
         aspect,
         quality,
-        extra: extra.trim(),
+        extra: isDirector ? '' : extra.trim(),
         // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ (server ให้ AI อ่านแสงให้) หรือใช้แค่แสง/โทนสีของสไตล์ที่เลือก
         // มุมกล้องที่เลือกแทนมุมของสไตล์ (ชุดภาพใช้มุมของแต่ละรูปในชุดเอง)
         look: isDirector ? presetLightPrompt(preset) : shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset, set ? undefined : angleChoice?.prompt),
@@ -729,12 +729,12 @@ export default function TryOn() {
           <p className="sub">เป้าหมายของภาพ</p>
           <ChipGroup options={[{ id: 'lifestyle', name: 'ไลฟ์สไตล์' }, { id: 'outfit', name: 'โชว์ชุดชัด' }, { id: 'editorial', name: 'แฟชั่นสร้างสรรค์' }]} value={photoGoal} onChange={(v) => setPhotoGoal(v as PhotoGoal)} />
           <label><input type="checkbox" checked={autoRepair} onChange={(e) => setAutoRepair(e.target.checked)} /> แก้ภาพอัตโนมัติได้ 1 ครั้งเมื่อพบปัญหา</label>
-          <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · ระยะและมุมที่เลือกเองเป็นเงื่อนไขให้ AI ส่วน “คงมุมฉากเดิม” จะใช้มุมตามฉาก</p>
+          <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · AI จัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด</p>
         </div> : posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้</p>}
         {shown?.posePlan && <ShotPlanView plan={shown.posePlan} />}
       </Section>
       {MOOD_PICKER && <Section title="สีหน้า">
-        <ChipGroup options={FACE_MOODS} value={faceMood} onChange={setFaceMood} />
+        <ChipGroup options={FACE_MOODS} value={isDirector ? 'auto' : faceMood} disabled={isDirector} onChange={setFaceMood} />
         <p className="muted-text">{mood.hint}</p>
       </Section>}
       <Section title="ใช้รูปท่าของฉัน" note="อัปโหลด หรือเลือกจากตัวอย่าง">
@@ -766,27 +766,26 @@ export default function TryOn() {
       </button>
     );
     const framingValue = framingChoice?.id ?? 'auto', angleValue = angleChoice?.id ?? 'auto'; // เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์
-    const keepCamera = isDirector && backgroundMode === 'keep';
     panel = <>
+      {isDirector && <p className="note">AI จะจัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด หากต้องการเลือกเอง ให้เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์</p>}
       {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ระยะ มุมกล้อง และตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
       <Section title="ระยะ">
         <div className="options view-options">
-          {card('auto', framingValue === 'auto', shot, () => setFramingId('auto'), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
-          {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot, () => setFramingId(f.id), <PersonView framing={f.id} />, f.name, f.hint))}
+          {card('auto', framingValue === 'auto', shot || isDirector, () => setFramingId('auto'), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
+          {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot || isDirector, () => setFramingId(f.id), <PersonView framing={f.id} />, f.name, f.hint))}
         </div>
       </Section>
       <Section title="มุมกล้อง">
-        {keepCamera && <p className="muted-text">คงมุมตามรูปฉาก เปลี่ยนเป็น “สำรวจมุมใหม่” ในขั้นท่าโพสต์เพื่อเลือกมุมอื่น</p>}
         <div className="options view-options">
-          {card('auto', keepCamera || angleValue === 'auto', shot || keepCamera, () => setAngleId('auto'), <PersonView angle={presetAngle(preset)} />, keepCamera ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
-          {ANGLES.map((a) => card(a.id, !keepCamera && angleValue === a.id, shot || keepCamera, () => setAngleId(a.id), <PersonView angle={a.id} />, a.name, a.hint))}
+          {card('auto', angleValue === 'auto', shot || isDirector, () => setAngleId('auto'), <PersonView angle={presetAngle(preset)} />, isDirector && backgroundMode === 'keep' ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
+          {ANGLES.map((a) => card(a.id, angleValue === a.id, shot || isDirector, () => setAngleId(a.id), <PersonView angle={a.id} />, a.name, a.hint))}
         </div>
       </Section>
       <Section title="ตำแหน่งในภาพ">
         {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
         <div className="options view-options">
-          {card('auto', !placementChoice, shot || keepsPlace, () => setPlacementId('auto'), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
-          {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace, () => setPlacementId(p.id), <PersonView placement={p.id} />, p.name, p.hint))}
+          {card('auto', !placementChoice, shot || keepsPlace || isDirector, () => setPlacementId('auto'), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
+          {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace || isDirector, () => setPlacementId(p.id), <PersonView placement={p.id} />, p.name, p.hint))}
         </div>
       </Section>
     </>;
@@ -802,7 +801,8 @@ export default function TryOn() {
         </button>)}</div>
       </Section>
       <Section title="สั่งเพิ่มเติม">
-        <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว" />
+        {isDirector && <p className="muted-text">AI จัดท่าและองค์ประกอบให้ทั้งหมด เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์หากต้องการสั่งเอง</p>}
+        <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} onChange={(e) => setExtra(e.target.value)} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
       </Section>
       <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>
@@ -813,13 +813,13 @@ export default function TryOn() {
             <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
           </Section>
         )}
-        <Section title="การมอง" note={shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
-          <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={shot ? '' : gazeId} disabled={shot} onChange={setGazeId} />
+        <Section title="การมอง" note={isDirector ? 'AI เลือกให้' : shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
+          <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={setGazeId} />
         </Section>
-        <Section title="พร็อพในมือ" note="เลือกได้หลายอย่าง">
+        <Section title="พร็อพในมือ" note={isDirector ? 'AI จัดท่าและการใช้สิ่งของในฉากให้' : 'เลือกได้หลายอย่าง'}>
           <div className="chips">
             {PROPS.map((p) => (
-              <button key={p.id} type="button" className={'chip' + (heldProps.includes(p.id) ? ' active' : '')}
+              <button key={p.id} type="button" disabled={isDirector} className={'chip' + (!isDirector && heldProps.includes(p.id) ? ' active' : '')}
                 onClick={() => setHeldProps((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}>
                 {p.name}
               </button>

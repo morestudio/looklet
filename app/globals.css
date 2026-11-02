@@ -150,6 +150,7 @@ button, select, input, textarea { font-family: inherit; }
 .chip { display: inline-flex; align-items: center; height: var(--chip-height); padding: 0 var(--space-14); border: 0; border-radius: var(--r-sm); background: var(--surface-card); color: var(--ink); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
 .chip.active { background: var(--ink); color: var(--on-dark); }
 .chip:disabled { opacity: .45; cursor: default; }
+.text-input:disabled { opacity: .45; cursor: default; background: var(--surface-card); }
 .ratio { display: inline-block; height: 14px; margin-right: var(--space-6); border: 1.5px solid currentColor; border-radius: 3px; }
 /* ใช้ภาพที่ไหน (หน้าสินค้า): การ์ดตามแพลตฟอร์ม + กรอบเล็กตามสัดส่วนจริง */
 .aspect-options { grid-template-columns: 1fr; } /* แถวละใบ: ชื่อแพลตฟอร์มยาว 2 คอลัมน์แล้วตัดคำ */
