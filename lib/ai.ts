@@ -332,9 +332,8 @@ export async function planPose(input: PlanInput): Promise<PosePlan | null> {
 }
 
 // Automatic mode directs the complete shot; explicit posture presets retain their existing behavior.
-// headGazes = ทิศหน้า/สายตาที่สุ่มให้แต่ละไอเดีย (ไม่อยู่ใน DirectorInput เพราะ input ถูกใช้ผูกลายเซ็นไอเดียที่ส่งให้ผู้ใช้เลือก)
-export async function directPhoto(input: DirectorInput, headGazes: string[] = []): Promise<DirectorPlan | null> {
-  const request = directorRequest(input, headGazes);
+export async function directPhoto(input: DirectorInput): Promise<DirectorPlan | null> {
+  const request = directorRequest(input);
   const result = await askPlanner({ name: 'photo_director', ...request, fields: DIRECTOR_FIELDS },
     (r) => readDirectorPlan(r, { backgroundMode: input.backgroundMode, goal: input.goal }) !== null, 'วางแผนภาพ');
   return result ? readDirectorPlan(result, { backgroundMode: input.backgroundMode, goal: input.goal }) : null;

@@ -165,7 +165,7 @@ test('real planner integration sends all references, validates provider output, 
 });
 
 test('generation route wires director constraints, final crop, stored reviews and repair usage together', async () => {
-  const saved = [], usage = [], prompts = [], quotaChecks = [], plannerInputs = [], plannerGazes = [];
+  const saved = [], usage = [], prompts = [], quotaChecks = [], plannerInputs = [];
   let validPlan = true;
   let reviews = [failed(), review()];
   const app = appLoader({ env: { OPENAI_API_KEY: 'proposal-test-only' }, overrides: {
@@ -173,7 +173,7 @@ test('generation route wires director constraints, final crop, stored reviews an
     'lib/ai.ts': {
       availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
       describeLighting: async () => 'Soft window light',
-      directPhoto: async (i, gazes) => { plannerInputs.push(i); plannerGazes.push(gazes); return validPlan ? parse() : null; },
+      directPhoto: async (i) => { plannerInputs.push(i); return validPlan ? parse() : null; },
       planPose: async () => { throw new Error('Auto mode must not call the old pose planner'); },
       reviewShot: async (_input, _plan, i) => { assert.match(i.data, /cropped/); return reviews.shift(); },
       generateImage: async (_model, images, prompt) => { prompts.push({ images, prompt }); return { ...img('rendered'), tokens: 123 }; },
@@ -205,9 +205,7 @@ test('generation route wires director constraints, final crop, stored reviews an
   assert.deepEqual(plannerInputs[0].props, []);
   for (const generated of prompts) assert.doesNotMatch(generated.prompt, /manual close crop|manual high angle|manual expression|manual gaze|manual held prop|manual additional instruction/);
   assert.deepEqual(plannerInputs[0].previous, ['Old shot']);
-  // ทิศหน้า/สายตา: 3 แบบไม่ซ้ำต่อการคิดไอเดีย (แยกจาก DirectorInput ที่ผูกลายเซ็น) · ย้ำท้ายคำสั่งด้วยของไอเดียที่เลือก
-  assert.equal(plannerGazes[0].length, 3);
-  assert.equal(new Set(plannerGazes[0]).size, 3);
+  // ทิศหน้า/สายตา: ตัววางแผนคิดเองต่อไอเดีย · ย้ำท้ายคำสั่งด้วยของไอเดียที่เลือก
   assert.match(prompts[0].prompt, /Head and gaze: Observed reference detail\. Show her face naturally from this angle/);
   validPlan = false;
   const count = prompts.length;
@@ -299,8 +297,11 @@ test('head and gaze vary per image instead of always facing the camera', async (
   let contact = 0;
   for (let i = 0; i < 3000; i++) if (pickHeadGazes(1)[0].contact) contact++;
   assert(contact > 800 && contact < 1200, `eye contact ${contact}/3000 should be about a third`);
-  assert.match(directorRequest(input, ['gaze A', 'gaze B', 'gaze C']).text, /candidate 1: gaze A; candidate 2: gaze B; candidate 3: gaze C\. Write each head_gaze_expression from its assignment/);
-  assert.doesNotMatch(directorRequest(input).text, /one per candidate/);
+  // AI จัดท่าฯ: ตัววางแผนเลือกมุมหน้าเองตามท่า (ผู้ใช้ขอ 2 พ.ย.) แต่ห้ามหันหน้าตรงกล้องเป็นค่าเริ่มต้น
+  const directed = directorRequest(input).text;
+  assert.match(directed, /Head and gaze are part of each idea, not a default/);
+  assert.match(directed, /across the three candidates at most one may look into the lens/);
+  assert.match(directed, /head_gaze_expression directs the face: head angle relative to the camera, where the eyes look and why/);
   const requests = [];
   const app = appLoader({ env: { OPENAI_API_KEY: 'test-only' }, fetchImpl: async (_url, options) => {
     requests.push(JSON.parse(options.body));

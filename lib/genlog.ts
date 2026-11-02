@@ -27,7 +27,7 @@ export type GenerateLog = {
     accessories: LogImage[];
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
-  pose: { mode: string; moment?: string; headGaze?: string; headGazes?: string[]; plan_th?: string; plan_en?: string; director?: DirectorPlan } & Partial<LogImage>; // headGaze(s) = ทิศหน้า/สายตาที่สุ่ม (HEAD_GAZES)
+  pose: { mode: string; moment?: string; headGaze?: string; plan_th?: string; plan_en?: string; director?: DirectorPlan } & Partial<LogImage>; // headGaze = ทิศหน้า/สายตาที่สุ่ม (HEAD_GAZES)
   delivery?: StoredPosePlan | null;
   set?: { shot: string } & Partial<LogImage>; // ชุดภาพหลายมุม: มุมของรูปนี้ + รูปหลักที่ใช้เป็นต้นแบบ
   style: Record<string, string | string[] | boolean>;

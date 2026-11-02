@@ -194,7 +194,7 @@ export const GAZES: Choice[] = [
 
 // มุมหน้า + สายตา สุ่มต่อรูป (2 พ.ย. ผู้ใช้: หน้ามองกล้องตรงๆ ทุกรูป ดูไม่เป็นธรรมชาติ)
 // สาเหตุ: AI ตัววางแผน (ท่าสำเร็จรูป planPose + AI จัดท่าและมุมกล้อง directPhoto) เขียน "turn her head toward the camera" เอง 10/10 รูปล่าสุด
-// แก้แบบเดียวกับ moments ของท่า: สุ่มทิศหน้า/สายตาแล้วสั่งตัววางแผนให้ทำตาม (สั่งแค่ "ให้หลากหลาย" ตัววางแผนไม่ทำ)
+// ท่าสำเร็จรูป: สุ่มทิศหน้า/สายตาแล้วสั่งตัววางแผนให้ทำตาม แบบเดียวกับ moments · AI จัดท่าฯ: ตัววางแผนเลือกเองตามท่า (ผู้ใช้ขอ 2 พ.ย.)
 // ใช้เมื่อผู้ใช้ไม่ได้เลือกการมอง (GAZES) และไม่มีรูปท่าโพสต์ · contact = สบตากล้อง รวมกันราว 1 ใน 3 (น้ำหนัก 4 จาก 12)
 export type HeadGaze = { id: string; name: string; weight: number; contact: boolean; prompt: string };
 export const HEAD_GAZES: HeadGaze[] = [
@@ -211,7 +211,7 @@ export const HEAD_GAZES: HeadGaze[] = [
   { id: 'profile', name: 'หันข้างเกือบเต็ม', weight: 1, contact: false,
     prompt: 'her head turned to a near profile, about 60 to 70 degrees from the camera, looking ahead into the scene, not at the camera, with her features still clearly recognizable' },
 ];
-// สุ่ม n แบบไม่ซ้ำตามน้ำหนัก · สบตากล้องได้ไม่เกิน 1 แบบ (AI จัดท่าฯ คิด 3 ไอเดียพร้อมกัน จะได้ไม่มองกล้องทั้ง 3)
+// สุ่ม n แบบไม่ซ้ำตามน้ำหนัก · สบตากล้องได้ไม่เกิน 1 แบบ · ใช้กับท่าสำเร็จรูป (AI จัดท่าฯ ให้ตัววางแผนคิดมุมหน้าเอง)
 export function pickHeadGazes(n: number, random = Math.random): HeadGaze[] {
   let pool = [...HEAD_GAZES];
   const out: HeadGaze[] = [];
