@@ -2,6 +2,12 @@
 import type { AccessoryInfo } from './catalog';
 import { applyFilm, filmOn, type Film } from './film';
 
+// OpenAI ปฏิเสธภาพด้วยระบบความปลอดภัย (2 พ.ย.: ท่าคุกเข่าบนเตียง + ชุดนอนขาสั้น ถูกมองว่า sexual) -> บอกเป็นภาษาไทยแทนข้อความอังกฤษยาวๆ
+// รูปที่พังไม่นับโควตา (lib/usage.ts) · ข้อความเดิมยังอยู่ใน log / หน้าตรวจงาน
+export const friendlyError = (message: string) => /safety system|safety_violations|moderation_blocked/i.test(message)
+  ? 'AI ปฏิเสธภาพนี้ (ระบบความปลอดภัยของ OpenAI มองว่าอาจไม่เหมาะสม เช่น ท่าบนเตียงกับชุดสั้น) ลองเลือกไอเดียหรือท่าอื่น ไม่เสียโควตา'
+  : message;
+
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export const USAGE_EVENT = 'looklet:usage';
 const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];

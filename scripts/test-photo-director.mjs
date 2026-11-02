@@ -272,12 +272,14 @@ test('selected ideas render once each; cancelling spends nothing and partial res
   assert.deepEqual(out.results, ['shot-2', 'shot-3']);
   assert.deepEqual(saved, ['shot-2', 'shot-3']);
   calls.length = 0;
+  // ไอเดียที่ถูกปฏิเสธ (ระบบความปลอดภัยของ OpenAI 2 พ.ย.) ไม่หยุดไอเดียที่เหลือ
   out = await generateSelectedShots(['shot-1', 'shot-2', 'shot-3'], async (id) => {
     calls.push(id);
-    if (id === 'shot-2') throw new Error('Quota exhausted');
+    if (id === 'shot-2') throw new Error('OpenAI ตอบกลับ 400: Your request was rejected by the safety system. safety_violations=[sexual].');
     return id;
   }, (r) => saved.push(r));
-  assert.deepEqual(calls, ['shot-1', 'shot-2']);
-  assert.deepEqual(out.results, ['shot-1']);
-  assert.equal(out.error, 'Quota exhausted');
+  assert.deepEqual(calls, ['shot-1', 'shot-2', 'shot-3']);
+  assert.deepEqual(out.results, ['shot-1', 'shot-3']);
+  assert.deepEqual(out.errors.map((e) => e.id), ['shot-2']);
+  assert.match(out.errors[0].message, /safety system/);
 });

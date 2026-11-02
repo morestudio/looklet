@@ -24,7 +24,7 @@ import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanv
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { SKIN_MODEL } from '@/lib/skin';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
+  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
   saveImageFile, toWebImage, uploadImage,
 } from '@/lib/browser';
 import {
@@ -510,7 +510,11 @@ export default function TryOn() {
           prepare(result.src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message}`));
         });
         const needsReview = batch.results.filter((r) => r.posePlan.review?.status !== 'passed').length;
-        setStatus(batch.error ? `สร้างได้ ${batch.results.length}/${selected.length} รูป · รูปที่เสร็จแล้วเก็บไว้ในคลัง · ${batch.error}`
+        // ไอเดียที่ไม่สำเร็จไม่หยุดไอเดียอื่น (lib/shot-batch.ts) -> บอกชื่อไอเดียที่พังพร้อมเหตุผล
+        const titleOf = (id: string) => proposal.plan.candidates.find((c) => c.id === id)?.title ?? id;
+        const failedText = batch.errors.map((e) => `${titleOf(e.id)}: ${friendlyError(e.message)}`).join(' · ');
+        setStatus(batch.errors.length
+          ? `สร้างได้ ${batch.results.length}/${selected.length} รูป${batch.results.length ? ' (เก็บไว้ในคลังแล้ว)' : ''} · ไม่สำเร็จ ${failedText}`
           : `สร้างครบ ${batch.results.length} รูป${needsReview ? ` · ${needsReview} รูปควรตรวจภาพก่อนใช้` : ' · ผ่านการตรวจด้วย AI'}`);
         if (batch.results.length) frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
@@ -555,11 +559,11 @@ export default function TryOn() {
         }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
         const failed = rest.filter((x) => x.status === 'rejected');
         if (failed.length) {
-          setStatus(`ชุดภาพได้ ${SET_SHOTS.length - failed.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
+          setStatus(`ชุดภาพได้ ${SET_SHOTS.length - failed.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${friendlyError((failed[0].reason as Error).message)}`);
         }
       }
     } catch (err) {
-      setStatus('สร้างรูปไม่สำเร็จ: ' + (err as Error).message);
+      setStatus('สร้างรูปไม่สำเร็จ: ' + friendlyError((err as Error).message));
     } finally {
       setBusy(null);
       setPendingSet(null);
