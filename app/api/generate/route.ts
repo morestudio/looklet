@@ -3,7 +3,7 @@ import { selectedShot, shotInstruction, type DirectorInput, type StoredPosePlan 
 import { deliverDirectedImage } from '@/lib/directed-delivery';
 import { createShotProposal, readShotProposal } from '@/lib/director-proposal';
 import { me } from '@/lib/account';
-import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
+import { GPT25_SIZES, isGpt25, MAX_ACCESSORIES, pickHeadGazes, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
 import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement } from '@/lib/prompts';
@@ -94,6 +94,10 @@ export const POST = post(async (req) => {
   // สุ่มจังหวะของท่า 1 แบบ (POSE_PRESETS moments) — ไม่สุ่ม = AI ตัววางแผนให้ท่าเดิมซ้ำทุกรูป
   const presetDef = POSE_PRESETS.find((p) => p.id === posePreset);
   const moment = presetDef ? pickMoment(presetDef) : null;
+  // ทิศหน้า + สายตา สุ่มต่อรูป (2 พ.ย.): ไม่สุ่ม = ตัววางแผนให้หันหน้ามองกล้องทุกรูป · ไม่ใช้กับรูปท่าโพสต์ (ลอกหัว/สายตาจากรูปนั้น),
+  // ท่าเดิม (คงท่าในรูปนางแบบ) และตอนผู้ใช้เลือกการมองเอง · AI จัดท่าฯ ได้ 3 แบบไม่ซ้ำ (ไอเดียละ 1) ตอนคิดไอเดียเท่านั้น
+  const headGaze = !setRef && !req.pose && !isDirector && !text(req.gaze) && (posePreset || req.auto_pose) ? pickHeadGazes(1)[0] : null;
+  const directorGazes = directorInput && !selectedPlan ? pickHeadGazes(3) : [];
   const [refLight, sceneLight, plan, director] = await Promise.all([
     !planningOnly && !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
     !planningOnly && !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
@@ -105,8 +109,9 @@ export const POST = post(async (req) => {
       accessories: accessories.map((a) => ({ img: { data: a.data, mime: 'image/jpeg' }, what: String(a.what || 'an accessory').slice(0, 200) })),
       preset: posePreset,
       moment,
+      headGaze: headGaze?.prompt ?? null,
     }) : null,
-    directorInput ? selectedPlan ?? directPhoto(directorInput) : null,
+    directorInput ? selectedPlan ?? directPhoto(directorInput, directorGazes.map((g) => g.prompt)) : null,
   ]);
   if (directorInput && !director) return json(503, { error: 'AI ยังวางแผนภาพที่ใช้ได้ไม่สำเร็จ กรุณาลองอีกครั้ง (ยังไม่ได้สร้างรูป)' });
   if (planningOnly && director && directorInput) return json(200, { proposal: createShotProposal(director, directorInput, caller) });
@@ -145,6 +150,7 @@ export const POST = post(async (req) => {
     poseMode,
     framing: directedShot?.framing ?? text(req.framing),
     gaze: isDirector ? null : text(req.gaze),
+    headGaze: directedShot?.headGazeExpression ?? headGaze?.prompt ?? null,
     props: isDirector ? [] : texts(req.props),
     face: isDirector ? null : text(req.face),
     faceFromRef: Boolean(req.face_from_ref),
@@ -210,6 +216,8 @@ export const POST = post(async (req) => {
       mode: setRef ? 'AI จัดท่าให้เข้ากับมุมกล้อง' : director ? `AI จัดท่าและมุมกล้อง: ${planName}` : plan ? `AI คิดท่า: ${planName}` : posePreset ? 'AI คิดท่าไม่สำเร็จ ใช้ AI เลือกท่าแบบเดิม'
         : text(choices.poseMode) ?? (req.pose ? poseMode : req.auto_pose ? 'AI เลือกท่าให้' : 'ท่าเดิม'),
       ...(plan ? { moment: moment ?? undefined, plan_th: plan.th, plan_en: plan.en } : {}),
+      ...(headGaze ? { headGaze: headGaze.name } : {}),
+      ...(directorGazes.length ? { headGazes: directorGazes.map((g) => g.name) } : {}),
       ...(director ? { plan_th: poseMeta!.th, plan_en: poseInstruction!, director } : {}),
       ...byRole('ท่าโพสต์')[0],
     },

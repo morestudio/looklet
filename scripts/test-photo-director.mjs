@@ -165,7 +165,7 @@ test('real planner integration sends all references, validates provider output, 
 });
 
 test('generation route wires director constraints, final crop, stored reviews and repair usage together', async () => {
-  const saved = [], usage = [], prompts = [], quotaChecks = [], plannerInputs = [];
+  const saved = [], usage = [], prompts = [], quotaChecks = [], plannerInputs = [], plannerGazes = [];
   let validPlan = true;
   let reviews = [failed(), review()];
   const app = appLoader({ env: { OPENAI_API_KEY: 'proposal-test-only' }, overrides: {
@@ -173,7 +173,7 @@ test('generation route wires director constraints, final crop, stored reviews an
     'lib/ai.ts': {
       availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
       describeLighting: async () => 'Soft window light',
-      directPhoto: async (i) => { plannerInputs.push(i); return validPlan ? parse() : null; },
+      directPhoto: async (i, gazes) => { plannerInputs.push(i); plannerGazes.push(gazes); return validPlan ? parse() : null; },
       planPose: async () => { throw new Error('Auto mode must not call the old pose planner'); },
       reviewShot: async (_input, _plan, i) => { assert.match(i.data, /cropped/); return reviews.shift(); },
       generateImage: async (_model, images, prompt) => { prompts.push({ images, prompt }); return { ...img('rendered'), tokens: 123 }; },
@@ -205,6 +205,10 @@ test('generation route wires director constraints, final crop, stored reviews an
   assert.deepEqual(plannerInputs[0].props, []);
   for (const generated of prompts) assert.doesNotMatch(generated.prompt, /manual close crop|manual high angle|manual expression|manual gaze|manual held prop|manual additional instruction/);
   assert.deepEqual(plannerInputs[0].previous, ['Old shot']);
+  // ทิศหน้า/สายตา: 3 แบบไม่ซ้ำต่อการคิดไอเดีย (แยกจาก DirectorInput ที่ผูกลายเซ็น) · ย้ำท้ายคำสั่งด้วยของไอเดียที่เลือก
+  assert.equal(plannerGazes[0].length, 3);
+  assert.equal(new Set(plannerGazes[0]).size, 3);
+  assert.match(prompts[0].prompt, /Head and gaze: Observed reference detail\. Show her face naturally from this angle/);
   validPlan = false;
   const count = prompts.length;
   out = await POST(body);
@@ -234,6 +238,7 @@ test('generation route wires director constraints, final crop, stored reviews an
   assert.equal(out.body.posePlan.director.selectedId, 'shot-2');
   assert.match(prompts.at(-1).prompt, /Lie supported on the mattress/);
   assert.equal(plannerInputs.length, plansAsked); // choose the exact idea, do not replan
+  assert.match(prompts.at(-1).prompt, /Head and gaze: /);
   const renders = prompts.length;
   for (const bad of [
     { shot_id: 'shot-99' }, { shot_proposal: proposal.token + 'tampered' }, { outfit: 'different-outfit' }, { aspect: '1:1' },
@@ -282,4 +287,34 @@ test('selected ideas render once each; cancelling spends nothing and partial res
   assert.deepEqual(out.results, ['shot-1', 'shot-3']);
   assert.deepEqual(out.errors.map((e) => e.id), ['shot-2']);
   assert.match(out.errors[0].message, /safety system/);
+});
+
+test('head and gaze vary per image instead of always facing the camera', async () => {
+  const { pickHeadGazes, POSE_PRESETS } = load('lib/catalog.ts');
+  for (let i = 0; i < 300; i++) {
+    const g = pickHeadGazes(3);
+    assert.equal(new Set(g.map((x) => x.id)).size, 3);
+    assert(g.filter((x) => x.contact).length <= 1); // ไอเดีย 3 แบบ สบตากล้องได้ไม่เกิน 1
+  }
+  let contact = 0;
+  for (let i = 0; i < 3000; i++) if (pickHeadGazes(1)[0].contact) contact++;
+  assert(contact > 800 && contact < 1200, `eye contact ${contact}/3000 should be about a third`);
+  assert.match(directorRequest(input, ['gaze A', 'gaze B', 'gaze C']).text, /candidate 1: gaze A; candidate 2: gaze B; candidate 3: gaze C\. Write each head_gaze_expression from its assignment/);
+  assert.doesNotMatch(directorRequest(input).text, /one per candidate/);
+  const requests = [];
+  const app = appLoader({ env: { OPENAI_API_KEY: 'test-only' }, fetchImpl: async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ pose_en: 'She leans on the counter. '.repeat(4), pose_th: 'พิงเคาน์เตอร์' }) } }] }) };
+  } });
+  const { planPose } = app('lib/ai.ts');
+  const base = { location: null, locationIsModelPhoto: false, locationText: 'a cafe', outfit: null, accessories: [], preset: POSE_PRESETS[0].id, moment: 'looking at the camera' };
+  assert(await planPose({ ...base, headGaze: 'eyelids lowered, looking down at her hands' }));
+  const asked = requests[0].messages[0].content[0].text;
+  assert.match(asked, /Her head and gaze in this photo \(follow this; it replaces any head direction or gaze in the moment\): eyelids lowered, looking down at her hands\. Plan her expression to suit it\./);
+  assert.doesNotMatch(asked, /Plan her gaze and expression too/);
+  await planPose(base); // ไม่ได้สุ่ม (ผู้ใช้เลือกการมองเอง) -> คำสั่งเดิม
+  assert.match(requests[1].messages[0].content[0].text, /Plan her gaze and expression too/);
+  const prompt = buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true, posePlan: 'She leans on the counter.', headGaze: 'her eyes on the light.' });
+  assert.match(prompt, /Head and gaze: her eyes on the light\. Show her face naturally from this angle as the camera sees it/);
+  assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true }), /Head and gaze/);
 });

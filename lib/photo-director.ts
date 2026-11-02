@@ -73,7 +73,9 @@ const SHOT_FIELDS = ['title', 'interaction', 'support', 'torso', 'arms_hands', '
 export const DIRECTOR_FIELDS = ['model_facts', 'outfit_facts', 'scene_facts', 'uncertainty',
   ...[1, 2, 3].flatMap((n) => SHOT_FIELDS.map((f) => `${f}_${n}`))];
 
-export function directorRequest(input: DirectorInput) {
+// headGazes: one head/gaze direction per candidate, picked at random by the route (catalog pickHeadGazes).
+// Without them the planner turned the face to the camera in every candidate (2 Nov: 10 of 10 recent shots).
+export function directorRequest(input: DirectorInput, headGazes: string[] = []) {
   const images = [input.person];
   const refs = ['Image 1 is ONLY the model identity, face, hair and natural proportions. Do not copy her current pose or clothes.'];
   if (input.outfit) {
@@ -99,7 +101,8 @@ Goal: ${input.goal}. Outfit goal prioritizes faithful fit and garment visibility
 Final aspect ratio: ${input.aspect}. Keep the face and important garment details inside this crop. A full-body reclining shot means head through feet are visible; it does NOT require standing.
 User constraints (hard requirements; do not contradict them): ${JSON.stringify({ framing: input.framing, angle: input.angle, placement: input.placement, expression: input.expression, gaze: input.gaze, props: input.props, extra: input.extra })}.
 If a camera angle conflicts with KEEP THIS VIEW, preserve the reference viewpoint. If a specific framing is provided, adapt every candidate to it. Otherwise choose the framing freely. Do not hide key details behind arms, bent limbs or bedding. Never cover the eyes, nose or mouth.
-Recent shots to avoid repeating: ${JSON.stringify(input.previous)}.
+Recent shots to avoid repeating: ${JSON.stringify(input.previous)}.${headGazes.length === 3 ? `
+Head and gaze, one per candidate (follow them; do not default to turning the face squarely to the camera): candidate 1: ${headGazes[0]}; candidate 2: ${headGazes[1]}; candidate 3: ${headGazes[2]}. Write each head_gaze_expression from its assignment, adapted to that candidate's pose and location, and add an expression that suits it.` : ''}
 Return the required string fields. model_facts, outfit_facts, scene_facts, uncertainty describe what was actually seen and what is unknown. For each suffix _1, _2, _3: title is a short Thai title; interaction states exactly where and how the model uses the scene; support identifies actual contact/support surfaces; torso, arms_hands and legs_feet specify left/right limbs and weight; head_gaze_expression directs the face; camera_angle specifies camera position/height/direction; framing specifies visible body extent; placement is exactly left, center or right; outfit_details names actual details to keep visible; constraints describes what to avoid; reason_th explains the choice in Thai. Use English for generation directions, with no image numbers. feasible is exactly yes or no (no if the support, clothing or user constraints cannot be satisfied). score_outfit, score_natural, score_scene and score_render are integer strings 0 to 100 assessing detail visibility, naturalness, scene compatibility and rendering reliability respectively. Score honestly; an unsupported or contradictory pose is infeasible regardless of aesthetics.`;
   const context = `${refs.join(' ')} Background mode: ${input.backgroundMode}. Goal: ${input.goal}. Aspect: ${input.aspect}. User constraints: ${JSON.stringify({ framing: input.framing, angle: input.angle, placement: input.placement, expression: input.expression, gaze: input.gaze, props: input.props, extra: input.extra })}.`;
   return { images, text, context };

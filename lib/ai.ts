@@ -224,9 +224,10 @@ export type PlanInput = {
   accessories: { img: Img; what: string }[];
   preset: string; // id ใน POSE_PRESETS หรือ 'auto'
   moment?: string | null; // จังหวะของท่าที่สุ่มมา (pickMoment) ให้แต่ละรูปได้ท่าไม่ซ้ำ
+  headGaze?: string | null; // ทิศหน้า + สายตาที่สุ่มมา (pickHeadGazes) แทนการมองของ moment · null = ให้ตัววางแผนคิดเอง
 };
 
-function planRequest({ location, locationIsModelPhoto, locationText, outfit, accessories, preset, moment }: PlanInput) {
+function planRequest({ location, locationIsModelPhoto, locationText, outfit, accessories, preset, moment, headGaze }: PlanInput) {
   const images: Img[] = [];
   const said: string[] = [];
   if (location) {
@@ -258,7 +259,10 @@ function planRequest({ location, locationIsModelPhoto, locationText, outfit, acc
     + 'and do not default to sitting on the edge of a seat.'
     + ' Plan ONE posture for this exact location: use the real furniture, surfaces and open space that are there, '
     + 'with believable weight and balance. Her face and the outfit must stay clearly visible'
-    + (accessories.length ? ', and the accessories are handled naturally' : '') + '. Plan her gaze and expression too. '
+    + (accessories.length ? ', and the accessories are handled naturally' : '')
+    // ไม่บอกทิศหน้า -> ตัววางแผนให้หันหน้ามองกล้องแทบทุกรูป (2 พ.ย.) · สุ่มมาให้แล้วสั่งให้ชนะการมองใน moment
+    + (headGaze ? `. Her head and gaze in this photo (follow this; it replaces any head direction or gaze in the moment): ${headGaze}. `
+      + 'Plan her expression to suit it. ' : '. Plan her gaze and expression too. ')
     + 'Reply in JSON: ' + (auto ? '"preset" = the id of the pose type you chose; ' : '')
     + '"pose_en" = 3 to 5 concrete English sentences (where she is in the scene, what she sits or leans on or how she stands or moves, '
     + 'legs, arms and hands, torso, head, gaze, expression); "pose_th" = the same idea in 1 to 2 short Thai sentences.';
@@ -328,8 +332,9 @@ export async function planPose(input: PlanInput): Promise<PosePlan | null> {
 }
 
 // Automatic mode directs the complete shot; explicit posture presets retain their existing behavior.
-export async function directPhoto(input: DirectorInput): Promise<DirectorPlan | null> {
-  const request = directorRequest(input);
+// headGazes = ทิศหน้า/สายตาที่สุ่มให้แต่ละไอเดีย (ไม่อยู่ใน DirectorInput เพราะ input ถูกใช้ผูกลายเซ็นไอเดียที่ส่งให้ผู้ใช้เลือก)
+export async function directPhoto(input: DirectorInput, headGazes: string[] = []): Promise<DirectorPlan | null> {
+  const request = directorRequest(input, headGazes);
   const result = await askPlanner({ name: 'photo_director', ...request, fields: DIRECTOR_FIELDS },
     (r) => readDirectorPlan(r, { backgroundMode: input.backgroundMode, goal: input.goal }) !== null, 'วางแผนภาพ');
   return result ? readDirectorPlan(result, { backgroundMode: input.backgroundMode, goal: input.goal }) : null;

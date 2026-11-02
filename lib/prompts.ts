@@ -63,6 +63,7 @@ export type PromptInput = {
   poseMode?: PoseMode; // เอาอะไรจากรูปท่าโพสต์ (POSE_MODES) ใช้คู่กับ hasPose
   framing?: string | null; // ระยะของสไตล์ถ่ายภาพ (framing ใน PRESETS) ใส่ในบรรทัดแรก
   gaze?: string | null; // การมอง (GAZES)
+  headGaze?: string | null; // ทิศหน้า + สายตาของรูปนี้ (สุ่มจาก HEAD_GAZES หรือของไอเดีย AI จัดท่าฯ) ย้ำท้ายคำสั่ง ไม่ให้หน้าหันตรงกล้องทุกรูป
   props?: string[]; // พร็อพในมือ (PROPS)
   face?: string | null; // สีหน้าที่เลือก (FACE_MOODS) null = ไม่สั่ง
   faceFromRef?: boolean; // สีหน้าแบบ "อัตโนมัติ" + มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปท่า
@@ -88,7 +89,7 @@ export function cropLine(aspect: string, fullBody: boolean) {
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
+  poseMode = 'pose', framing = null, gaze = null, headGaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
   posePlan = null, camera = null, placement = null, crop = null, directed,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
@@ -250,6 +251,11 @@ export function buildPrompt({
   // สีหน้าที่เลือก: ต้องบอกว่าไม่เอาสีหน้าจากรูปนางแบบ ไม่งั้น AI ยึดรอยยิ้มในรูปนางแบบ
   if (face) lines.push(face, posePlan ? 'This expression replaces any expression in the pose plan.' : 'Do not keep the expression of image 1.');
   if (!shot && gaze) lines.push(gaze);
+  // ทิศหน้า/สายตา (2 พ.ย.): ตัววางแผนชอบให้หันหน้ามองกล้องทุกรูป รูปเลยดูแข็ง · ย้ำอีกครั้งท้ายคำสั่ง พร้อมกฎหน้าเอียงตามคอ (บทเรียน 19 ต.ค.)
+  if (!shot && headGaze) {
+    lines.push(`Head and gaze: ${headGaze.trim().replace(/\.$/, '')}. Show her face naturally from this angle as the camera sees it, with natural `
+      + 'foreshortening and the neck and shoulders connecting naturally to the head; do not turn her face squarely to the camera unless this says so.');
+  }
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
   if (fullBody && !shot && !directed) lines.push('Show the full body from head to feet.'); // Directed framing comes from the selected shot.
   // ตำแหน่งคนในภาพ: ไม่สั่งเลย AI วางคนกลางภาพเกือบทุกรูป — ท่าเดิม + ฉากเดิม (แค่เปลี่ยนชุด) ไม่สั่ง จะได้ไม่ย้ายคนในรูปเดิม

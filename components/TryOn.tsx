@@ -850,8 +850,8 @@ export default function TryOn() {
             <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
           </Section>
         )}
-        <Section title="การมอง" note={isDirector ? 'AI เลือกให้' : shot ? 'ใช้จากรูปต้นแบบ' : undefined}>
-          <ChipGroup options={[{ id: '', name: 'ไม่กำหนด' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={setGazeId} />
+        <Section title="การมอง" note={isDirector ? 'AI เลือกให้ หน้าและสายตาหลากหลาย' : shot ? 'ใช้จากรูปต้นแบบ' : 'อัตโนมัติ = สุ่มมุมหน้าและสายตาต่อรูป'}>
+          <ChipGroup options={[{ id: '', name: 'อัตโนมัติ' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={setGazeId} />
         </Section>
         <Section title="พร็อพในมือ" note={isDirector ? 'AI จัดท่าและการใช้สิ่งของในฉากให้' : 'เลือกได้หลายอย่าง'}>
           <div className="chips">
