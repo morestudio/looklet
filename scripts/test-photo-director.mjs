@@ -1,0 +1,201 @@
+// Contract and recovery tests; no network, image generation, credentials or stored user images.
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { appLoader } from './lib/load-app.mjs';
+
+const load = appLoader({ fetchImpl: async () => { throw new Error('Network forbidden in tests'); } });
+const { DIRECTOR_FIELDS, directorRequest, readDirectorPlan, selectedShot, shotInstruction, readShotReview, unavailableReview } = load('lib/photo-director.ts');
+const { buildPrompt } = load('lib/prompts.ts');
+const { deliverDirectedImage } = load('lib/directed-delivery.ts');
+const img = (data) => ({ data, mime: 'image/jpeg' });
+const input = { person: img('person'), outfit: img('pajamas'), location: img('bedroom'), locationIsModelPhoto: false, locationText: null,
+  accessories: [{ img: img('bag'), what: 'a bag' }], backgroundMode: 'explore', goal: 'lifestyle', aspect: '4:5', framing: null,
+  angle: null, placement: null, expression: null, gaze: null, props: [], extra: null, previous: [] };
+function response() {
+  const r = Object.fromEntries(DIRECTOR_FIELDS.map((f) => [f, 'Observed reference detail']));
+  for (const n of [1, 2, 3]) Object.assign(r, {
+    [`title_${n}`]: `ไอเดีย ${n}`, [`interaction_${n}`]: ['Sit on the visible bed edge', 'Lie supported on the mattress', 'Sit on the floor beside the bed'][n - 1],
+    [`placement_${n}`]: 'center', [`feasible_${n}`]: 'yes',
+    [`score_outfit_${n}`]: String(100 - n * 5), [`score_natural_${n}`]: '80', [`score_scene_${n}`]: '90', [`score_render_${n}`]: '80',
+  });
+  return r;
+}
+const parse = (r = response(), mode = 'explore') => readDirectorPlan(r, { backgroundMode: mode, goal: 'lifestyle' });
+const review = (checks = {}) => readShotReview({ identity: 'pass', outfit: 'pass', details: 'pass', anatomy: 'pass', support: 'pass', scene: 'pass', camera_crop: 'pass', summary_th: 'ตรวจภาพแล้ว', correction_en: '', ...checks });
+
+test('every original has one unambiguous role; original scene and no-outfit cases remain usable', () => {
+  const r = directorRequest(input);
+  assert.deepEqual(r.images.map((i) => i.data), ['person', 'pajamas', 'bedroom', 'bag']);
+  assert.match(r.context, /Image 1 is ONLY the model/);
+  assert.match(r.context, /Image 2 is ONLY the exact outfit/);
+  assert.match(r.context, /Image 3 is ONLY the location/);
+  assert.match(r.text, /EXPLORE THIS LOCATION/);
+  const original = directorRequest({ ...input, outfit: null, location: input.person, locationIsModelPhoto: true, accessories: [] });
+  assert.equal(original.images.length, 1);
+  assert.match(original.text, /outfit is what the model wears/);
+  assert.match(original.text, /background of image 1/);
+  const described = directorRequest({ ...input, location: null, locationText: 'Bedroom with a low bed' });
+  assert.match(described.text, /Bedroom with a low bed/);
+  assert.equal(described.images.length, 3);
+});
+
+test('keep-view mode and user constraints are explicit, and reviewer context has no planning commands', () => {
+  const r = directorRequest({ ...input, backgroundMode: 'keep', framing: 'waist up', angle: 'eye level', previous: ['bed-edge sitting'] });
+  assert.match(r.text, /KEEP THIS VIEW/);
+  assert.match(r.text, /Do not propose overhead/);
+  assert.match(r.text, /waist up/);
+  assert.match(r.text, /bed-edge sitting/);
+  assert.doesNotMatch(r.context, /Plan THREE/);
+});
+
+test('selection excludes an infeasible candidate even when its scores are highest', () => {
+  const r = response();
+  r.feasible_1 = 'no';
+  const plan = parse(r);
+  assert.equal(plan.selectedId, 'shot-2');
+  assert.equal(plan.candidates.length, 3);
+  assert.match(shotInstruction(plan), /Lie supported on the mattress/);
+  assert(!shotInstruction(plan).includes('Sit on the visible bed edge'));
+});
+
+test('reject malformed, duplicate, out-of-range and entirely infeasible plans', () => {
+  for (const change of [{ score_scene_1: 'NaN' }, { score_scene_1: '101' }, { score_render_2: '4.5' }, { placement_1: 'somewhere' },
+    { feasible_1: 'maybe' }, { interaction_1: '' }, { interaction_2: 'Sit on the visible bed edge' }, { title_2: 'ไอเดีย 1' },
+    { feasible_1: 'no', feasible_2: 'no', feasible_3: 'no' }]) assert.equal(parse({ ...response(), ...change }), null);
+});
+
+test('complete shot owns framing and contact surfaces instead of default standing/feet instructions', () => {
+  const plan = parse();
+  const shot = selectedShot(plan);
+  const prompt = buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true, posePlan: shotInstruction(plan), directed: 'explore',
+    framing: shot.framing, camera: { framing: shot.framing, angle: 'overhead view' } });
+  assert.match(prompt, /complete shot plan/);
+  assert.match(prompt, /planned body contact surfaces/);
+  assert.match(prompt, /including every toe and heel/);
+  assert.match(prompt, /re-creating its perspective/);
+  assert.doesNotMatch(prompt, /Show the full body from head to feet/);
+  assert.doesNotMatch(prompt, /feet touch the ground/);
+  const keep = buildPrompt({ hasOutfit: true, hasSceneImage: true, posePlan: shotInstruction(parse(response(), 'keep')), directed: 'keep', camera: { framing: 'full body', angle: 'reference viewpoint' } });
+  assert.match(keep, /preserve the location reference viewpoint/);
+  assert.doesNotMatch(keep, /re-creating its perspective/);
+  assert.match(buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true }), /Show the full body from head to feet/);
+});
+
+test('uncertainty or unavailable checking is never labeled passed', () => {
+  assert.equal(review().status, 'passed');
+  assert.equal(review({ identity: 'uncertain' }).status, 'needs_review');
+  assert.equal(review({ support: 'fail' }).status, 'needs_review');
+  assert.equal(review({ anatomy: 'maybe' }), null);
+  assert.equal(unavailableReview().status, 'unavailable');
+});
+
+function deliveryDeps(reviews = [review()]) {
+  const events = [];
+  return { events, deps: {
+    review: async (i) => { events.push(`review:${i.data}`); const r = reviews.shift(); if (r instanceof Error) throw r; return r; },
+    save: async (i, p) => { events.push(`save:${i.data}:${p.review.status}`); return `/${i.data}.jpg`; },
+    canRepair: async () => true,
+    repair: async () => { events.push('repair'); return img('fixed'); },
+  } };
+}
+const meta = { name: 'test', th: 'ทดสอบ', director: parse() };
+const failed = () => review({ support: 'fail', correction_en: 'Restore visible mattress contact.' });
+
+test('save the first result before one repair, recheck the crop and return an improved result', async () => {
+  const { events, deps } = deliveryDeps([failed(), review()]);
+  const out = await deliverDirectedImage(img('first'), meta, true, deps);
+  assert.deepEqual(events, ['review:first', 'save:first:needs_review', 'repair', 'review:fixed', 'save:fixed:passed']);
+  assert.equal(out.src, '/fixed.jpg');
+  assert.equal(out.posePlan.originalSrc, '/first.jpg');
+  assert.equal(out.posePlan.repaired, true);
+});
+
+test('keep the original when repair fails or the repaired image is worse', async () => {
+  let setup = deliveryDeps([failed()]);
+  setup.deps.repair = async () => { throw new Error('provider timeout'); };
+  let out = await deliverDirectedImage(img('first'), meta, true, setup.deps);
+  assert.equal(out.src, '/first.jpg');
+  assert(out.posePlan.repairError);
+  setup = deliveryDeps([failed(), review({ support: 'fail', outfit: 'fail' })]);
+  out = await deliverDirectedImage(img('first'), meta, true, setup.deps);
+  assert.equal(out.src, '/first.jpg');
+  assert.equal(setup.events.filter((e) => e === 'repair').length, 1);
+});
+
+test('no repair on opt-out, exhausted quota, uncertain-only review, or checker failure', async () => {
+  for (const scenario of ['opt-out', 'quota', 'uncertain', 'checker']) {
+    const { deps, events } = deliveryDeps([scenario === 'checker' ? new Error('checker timeout') : scenario === 'uncertain' ? review({ identity: 'uncertain' }) : failed()]);
+    if (scenario === 'quota') deps.canRepair = async () => false;
+    const out = await deliverDirectedImage(img('first'), meta, scenario !== 'opt-out', deps);
+    assert.equal(out.src, '/first.jpg');
+    assert(!events.includes('repair'));
+    if (scenario === 'checker') assert.equal(out.posePlan.review.status, 'unavailable');
+  }
+});
+
+test('real planner integration sends all references, validates provider output, and falls back without silently generating', async () => {
+  const requests = [];
+  let reply = response();
+  const app = appLoader({ env: { OPENAI_API_KEY: 'test-only' }, fetchImpl: async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(reply) } }] }) };
+  } });
+  const { directPhoto } = app('lib/ai.ts');
+  assert(await directPhoto(input));
+  assert.equal(requests[0].messages[0].content.filter((c) => c.type === 'image_url').length, 4);
+  assert.equal(requests[0].response_format.json_schema.strict, true);
+  assert.equal(requests[0].response_format.json_schema.schema.required.length, DIRECTOR_FIELDS.length);
+  reply = { ...response(), feasible_1: 'no', feasible_2: 'no', feasible_3: 'no' };
+  assert.equal(await directPhoto(input), null);
+});
+
+test('generation route wires director constraints, final crop, stored reviews and repair usage together', async () => {
+  const saved = [], usage = [], prompts = [], quotaChecks = [], plannerInputs = [];
+  let validPlan = true;
+  let reviews = [failed(), review()];
+  const app = appLoader({ overrides: {
+    'lib/route.ts': { post: (fn) => fn, json: (status, body) => ({ status, body }) },
+    'lib/ai.ts': {
+      availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
+      describeLighting: async () => 'Soft window light',
+      directPhoto: async (i) => { plannerInputs.push(i); return validPlan ? parse() : null; },
+      planPose: async () => { throw new Error('Auto mode must not call the old pose planner'); },
+      reviewShot: async (_input, _plan, i) => { assert.match(i.data, /cropped/); return reviews.shift(); },
+      generateImage: async (_model, images, prompt) => { prompts.push({ images, prompt }); return { ...img('rendered'), tokens: 123 }; },
+    },
+    'lib/images.ts': { cropTo: async (i) => ({ ...i, data: i.data + '-cropped' }), servable: async (i) => i },
+    'lib/storage.ts': { saveImage: async (_where, data, _mime, meta) => { saved.push({ data, meta }); return `/result-${saved.length}.jpg`; } },
+    'lib/usage.ts': { ESTIMATED_TOKENS: 6000, quotaBlock: async (pending) => { quotaChecks.push(pending ?? 0); return null; }, recordUsage: async (entry) => usage.push(entry) },
+    'lib/genlog.ts': { localTime: () => 'test', sentences: (s) => [s], writeGenerateLog: async (entry) => entry },
+  } });
+  const { POST } = app('app/api/generate/route.ts');
+  const body = { model: 'openai:gpt-image-2.5-sunburst', person: 'model-original', outfit: 'outfit-original', scene_image: 'room-original',
+    pose_preset: 'auto', background_mode: 'explore', photo_goal: 'lifestyle', aspect: '4:5', camera_framing: 'full body', camera_angle: 'high angle', placement: 'left', extra: 'Relaxed morning', previous_shots: ['Old shot'] };
+  let out = await POST(body);
+  assert.equal(out.status, 200);
+  assert.equal(out.body.src, '/result-2.jpg');
+  assert.equal(out.body.posePlan.review.status, 'passed');
+  assert.equal(saved[0].meta.posePlan.review.status, 'needs_review');
+  assert.equal(saved[1].meta.posePlan.originalSrc, '/result-1.jpg');
+  assert.equal(usage[0].calls, 2);
+  assert.equal(usage[0].tokens, 246);
+  assert.equal(quotaChecks[1], 123); // pending original tokens count before allowing another paid render
+  assert.deepEqual(prompts[0].images.map((i) => i.data), ['model-original', 'outfit-original', 'room-original']);
+  assert.equal(prompts[1].images.length, 4); // originals plus failed draft
+  assert.match(prompts[1].prompt, /Image 4 is the failed draft/);
+  assert.match(prompts[0].prompt, /planned body contact surfaces/);
+  assert.equal(plannerInputs[0].person.data, 'model-original');
+  assert.equal(plannerInputs[0].framing, 'full body');
+  assert.equal(plannerInputs[0].placement, 'left');
+  assert.deepEqual(plannerInputs[0].previous, ['Old shot']);
+  validPlan = false;
+  const count = prompts.length;
+  out = await POST(body);
+  assert.equal(out.status, 503);
+  assert.equal(prompts.length, count); // no paid render after planning failure
+  validPlan = true;
+  reviews = [review()];
+  out = await POST({ ...body, auto_repair: false, background_mode: 'keep' });
+  assert.equal(out.status, 200);
+  assert.equal(plannerInputs.at(-1).backgroundMode, 'keep');
+});

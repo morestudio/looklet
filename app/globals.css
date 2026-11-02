@@ -354,6 +354,12 @@ input.field { height: var(--control-height-field); padding: 0 var(--space-12); b
 /* ท่าสำเร็จรูป: 2 คอลัมน์ ชื่อ + คำอธิบายสั้น */
 .options.pose-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .options.pose-presets .option small { line-height: 1.35; }
+.director-settings { display: grid; gap: 10px; margin-top: 16px; }
+.director-settings p, .shot-plan p { margin: 0; }
+.director-settings label { display: flex; align-items: flex-start; gap: 8px; line-height: 1.6; }
+.director-settings input { margin-top: 6px; accent-color: var(--accent); }
+.shot-plan { display: grid; gap: 10px; margin-top: 16px; overflow-wrap: anywhere; }
+.shot-plan details p { margin-top: 10px; }
 /* พร็อพ (หน้าสินค้า): แนวพร็อพแบ่งกลุ่ม การ์ด 2 คอลัมน์ */
 .prop-options .options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .prop-options .option small { line-height: 1.35; }

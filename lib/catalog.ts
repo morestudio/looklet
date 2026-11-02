@@ -172,7 +172,7 @@ export const POSE_PRESETS: PosePreset[] = [
 ];
 // สุ่มจังหวะของท่า 1 แบบ (ทุกครั้งที่สร้างได้ท่าไม่ซ้ำ)
 export const pickMoment = (p: PosePreset) => p.moments[Math.floor(Math.random() * p.moments.length)];
-export const POSE_AUTO = { id: 'auto', name: 'AI เลือกให้', hint: 'AI ดูฉาก ชุด ของเสริม แล้วเลือกแบบที่เข้ากันที่สุดให้' };
+export const POSE_AUTO = { id: 'auto', name: 'AI จัดท่าและมุมกล้อง', hint: 'ดูนางแบบ ชุด และฉาก คิด 3 ไอเดีย เลือกภาพที่เหมาะที่สุด' };
 
 // เอาอะไรจากรูปท่าโพสต์: shot = ท่า + มุมกล้อง + ระยะ + การมอง + แสง/โทนสี (ล็อกตัวเลือกกล้องกับแสงสี), shot-scene = รวมฉากในรูปด้วย
 export const POSE_MODES = [

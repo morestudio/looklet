@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { me, ownerMeta, visibleTo } from './account';
 import { sbDelete, sbList, sbMeta, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
+import type { StoredPosePlan } from './photo-director';
 
 const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
@@ -77,7 +78,7 @@ export type Stored = {
   src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off';
   productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
   editedFrom?: string;
-  refinedFrom?: string; posePlan?: { name: string; th: string }; page?: 'product'; stylePlan?: { name: string; th: string };
+  refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
 };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว

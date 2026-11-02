@@ -9,6 +9,8 @@ import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import { SignOutButton } from './AuthForm';
 import { PersonView } from './PersonView';
 import { PoseView } from './PoseView';
+import { ShotPlanView } from './ShotPlanView';
+import type { BackgroundMode, PhotoGoal, StoredPosePlan } from '@/lib/photo-director';
 import { StyleView } from './StyleView';
 import { PLATFORM_ASPECTS } from '@/lib/aspects';
 import {
@@ -25,7 +27,7 @@ import {
 } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
-  POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
+  POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
   presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode, type Preset,
 } from '@/lib/catalog';
 
@@ -38,7 +40,7 @@ const idOf = (item: Item) => item.src ?? item.name;
 const find = (list: Item[], id: string | null) => (id === null ? undefined : list.find((i) => idOf(i) === id));
 // ท่าสำเร็จรูป (ไม่มีรูปท่า ให้ AI ตัววางแผนคิดท่าจากฉาก) — id = "preset:<id ใน POSE_PRESETS หรือ auto>" ไม่ชนกับรูป (src ขึ้นต้นด้วย /)
 const PRESET_POSE = 'preset:';
-const POSE_CHOICES = POSE_PRESETS; // "AI เลือกให้" (POSE_AUTO) เอาออกจากหน้าเว็บ 20 ต.ค. — server ยังรับ id auto ได้
+const POSE_CHOICES = [POSE_AUTO, ...POSE_PRESETS];
 // ของเสริมรูปเก่าที่ไม่มีประเภท -> ถือเป็น "อื่นๆ"
 const accessoryType = (a: Item) => ACCESSORY_TYPES.find((t) => t.id === a.type) ?? ACCESSORY_TYPES.find((t) => t.id === 'other')!;
 
@@ -82,7 +84,7 @@ const FINISH_LOOKS = [
 ] as const;
 type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
-type PosePlan = { name: string; th: string }; // ท่าที่ AI ตัววางแผนคิดให้ (ท่าสำเร็จรูป)
+type PosePlan = StoredPosePlan;
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
 type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan };
 type AiModel = { id: string; label: string };
@@ -141,6 +143,9 @@ export default function TryOn() {
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
   const [poseMode, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('explore');
+  const [photoGoal, setPhotoGoal] = useState<PhotoGoal>('lifestyle');
+  const [autoRepair, setAutoRepair] = useState(true);
   const [lightSource, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
   const [faceMood, setFaceMood] = useState('auto'); // สีหน้า (FACE_MOODS)
   const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
@@ -164,6 +169,7 @@ export default function TryOn() {
   const model = find(lists.model, pick.model) ?? lists.model[0];
   const outfit = find(lists.outfit, pick.outfit);
   const posePreset = pick.pose?.startsWith(PRESET_POSE) ? POSE_CHOICES.find((p) => PRESET_POSE + p.id === pick.pose) : undefined;
+  const isDirector = posePreset?.id === POSE_AUTO.id;
   const pose = posePreset ? undefined : find(lists.pose, pick.pose);
   const scene = find(lists.scene, pick.scene);
   // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
@@ -393,7 +399,7 @@ export default function TryOn() {
       shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม',
       shot ? (shotPresetLight ? 'แสง ' + preset.name : 'แสงจากรูปต้นแบบ') : preset.name,
       ...(framingChoice && !set ? [framingChoice.name] : []),
-      ...(angleChoice && !set ? [angleChoice.name] : []),
+      ...(angleChoice && !set && !(isDirector && backgroundMode === 'keep') ? [angleChoice.name] : []),
       ...(placementChoice ? ['ตำแหน่ง' + placementChoice.name] : []),
       ...(moodName ? [moodName] : []),
       ...(gaze ? [gaze.name] : []),
@@ -401,7 +407,8 @@ export default function TryOn() {
       ...(aspect !== DEFAULT_ASPECT ? [platform.name] : []),
     ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
-    setBusy(set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
+    setBusy(isDirector ? 'AI กำลังคิดท่าและมุมกล้อง สร้างรูป แล้วตรวจภาพ...'
+      : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
       : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
         : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
           : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
@@ -421,6 +428,11 @@ export default function TryOn() {
         accessories: accs.map((a, i) => ({ data: accImgs[i].data, what: accessoryType(a).prompt, show: accessoryType(a).show })),
         pose: poseImg?.data ?? null,
         pose_preset: posePreset?.id ?? null, // server ให้ AI ตัววางแผนคิดท่าจากฉาก
+        background_mode: backgroundMode,
+        photo_goal: photoGoal,
+        auto_repair: autoRepair,
+        previous_shots: isDirector ? results.filter((r) => r.posePlan?.director).slice(0, 6)
+          .map((r) => r.posePlan!.director!.candidates.find((c) => c.id === r.posePlan!.director!.selectedId)!.interaction.slice(0, 400)) : [],
         pose_mode: poseMode,
         scene_image: sceneImg?.data ?? null,
         scene_text: shotScene ? null : scene?.prompt ?? null,
@@ -432,12 +444,12 @@ export default function TryOn() {
           // ชื่อตัวเลือกภาษาไทย ไว้ทำ log ให้อ่านง่าย (คำสั่งจริงที่ส่ง AI อยู่ใน prompt)
           choices: {
             poseMode: pose ? POSE_MODES.find((m) => m.id === poseMode)!.name : posePreset ? 'ท่าสำเร็จรูป: ' + posePreset.name : 'ท่าเดิม',
-            preset: shot ? (shotPresetLight ? `แสง ${preset.name} · กล้องจากรูปท่าโพสต์` : 'ใช้แสงและกล้องจากรูปท่าโพสต์') : preset.name,
+            preset: isDirector ? `แสง ${preset.name} · กล้องตามแผน AI` : shot ? (shotPresetLight ? `แสง ${preset.name} · กล้องจากรูปท่าโพสต์` : 'ใช้แสงและกล้องจากรูปท่าโพสต์') : preset.name,
             ...(shot && !shotPresetLight ? {} : Object.fromEntries(PRESET_PARTS
-              .filter(({ key }) => preset[key] && (!shot || key === 'light' || key === 'color')).map(({ key }) => [key, preset[key]!.label]))),
+              .filter(({ key }) => preset[key] && (!(shot || isDirector) || key === 'light' || key === 'color')).map(({ key }) => [key, preset[key]!.label]))),
             ...(shot || set ? {} : {
-              framing: framingChoice ? framingChoice.name : 'ตามสไตล์: ' + preset.framing.label,
-              angle: angleChoice ? angleChoice.name : 'ตามสไตล์: ' + preset.angle.label,
+              framing: framingChoice ? framingChoice.name : isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์: ' + preset.framing.label,
+              angle: isDirector && backgroundMode === 'keep' ? 'ตามมุมฉากเดิม' : angleChoice ? angleChoice.name : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์: ' + preset.angle.label,
             }),
             face: moodName ?? 'ตามรูปนางแบบ',
             lightSource: shot ? LIGHT_SOURCES.find((l) => l.id === lightSource)!.name : null,
@@ -451,7 +463,7 @@ export default function TryOn() {
         extra: extra.trim(),
         // ลอกทั้งช็อต: แสง/กล้องเอาจากรูปต้นแบบ (server ให้ AI อ่านแสงให้) หรือใช้แค่แสง/โทนสีของสไตล์ที่เลือก
         // มุมกล้องที่เลือกแทนมุมของสไตล์ (ชุดภาพใช้มุมของแต่ละรูปในชุดเอง)
-        look: shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset, set ? undefined : angleChoice?.prompt),
+        look: isDirector ? presetLightPrompt(preset) : shot ? (shotPresetLight ? presetLightPrompt(preset) : null) : presetPrompt(preset, set ? undefined : angleChoice?.prompt),
         light_from_ref: shot && !shotPresetLight,
         face: mood.prompt || null,
         // ลุคที่เหมาะกับรูปนี้ (เก็บกับรูป ขั้นแต่งรูป "อัตโนมัติ" ใช้ค่านี้): ใช้สไตล์ Phone candid -> มือถือ
@@ -462,7 +474,7 @@ export default function TryOn() {
         framing: shot ? null : set ? SET_SHOTS[0].framing : framingChoice?.prompt ?? preset.framing.prompt,
         // เลือกระยะ/มุมเอง (ไม่ใช่ตามสไตล์): server สั่งย้ำท้ายคำสั่งว่าสำคัญกว่ากรอบภาพ/มุมกล้องของรูปท่าและรูปฉาก
         camera_framing: set ? null : framingChoice?.prompt ?? null,
-        camera_angle: set ? null : angleChoice?.prompt ?? null,
+        camera_angle: set || (isDirector && backgroundMode === 'keep') ? null : angleChoice?.prompt ?? null,
         placement: placementChoice?.id ?? null, // null = อัตโนมัติ (server สุ่ม)
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
@@ -472,7 +484,9 @@ export default function TryOn() {
       const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
       const out = await api<{ src: string; posePlan: PosePlan | null }>('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
       const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined }]; // server เซฟไว้ใน results/ แล้ว
-      if (out.posePlan) setStatus(`ท่าที่ AI คิดให้ (${out.posePlan.name}): ${out.posePlan.th}`);
+      if (out.posePlan) setStatus(out.posePlan.review
+        ? `${out.posePlan.name} · ${out.posePlan.review.summaryThai}${out.posePlan.repairError ? ' · ' + out.posePlan.repairError : ''}`
+        : `ท่าที่ AI คิดให้ (${out.posePlan.name}): ${out.posePlan.th}`);
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
@@ -707,8 +721,17 @@ export default function TryOn() {
             </button>
           ))}
         </div>
-        {posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้ (ใช้เวลาเพิ่มราว 10 วินาที ไม่ถึง 5 สตางค์) — ทุกครั้งที่สร้างได้ท่าใหม่</p>}
-        {shown?.posePlan && <p className="note">ท่าที่ AI คิดให้รูปที่ดูอยู่ ({shown.posePlan.name}): {shown.posePlan.th}</p>}
+        {isDirector ? <div className="director-settings">
+          <p className="muted-text">AI ดูนางแบบ ชุด และฉาก คิด 3 ไอเดีย แล้วเลือกท่าและมุมกล้องให้ พร้อมตรวจภาพที่สร้าง</p>
+          <p className="sub">ใช้ฉากแบบไหน</p>
+          <ChipGroup options={[{ id: 'explore', name: 'สำรวจมุมใหม่' }, { id: 'keep', name: 'คงมุมฉากเดิม' }]} value={backgroundMode} onChange={(v) => setBackgroundMode(v as BackgroundMode)} />
+          <p className="muted-text">{backgroundMode === 'explore' ? 'เปลี่ยนมุมกล้องได้ เช่น มุมสูงเหนือเตียง ส่วนที่มองไม่เห็นในรูปฉากจะให้ AI คาดคะเน' : 'ใช้มุมกล้องและตำแหน่งเฟอร์นิเจอร์ตามรูปฉาก จัดท่าภายในพื้นที่ที่เห็น'}</p>
+          <p className="sub">เป้าหมายของภาพ</p>
+          <ChipGroup options={[{ id: 'lifestyle', name: 'ไลฟ์สไตล์' }, { id: 'outfit', name: 'โชว์ชุดชัด' }, { id: 'editorial', name: 'แฟชั่นสร้างสรรค์' }]} value={photoGoal} onChange={(v) => setPhotoGoal(v as PhotoGoal)} />
+          <label><input type="checkbox" checked={autoRepair} onChange={(e) => setAutoRepair(e.target.checked)} /> แก้ภาพอัตโนมัติได้ 1 ครั้งเมื่อพบปัญหา</label>
+          <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · ระยะและมุมที่เลือกเองเป็นเงื่อนไขให้ AI ส่วน “คงมุมฉากเดิม” จะใช้มุมตามฉาก</p>
+        </div> : posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้</p>}
+        {shown?.posePlan && <ShotPlanView plan={shown.posePlan} />}
       </Section>
       {MOOD_PICKER && <Section title="สีหน้า">
         <ChipGroup options={FACE_MOODS} value={faceMood} onChange={setFaceMood} />
@@ -743,24 +766,26 @@ export default function TryOn() {
       </button>
     );
     const framingValue = framingChoice?.id ?? 'auto', angleValue = angleChoice?.id ?? 'auto'; // เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์
+    const keepCamera = isDirector && backgroundMode === 'keep';
     panel = <>
       {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ระยะ มุมกล้อง และตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
       <Section title="ระยะ">
         <div className="options view-options">
-          {card('auto', framingValue === 'auto', shot, () => setFramingId('auto'), <PersonView framing={presetFraming(preset)} />, 'ตามสไตล์', `${preset.name}: ${preset.framing.label}`)}
+          {card('auto', framingValue === 'auto', shot, () => setFramingId('auto'), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
           {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot, () => setFramingId(f.id), <PersonView framing={f.id} />, f.name, f.hint))}
         </div>
       </Section>
       <Section title="มุมกล้อง">
+        {keepCamera && <p className="muted-text">คงมุมตามรูปฉาก เปลี่ยนเป็น “สำรวจมุมใหม่” ในขั้นท่าโพสต์เพื่อเลือกมุมอื่น</p>}
         <div className="options view-options">
-          {card('auto', angleValue === 'auto', shot, () => setAngleId('auto'), <PersonView angle={presetAngle(preset)} />, 'ตามสไตล์', `${preset.name}: ${preset.angle.label}`)}
-          {ANGLES.map((a) => card(a.id, angleValue === a.id, shot, () => setAngleId(a.id), <PersonView angle={a.id} />, a.name, a.hint))}
+          {card('auto', keepCamera || angleValue === 'auto', shot || keepCamera, () => setAngleId('auto'), <PersonView angle={presetAngle(preset)} />, keepCamera ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
+          {ANGLES.map((a) => card(a.id, !keepCamera && angleValue === a.id, shot || keepCamera, () => setAngleId(a.id), <PersonView angle={a.id} />, a.name, a.hint))}
         </div>
       </Section>
       <Section title="ตำแหน่งในภาพ">
         {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
         <div className="options view-options">
-          {card('auto', !placementChoice, shot || keepsPlace, () => setPlacementId('auto'), <PersonView placement="auto" />, 'อัตโนมัติ', 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
+          {card('auto', !placementChoice, shot || keepsPlace, () => setPlacementId('auto'), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
           {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace, () => setPlacementId(p.id), <PersonView placement={p.id} />, p.name, p.hint))}
         </div>
       </Section>
@@ -984,6 +1009,9 @@ export default function TryOn() {
           </div>
           <div className="stage-tools">
             <div className="caption" title={shown?.caption}>{shown ? shown.caption : `ตัวอย่าง: ${model.name} (ยังไม่ได้สร้าง)`}</div>
+            {shown?.posePlan?.review && <button className="btn btn-secondary tool" onClick={() => setStep(STEPS.findIndex((s) => s.key === 'pose'))}>
+              {shown.posePlan.review.status === 'passed' ? 'ผ่านการตรวจด้วย AI · ดูแผนภาพ' : 'ควรตรวจภาพก่อนใช้ · ดูรายละเอียด'}
+            </button>}
             <button className="btn btn-secondary tool" onClick={save}><IconDownload /> ดาวน์โหลด</button>
             {shown && <button className="btn btn-secondary tool" disabled={busy !== null}
               onClick={() => setLocalEdit({ src: shown.src, caption: shown.caption })}><IconRetouch /> แก้เฉพาะจุด</button>}

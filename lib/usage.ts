@@ -38,13 +38,13 @@ export async function usedTokens(userId: string) {
 
 // ลูกค้าที่ถูกปิด / ใช้ครบโควตา -> ตอบ error ก่อนเสียเงินเรียก AI · ทีมไม่มีโควตา
 // รู้โทเคนหลังสร้างเสร็จเท่านั้น: ยังเหลือ = สร้างได้ รูปสุดท้ายอาจเกินนิดหน่อย · ชุดภาพหลายมุมยิงพร้อมกัน อาจเกินได้ไม่กี่รูป
-export async function quotaBlock(): Promise<Response | null> {
+export async function quotaBlock(pendingTokens = 0): Promise<Response | null> {
   const account = me();
   if (!isCustomer(account) || !supabaseEnabled) return null;
   const invite = await inviteOf(account!.id);
   if (!invite || invite.disabled) return Response.json({ error: 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล' }, { status: 403 });
   const used = await usedTokens(account!.id);
-  if (used >= invite.token_quota) {
+  if (used + Math.max(0, pendingTokens) >= invite.token_quota) {
     return Response.json({ error: `ใช้โทเคนครบ ${invite.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
   }
   return null;

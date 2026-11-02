@@ -69,6 +69,7 @@ export type PromptInput = {
   refLight?: string | null; // ลอกทั้งช็อต: แสงในรูปต้นแบบที่ AI อ่านมาแล้ว (describeLighting) — ใช้เมื่อไม่ได้ส่ง look
   sceneLight?: string | null; // แสงในรูปฉากที่อัปโหลด ที่ AI อ่านมาแล้ว (describeLighting)
   posePlan?: string | null; // ท่าสำเร็จรูป: ท่าที่ AI ตัววางแผนเขียนให้ (planPose) ใช้แทน autoPose เมื่อไม่มีรูปท่า
+  directed?: 'keep' | 'explore'; // Complete shot plan owns framing, support and camera.
   // ระยะ/มุมกล้องที่ผู้ใช้เลือกเอง (ขั้นระยะ/มุมกล้อง ไม่ใช่ "ตามสไตล์"): สั่งย้ำท้ายคำสั่ง + ไม่ให้ลอกกรอบภาพ/มุมจากรูปท่าและรูปฉาก
   // ทดสอบ 21 ต.ค.: ใส่แค่ในบรรทัดแรก/ใน Camera: AI ยึดรูปท่าเต็มตัว (ท่าจับเท้า) และระดับสายตาของรูปฉาก ระยะ/มุมแทบไม่เปลี่ยน
   camera?: { framing: string | null; angle: string | null } | null;
@@ -88,7 +89,7 @@ export function cropLine(aspect: string, fullBody: boolean) {
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
-  posePlan = null, camera = null, placement = null, crop = null,
+  posePlan = null, camera = null, placement = null, crop = null, directed,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -97,7 +98,9 @@ export function buildPrompt({
   const place = Boolean(placement) && !shot && Boolean(newScene || hasPose || autoPose || posePlan);
   const at = place ? `, with her placed ${placedAt(placement!)}` : '';
   let first: string;
-  if (shot) {
+  if (directed) {
+    first = 'Create one fashion lifestyle photograph following the complete shot plan below.';
+  } else if (shot) {
     first = 'Create one fashion photograph.';
   } else if (framing) {
     first = `Create one fashion photograph, ${framing}${at}.`;
@@ -231,9 +234,12 @@ export function buildPrompt({
       'It must look like a single real photo taken on location, not a cut-out pasted onto a background: '
       + 'do not keep the studio lighting of image 1. Relight the model to match the scene '
       + '(light direction, color temperature, brightness and contrast), '
-      + (fullBody ? 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
+      + (directed ? 'add natural contact shadows at the planned body contact surfaces (mattress, seat, wall or floor), '
+        : fullBody ? 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
         : 'add soft shadows cast away from the light, ')
-      + (camera?.angle
+      + (directed === 'keep'
+        ? 'preserve the location reference viewpoint, perspective and furniture layout, matching its scale, depth of field, sharpness, color grading and grain. '
+        : camera?.angle
         ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its '
           + 'scale, depth of field, sharpness, color grading and grain. '
         : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ')
@@ -245,7 +251,7 @@ export function buildPrompt({
   if (face) lines.push(face, posePlan ? 'This expression replaces any expression in the pose plan.' : 'Do not keep the expression of image 1.');
   if (!shot && gaze) lines.push(gaze);
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
-  if (fullBody && !shot) lines.push('Show the full body from head to feet.'); // ชุดถ่ายใกล้ (เน้นสินค้า) fullBody = false
+  if (fullBody && !shot && !directed) lines.push('Show the full body from head to feet.'); // Directed framing comes from the selected shot.
   // ตำแหน่งคนในภาพ: ไม่สั่งเลย AI วางคนกลางภาพเกือบทุกรูป — ท่าเดิม + ฉากเดิม (แค่เปลี่ยนชุด) ไม่สั่ง จะได้ไม่ย้ายคนในรูปเดิม
   if (place) lines.push(placementLine(placement!));
   if (camera && !shot && (camera.framing || camera.angle)) {
@@ -254,6 +260,12 @@ export function buildPrompt({
       + [camera.framing && `frame it as ${camera.framing}`, camera.angle && `with the ${camera.angle}`].filter(Boolean).join(', ') + '.');
   }
   if (crop) lines.push(crop);
+  if (directed) lines.push('Framing safety: leave generous clearance around every body part required by the selected shot inside the final aspect ratio. '
+    + 'If the shot includes feet, show both complete feet including every toe and heel with clear space below them after cropping. '
+    + 'Pull the camera back rather than cutting off required body parts at the image boundary.');
+  if (directed && crop) lines.push('Crop-safe composition is essential: keep the entire requested subject extent within the central 70% of the uncropped image height '
+    + 'and central 80% of its width. Fill the surrounding safety margins with the real location. The final crop will remove these margins; '
+    + 'do not place required feet, toes, hands or head in them.');
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }

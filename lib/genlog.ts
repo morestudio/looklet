@@ -11,6 +11,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { DirectorPlan, StoredPosePlan } from './photo-director';
 
 export type LogImage = { image: number; name?: string; type?: string; file?: string; sent: string };
 export type GenerateLog = {
@@ -26,7 +27,8 @@ export type GenerateLog = {
     accessories: LogImage[];
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
-  pose: { mode: string; moment?: string; plan_th?: string; plan_en?: string } & Partial<LogImage>; // moment = จังหวะที่สุ่มให้ท่าสำเร็จรูป // plan = ท่าที่ AI ตัววางแผนคิด (ท่าสำเร็จรูป)
+  pose: { mode: string; moment?: string; plan_th?: string; plan_en?: string; director?: DirectorPlan } & Partial<LogImage>;
+  delivery?: StoredPosePlan | null;
   set?: { shot: string } & Partial<LogImage>; // ชุดภาพหลายมุม: มุมของรูปนี้ + รูปหลักที่ใช้เป็นต้นแบบ
   style: Record<string, string | string[] | boolean>;
   prompt: string[];

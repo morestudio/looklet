@@ -75,6 +75,15 @@ const POSES: Record<string, () => ReactNode> = {
     <Person x={48} top={42} h={44} />
     <path d="M76 63 H100 M94 57 L100 63 L94 69" stroke={LABEL} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     <Shadow x={140} /><Person x={140} top={24} h={104} /></>,
+  // Photo director: person, a usable scene surface and a camera choosing its viewpoint.
+  auto: () => <><Room />
+    <rect x="144" y="86" width="47" height="7" rx="2" fill={WOOD} stroke={INK} strokeWidth="1.2" />
+    <path d="M149 93 V127 M186 93 V127" stroke={INK} strokeWidth="1.2" />
+    <Shadow x={120} /><Person x={120} top={28} h={99} />
+    <rect x="47" y="40" width="33" height="24" rx="4" fill={PAPER} stroke={INK} strokeWidth="1.5" />
+    <circle cx="64" cy="52" r="7" fill="none" stroke={INK} strokeWidth="1.5" />
+    <path d="M80 52 L99 38 M80 57 L100 77" fill="none" stroke={LABEL} strokeWidth="1.2" strokeDasharray="3 3" />
+    <Sparkle x={173} y={42} /></>,
   // สบายๆ ตามฉาก: ทิ้งน้ำหนักขาเดียว มือหนึ่งล้วงกระเป๋า อีกมือวางบนโต๊ะในฉาก
   relaxed: () => <><Room />
     <path d="M140 84 H190 M146 84 V127 M184 84 V127" stroke={INK} strokeWidth="1.2" /><rect x="138" y="80" width="54" height="5" rx="1.5" fill={WOOD} stroke={INK} strokeWidth="1.2" />
