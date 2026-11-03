@@ -34,8 +34,9 @@ export const SKIN_TONE = 'Most important, skin tone: keep the real skin tone of 
 
 // ขนาดคนกับฉาก: สไตล์สั่ง "เต็มความสูงภาพ" AI ขยายคนแทนที่จะขยับกล้องเข้าใกล้ ฉากยังไกลเท่ารูปฉาก คนเลยดูตัวใหญ่ผิดธรรมชาติ
 // (เจอ 20–21 ต.ค.: โซฟา/เก้าอี้ออฟฟิศดูเล็กกว่าตัวคน) -> บอกขนาดจริงของคนและของรอบตัว + ให้ขยับกล้องเข้าใกล้แทนการขยายคน
-export const SCALE = 'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to '
-  + 'her: doors about 2 m tall with the top of the frame well above her head, ceilings about 2.7 m high, the seats of chairs and sofas at '
+// ลอกทั้งช็อต (framed = true): ระยะภาพมาจากรูปต้นแบบ ไม่บอก "ขอบบนเหนือหัว" ไม่งั้นรูปต้นแบบที่เป็นภาพใกล้หน้า AI ถอยกล้องออก (3 พ.ย.)
+const scaleLine = (framed = false) => 'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to '
+  + `her: doors about 2 m tall${framed ? '' : ' with the top of the frame well above her head'}, ceilings about 2.7 m high, the seats of chairs and sofas at `
   + 'about knee height, tables at about hip height and counters at about waist height. Never enlarge her against an unchanged background: '
   + 'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer '
   + 'and larger background objects and natural perspective.';
@@ -109,11 +110,15 @@ export function buildPrompt({
   const newScene = shotScene || hasSceneImage || sceneText;
   const place = Boolean(placement) && !shot && Boolean(newScene || hasPose || autoPose || posePlan);
   const at = place ? `, with her placed ${placedAt(placement!)}` : '';
+  const poseAt = 2 + (hasOutfit ? 1 : 0) + accessories.length; // เลขรูปท่าโพสต์ (ต่อจากชุดและของเสริม)
   let first: string;
   if (directed) {
     first = 'Create one fashion lifestyle photograph following the complete shot plan below.';
   } else if (shot) {
-    first = 'Create one fashion photograph.';
+    // ลอกทั้งช็อต (3 พ.ย.): เดิมประโยคแรกแค่ "Create one fashion photograph." รูปท่าเป็นภาพใกล้หน้าตรง แต่รูปนางแบบท้าวคางมองข้าง
+    // -> AI เอาท่า/ระยะ/สีหน้าจากรูปนางแบบ ลอกแค่ฉากกับแสง · บอกตั้งแต่ประโยคแรกว่ารูปนี้คือลอกช็อตจากรูปต้นแบบ
+    first = `Create one fashion photograph that recreates the shot of image ${poseAt} with the model from image 1: `
+      + `the same pose, head angle and gaze, framing, camera angle${shotScene ? ', camera distance and location' : ' and camera distance'} as image ${poseAt}.`;
   } else if (framing) {
     first = `Create one fashion photograph, ${framing}${at}.`;
   } else if (!fullBody) { // ต้องบอกตั้งแต่บรรทัดแรก ไม่งั้น AI ยึดรูปนางแบบเต็มตัวแล้วออกมาเต็มตัวเหมือนเดิม
@@ -126,7 +131,12 @@ export function buildPrompt({
   const lines = [
     first,
     SKIN_TONE,
-    hasPose || autoPose || posePlan
+    hasPose
+      // รูปท่า: รูปนางแบบใช้แค่ว่าเป็นใคร ห้ามเอาท่า/ระยะจากรูปนั้น (เดิมไม่ได้บอก รูปนางแบบที่โพสท่าชัดๆ ชนะรูปท่า 3 พ.ย.)
+      ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape. '
+        + 'Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression'
+        + (shot ? ', or its framing or camera distance.' : '.')
+      : autoPose || posePlan
       ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape.'
       : smallPoseChange
         ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape, '
@@ -174,6 +184,9 @@ export function buildPrompt({
       lines.push(`Image ${n} is a reference photo for the whole shot: recreate ${copy.slice(0, -1).join(', ')}, and ${copy.at(-1)}. `
         + `Use only the shot from image ${n}: do not copy that person's face, skin tone, hair, body shape, clothes or accessories.`
         + (look ? '' : ` Its lighting and color grading change the light on the model, never her skin tone, however pale the skin in image ${n} looks.`)
+        + ` Frame it exactly like image ${n}: show the same part of her body at the same size in the frame. If image ${n} is a close-up of `
+        + 'the head and shoulders, the result is the same close-up; never zoom out to show more of her body than image '
+        + `${n} shows, and never crop in tighter.`
         + (shotScene
           ? ` Place the model in the same location as image ${n}: same background, setting, time of day${look ? '' : ' and light'}.`
           : ` Do not copy the background of image ${n}.`)
@@ -185,9 +198,13 @@ export function buildPrompt({
     }
     // หน้าตรงแปะบนตัว: รูปนางแบบมักหันหน้าตรงกล้อง AI เลยวาดหน้าตรงบนตัวที่หัน/เอียง ดูไม่เป็นธรรมชาติ
     // ต้องบอกตรงๆ ว่าห้ามลอกมุมหน้าจากรูปนางแบบ (ทดสอบ 19 ต.ค.: ใส่บรรทัดนี้แล้วมุมหัว/หน้าเป็นธรรมชาติทันที)
-    lines.push(`Image 1 may show the model facing the camera straight on; do not copy that head angle. Turn and tilt her head exactly like `
-      + `the person in image ${n}, and show her face naturally from that angle as seen by the camera, with natural foreshortening and `
-      + 'the neck and shoulders connecting naturally to the head. It must not look like a front-facing face placed on a turned or tilted body.');
+    // 3 พ.ย.: กลับกันก็เจอ รูปท่าหน้าตรงมองกล้อง แต่รูปนางแบบหันข้าง -> ผลหันข้างมองไกลตามรูปนางแบบ เพราะบรรทัดเดิมบอกแค่
+    // "image 1 อาจหน้าตรง" + "ห้ามเป็นหน้าตรงแปะบนตัว" -> บอกเป็นกลาง ไม่ว่ารูปไหนหันแบบไหน + สายตาตามรูปท่า (ถ้าไม่ได้เลือกการมองเอง)
+    lines.push(`Image 1 may show the model with a different head angle and gaze; do not copy them. Turn and tilt her head exactly like `
+      + `the person in image ${n}`
+      + (shot || !gaze ? `, point her eyes exactly where that person's eyes look (straight into the lens if she looks into the lens),` : '')
+      + ' and show her face naturally from that angle as seen by the camera, with natural foreshortening and '
+      + 'the neck and shoulders connecting naturally to the head. It must not look like the face from image 1 placed on a turned or tilted body.');
     if (faceFromRef && !face) {
       lines.push(`Expression: copy the facial expression of the person in image ${n} (how much she smiles, how open the mouth is and `
         + 'the mood of the eyes), not the expression in image 1.');
@@ -249,6 +266,8 @@ export function buildPrompt({
       + 'do not keep the studio lighting of image 1. Relight the model to match the scene '
       + '(light direction, color temperature, brightness and contrast), '
       + (directed ? 'add natural contact shadows at the planned body contact surfaces (mattress, seat, wall or floor), '
+        // ลอกทั้งช็อต: ระยะตามรูปต้นแบบ อาจไม่เห็นเท้า -> ไม่พูดถึงเท้า (เดิมสั่งเงาที่เท้า AI ถอยกล้องให้เห็นเท้า)
+        : shot ? 'add natural contact shadows wherever her body touches the floor or furniture in the frame and soft shadows cast away from the light, '
         : fullBody ? 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
         : 'add soft shadows cast away from the light, ')
       + (directed === 'keep'
@@ -257,7 +276,7 @@ export function buildPrompt({
         ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its '
           + 'scale, depth of field, sharpness, color grading and grain. '
         : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ')
-      + SCALE); // สีผิว: SKIN_TONE ต้นคำสั่ง (เดิม "only as affected by the scene lighting" เปิดช่องให้ฉากสว่างแล้วผิวขาวตาม)
+      + scaleLine(shot)); // สีผิว: SKIN_TONE ต้นคำสั่ง (เดิม "only as affected by the scene lighting" เปิดช่องให้ฉากสว่างแล้วผิวขาวตาม)
   }
   if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
   else if (look) lines.push(REALISM, look);

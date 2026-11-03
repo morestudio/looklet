@@ -346,3 +346,34 @@ test('skin tone is the second sentence of every model prompt and reference photo
   // เลือกแสงของสไตล์แทนแสงรูปต้นแบบ -> ไม่มีประโยคแสงรูปต้นแบบ
   assert.doesNotMatch(buildPrompt({ ...modes[3], look: 'Soft window light.' }), /however pale the skin/);
 });
+
+test('copy-the-shot takes pose and framing from the reference photo, never from the model photo', () => {
+  // 3 พ.ย.: รูปท่าเป็นภาพใกล้หน้าตรง รูปนางแบบท้าวคางมองข้าง -> ผลได้ท่า/ระยะของรูปนางแบบ ลอกแค่ฉากกับแสง
+  const shot = buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true, fullBody: true, refLight: 'Soft front light.' });
+  assert.match(shot, /^Create one fashion photograph that recreates the shot of image 3 with the model from image 1: the same pose, head angle and gaze, framing, camera angle, camera distance and location as image 3\./);
+  assert.match(shot, /Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression, or its framing or camera distance\./);
+  assert.match(shot, /If image 3 is a close-up of the head and shoulders, the result is the same close-up; never zoom out/);
+  assert.doesNotMatch(shot, /feet|top of the frame well above her head/); // ข้อความภาพเต็มตัวดึงให้ถอยกล้อง
+  // ของเสริม 2 ชิ้น -> รูปท่าเป็นรูปที่ 5
+  const withAcc = buildPrompt({ hasOutfit: true, hasSceneImage: true, accessories: ['a bag', 'a cap'], hasPose: true, poseMode: 'shot' });
+  assert.match(withAcc, /^Create one fashion photograph that recreates the shot of image 5 with the model from image 1: the same pose, head angle and gaze, framing, camera angle and camera distance as image 5\./);
+  assert.match(withAcc, /Frame it exactly like image 5/);
+  // ลอกแค่ท่า: ไม่ลอกท่าจากรูปนางแบบ แต่ระยะภาพยังตามที่เลือก
+  const pose = buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', fullBody: true });
+  assert.match(pose, /Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression\./);
+  assert.doesNotMatch(pose, /recreates the shot|Frame it exactly like/);
+  assert.match(pose, /where the feet touch the ground/);
+  assert.match(pose, /top of the frame well above her head/);
+});
+
+test('head angle and gaze follow the pose photo whichever way the model photo faces', () => {
+  // 3 พ.ย.: รูปท่าหน้าตรงมองกล้อง + รูปนางแบบหันข้าง -> ผลหันข้างตามรูปนางแบบ
+  const shot = buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true });
+  assert.match(shot, /Image 1 may show the model with a different head angle and gaze; do not copy them\. Turn and tilt her head exactly like the person in image 3, point her eyes exactly where that person's eyes look \(straight into the lens if she looks into the lens\), and show her face naturally/);
+  assert.match(shot, /It must not look like the face from image 1 placed on a turned or tilted body\./);
+  assert.doesNotMatch(shot, /front-facing face|facing the camera straight on/);
+  // ลอกแค่ท่า + เลือกการมองเอง -> ไม่สั่งสายตาตามรูปท่า (ไม่ขัดกับการมองที่เลือก)
+  const chosen = buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', gaze: 'Looking away from the camera.' });
+  assert.doesNotMatch(chosen, /point her eyes exactly/);
+  assert.match(buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose' }), /point her eyes exactly where that person's eyes look/);
+});
