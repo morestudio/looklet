@@ -173,6 +173,7 @@ test('generation route wires director constraints, final crop, stored reviews an
     'lib/ai.ts': {
       availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
       describeLighting: async () => 'Soft window light',
+      describeSkinLight: async () => 'Soft highlights on the cheekbones.',
       directPhoto: async (i) => { plannerInputs.push(i); return validPlan ? parse() : null; },
       planPose: async () => { throw new Error('Auto mode must not call the old pose planner'); },
       reviewShot: async (_input, _plan, i) => { assert.match(i.data, /cropped/); return reviews.shift(); },
@@ -376,4 +377,27 @@ test('head angle and gaze follow the pose photo whichever way the model photo fa
   const chosen = buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', gaze: 'Looking away from the camera.' });
   assert.doesNotMatch(chosen, /point her eyes exactly/);
   assert.match(buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose' }), /point her eyes exactly where that person's eyes look/);
+});
+
+test('copy-the-shot copies how light falls on the skin of the pose photo, never its skin color', async () => {
+  // 3 พ.ย.: ทดสอบ 2 เคสแล้วผู้ใช้ให้ใส่ — ไฮไลต์นุ่มกระจายแบบรูปท่า ผิวไม่ขาวขึ้น
+  const skin = 'Broad, soft highlights sit on the forehead, nose bridge and cheekbones. The skin reads matte with a faint satin finish.';
+  const shot = buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true, refLight: 'Soft front light.', skinLight: skin });
+  assert.match(shot, /do not make it softer, dimmer or flatter than in image 3\. Light on her skin exactly like on the person in image 3: Broad, soft highlights/);
+  assert.match(shot, /never that person's skin color: her skin tone stays exactly as in image 1\./);
+  // แสงของสไตล์ (look) หรือลอกแค่ท่า -> ไม่ใช้
+  assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot', look: 'Lighting: flash.', skinLight: skin }), /Light on her skin/);
+  assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', skinLight: skin }), /Light on her skin/);
+  const requests = [];
+  const app = appLoader({ env: { GEMINI_API_KEY: 'test-only' }, fetchImpl: async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'Soft highlights sit on the nose bridge and cheekbones. '
+      + 'Her pale, porcelain complexion glows. Light turns into shadow gradually along the jaw.' }] } }] }) };
+  } });
+  const { describeSkinLight, cleanSkinLight } = app('lib/ai.ts');
+  const read = await describeSkinLight({ data: 'x', mime: 'image/jpeg' });
+  assert.equal(read, 'Soft highlights sit on the nose bridge and cheekbones. Light turns into shadow gradually along the jaw.'); // ประโยคสีผิวถูกตัด
+  assert.match(requests[0].contents[0].parts[0].text, /Describe only how the light falls on the skin/);
+  assert.match(requests[0].contents[0].parts[0].text, /Never mention skin color/);
+  assert.equal(cleanSkinLight('Her fair skin tone is even. Highlights are soft.'), 'Highlights are soft.');
 });

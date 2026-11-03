@@ -1,4 +1,4 @@
-import { availableModels, describeLighting, directPhoto, generateImage, planPose, reviewShot, type Img } from '@/lib/ai';
+import { availableModels, describeLighting, describeSkinLight, directPhoto, generateImage, planPose, reviewShot, type Img } from '@/lib/ai';
 import { selectedShot, shotInstruction, type DirectorInput, type StoredPosePlan } from '@/lib/photo-director';
 import { deliverDirectedImage } from '@/lib/directed-delivery';
 import { createShotProposal, readShotProposal } from '@/lib/director-proposal';
@@ -97,8 +97,11 @@ export const POST = post(async (req) => {
   // ทิศหน้า + สายตา สุ่มต่อรูป (2 พ.ย.): ไม่สุ่ม = ตัววางแผนให้หันหน้ามองกล้องทุกรูป · ไม่ใช้กับรูปท่าโพสต์ (ลอกหัว/สายตาจากรูปนั้น),
   // ท่าเดิม (คงท่าในรูปนางแบบ) และตอนผู้ใช้เลือกการมองเอง · AI จัดท่าฯ ไม่สุ่ม: ตัววางแผนคิดมุมหน้าเองตามท่า (HEAD_GAZE_RULE ใน photo-director)
   const headGaze = !setRef && !req.pose && !isDirector && !text(req.gaze) && (posePreset || req.auto_pose) ? pickHeadGazes(1)[0] : null;
-  const [refLight, sceneLight, plan, director] = await Promise.all([
-    !planningOnly && !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
+  // ลอกทั้งช็อต + แสงจากรูปต้นแบบ: อ่านแสงทั้งภาพ + แสงบนผิว (ไฮไลต์/ความฉ่ำ) จากรูปท่า พร้อมกัน — โมเดลอ่านรูปตัวเล็ก ไม่ถึงสตางค์
+  const lightFromRef = !planningOnly && !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref;
+  const [refLight, skinLight, sceneLight, plan, director] = await Promise.all([
+    lightFromRef ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
+    lightFromRef ? describeSkinLight({ data: req.pose, mime: 'image/jpeg' }) : null,
     !planningOnly && !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
     posePreset && !directorInput ? planPose({
       location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
@@ -154,6 +157,7 @@ export const POST = post(async (req) => {
     face: isDirector ? null : text(req.face),
     faceFromRef: Boolean(req.face_from_ref),
     refLight,
+    skinLight,
     sceneLight,
     // ระยะ/มุมกล้องที่เลือกเอง (ไม่ใช่ตามสไตล์) -> lib/prompts.ts สั่งย้ำให้ชนะรูปท่า/รูปฉาก
     camera: directedShot ? { framing: directedShot.framing, angle: directedShot.cameraAngle }
@@ -197,6 +201,7 @@ export const POST = post(async (req) => {
   if (!isDirector && texts(choices.props).length) style.props = texts(choices.props);
   if (harmonizeText) style.harmonize = true;
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
+  if (skinLight) style.skinLight = skinLight; // แสงบนผิวที่ AI อ่านจากรูปต้นแบบ
   if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
   if (!isDirector && text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);

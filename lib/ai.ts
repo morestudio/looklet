@@ -177,21 +177,33 @@ const LIGHT_PROMPT = 'You are a photography lighting expert. Describe only the l
   // 3 พ.ย.: เดิมสั่ง "how highlights look on skin" -> ได้ "luminous, even complexion" / "skin slightly washed out" แล้วรูปผิวขาวตาม
   + "Never describe anyone's skin color or complexion, or how pale, bright, glowing or even their skin looks. Reply with the description only.";
 
-async function lightWithGemini(img: Img) {
+// แสงบนผิว (3 พ.ย. ผู้ใช้ขอหลังดูผลทดสอบ): ไฮไลต์อยู่ตรงไหน นุ่ม/คมแค่ไหน ผิวดูแมตต์/ซาติน/ฉ่ำ แสงไล่เป็นเงายังไง
+// ทดสอบ 2 เคส (ลอกทั้งช็อต + ฉาก): ไฮไลต์จากจุดมันเล็กๆ ที่ปลายจมูก/ปาก -> กระจายนุ่มบนหน้าผาก สันจมูก โหนกแก้ม เหมือนรูปท่า
+// ผิวไม่ขาวขึ้น (L* ลด 1–1.5 สีอุ่นเท่าเดิม) · ห้ามพูดถึงสีผิว/ความขาว ไม่งั้นผิวขาวตามรูปท่า (บทเรียน "luminous, even complexion")
+const SKIN_LIGHT_PROMPT = 'You are a photography lighting expert. Describe only how the light falls on the skin of the person in this photo, so another '
+  + 'photographer can recreate it on a different person, in 2 to 4 short, concrete English sentences: where the highlights sit on the face and body '
+  + "(for example the forehead, nose bridge, cheekbones, cupid's bow, lips, shoulders or collarbones), how large, soft or crisp they are, whether the "
+  + 'skin reads matte, satin or dewy under this light, and how gradually the light turns into shadow across the face, neck and limbs. '
+  + 'Never mention skin color, tone, undertone, or how light, pale, fair, bright, white, even or glowing the skin is. Reply with the description only.';
+// กันพลาด: ถ้ายังมีประโยคพูดถึงสี/ความขาวของผิว ตัดประโยคนั้นทิ้ง (เหลือแต่เรื่องแสง)
+const SKIN_COLOR_WORDS = /\b(pale\w*|fair|porcelain|ivory|luminous|glow\w*|radiant|complexion|undertone|skin[- ]tone|whit\w*|tan\w*|olive)\b/i;
+export const cleanSkinLight = (text: string) => text.split(/(?<=\.)\s+/).filter((s) => !SKIN_COLOR_WORDS.test(s)).join(' ').trim();
+
+async function lightWithGemini(img: Img, prompt: string) {
   const d = await post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent', {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
-    body: JSON.stringify({ contents: [{ parts: [{ text: LIGHT_PROMPT }, { inline_data: { mime_type: img.mime, data: img.data } }] }] }),
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: img.mime, data: img.data } }] }] }),
   }, 'Gemini', 30_000);
   return (d.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
 }
 
-async function lightWithOpenAI(img: Img) {
+async function lightWithOpenAI(img: Img, prompt: string) {
   const d = await post('https://api.openai.com/v1/chat/completions', {
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
     body: JSON.stringify({
       model: 'gpt-4.1-mini',
       messages: [{ role: 'user', content: [
-        { type: 'text', text: LIGHT_PROMPT },
+        { type: 'text', text: prompt },
         { type: 'image_url', image_url: { url: `data:${img.mime};base64,${img.data}` } },
       ] }],
     }),
@@ -199,19 +211,22 @@ async function lightWithOpenAI(img: Img) {
   return d.choices?.[0]?.message?.content ?? '';
 }
 
-export async function describeLighting(img: Img): Promise<string | null> {
+async function describeLight(img: Img, prompt: string, what: string, clean = (t: string) => t): Promise<string | null> {
   const tries = [process.env.GEMINI_API_KEY && lightWithGemini, process.env.OPENAI_API_KEY && lightWithOpenAI];
   for (const describe of tries) {
     if (!describe) continue;
     try {
-      const text = (await describe(img)).replace(/\s+/g, ' ').trim();
+      const text = clean((await describe(img, prompt)).replace(/\s+/g, ' ').trim());
       if (text.length > 40) return text.slice(0, 900);
     } catch (e) {
-      console.error('อ่านแสงในรูปต้นแบบไม่สำเร็จ', (e as Error).message);
+      console.error(`อ่าน${what}ไม่สำเร็จ`, (e as Error).message);
     }
   }
   return null;
 }
+
+export const describeLighting = (img: Img) => describeLight(img, LIGHT_PROMPT, 'แสงในรูปต้นแบบ');
+export const describeSkinLight = (img: Img) => describeLight(img, SKIN_LIGHT_PROMPT, 'แสงบนผิวในรูปต้นแบบ', cleanSkinLight);
 
 // ---------- วางแผนท่า (ท่าสำเร็จรูป POSE_PRESETS): AI ตัวเล็กดูฉาก + ชุด + ของเสริม แล้วเขียนท่าที่เข้ากับฉากนั้นเป็นคำ ----------
 // ไม่ต้องมีรูปท่า — ทดสอบ 20 ต.ค. ได้ท่าที่ใช้เฟอร์นิเจอร์จริงในฉากและดูไม่ได้โพส ~9 วินาที ไม่ถึง 5 สตางค์ต่อครั้ง

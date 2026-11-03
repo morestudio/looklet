@@ -80,6 +80,7 @@ export type PromptInput = {
   face?: string | null; // สีหน้าที่เลือก (FACE_MOODS) null = ไม่สั่ง
   faceFromRef?: boolean; // สีหน้าแบบ "อัตโนมัติ" + มีรูปท่าโพสต์ -> ลอกสีหน้าจากรูปท่า
   refLight?: string | null; // ลอกทั้งช็อต: แสงในรูปต้นแบบที่ AI อ่านมาแล้ว (describeLighting) — ใช้เมื่อไม่ได้ส่ง look
+  skinLight?: string | null; // ลอกทั้งช็อต: แสงบนผิวของคนในรูปต้นแบบ (describeSkinLight) แค่ไฮไลต์/ความฉ่ำ/การไล่เงา ไม่ใช่สีผิว
   sceneLight?: string | null; // แสงในรูปฉากที่อัปโหลด ที่ AI อ่านมาแล้ว (describeLighting)
   posePlan?: string | null; // ท่าสำเร็จรูป: ท่าที่ AI ตัววางแผนเขียนให้ (planPose) ใช้แทน autoPose เมื่อไม่มีรูปท่า
   directed?: 'keep' | 'explore'; // Complete shot plan owns framing, support and camera.
@@ -101,7 +102,7 @@ export function cropLine(aspect: string, fullBody: boolean) {
 
 export function buildPrompt({
   hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, gaze = null, headGaze = null, props = [], face = null, faceFromRef = false, refLight = null, sceneLight = null,
+  poseMode = 'pose', framing = null, gaze = null, headGaze = null, props = [], face = null, faceFromRef = false, refLight = null, skinLight = null, sceneLight = null,
   posePlan = null, camera = null, placement = null, crop = null, directed,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
@@ -194,6 +195,12 @@ export function buildPrompt({
       // สั่งแค่ "recreate its lighting" AI ทำแสงนุ่ม/มืดลงเสมอ -> ส่งคำบรรยายแสงจริงที่ AI อ่านจากรูปต้นแบบมาด้วย (ทดสอบ 19 ต.ค.)
       if (!look && refLight) {
         lines.push(`Lighting exactly like image ${n}: ${refLight} Match this lighting closely; do not make it softer, dimmer or flatter than in image ${n}.`);
+      }
+      // แสงบนผิว (3 พ.ย. ทดสอบ 2 เคสแล้วผู้ใช้ให้ใส่): ไฮไลต์นุ่มกระจายแบบรูปท่าแทนจุดมันเล็กๆ ผิวไม่ขาวขึ้น · ย้ำว่าลอกแค่แสง ไม่ใช่สีผิว
+      if (!look && skinLight) {
+        lines.push(`Light on her skin exactly like on the person in image ${n}: ${skinLight} Copy only how the light falls on the skin `
+          + '(where the highlights sit, how large and soft they are, the sheen and how the light turns into shadow), never that person\'s skin color: '
+          + 'her skin tone stays exactly as in image 1.');
       }
     }
     // หน้าตรงแปะบนตัว: รูปนางแบบมักหันหน้าตรงกล้อง AI เลยวาดหน้าตรงบนตัวที่หัน/เอียง ดูไม่เป็นธรรมชาติ
