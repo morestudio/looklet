@@ -319,3 +319,30 @@ test('head and gaze vary per image instead of always facing the camera', async (
   assert.match(prompt, /Head and gaze: her eyes on the light\. Show her face naturally from this angle as the camera sees it/);
   assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true }), /Head and gaze/);
 });
+
+test('skin tone is the second sentence of every model prompt and reference photos never pass on their skin', () => {
+  // 3 พ.ย.: ผิวออกมาขาว/สว่างเกินจริง ผู้ใช้ขอให้สีผิวสำคัญที่สุดและอยู่ต้นคำสั่ง
+  const { SKIN_TONE } = load('lib/prompts.ts');
+  const modes = [
+    { hasOutfit: true, hasSceneImage: false }, // เปลี่ยนชุดอย่างเดียว
+    { hasOutfit: true, hasSceneImage: true, fullBody: true, posePlan: 'She leans on the counter.', look: 'Soft window light.' },
+    { hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'pose' },
+    { hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', refLight: 'Bright, high-key window light.' },
+    { hasOutfit: true, hasSceneImage: true, posePlan: 'She sits on the bed.', directed: 'explore', camera: { framing: 'full body', angle: 'eye level' } },
+  ];
+  for (const m of modes) {
+    const p = buildPrompt(m);
+    assert.equal(p.indexOf(SKIN_TONE), p.indexOf('.') + 2, 'SKIN_TONE must come right after the first sentence');
+    assert.match(p, /Keep the same person: identical face, facial features, skin tone/);
+    assert.doesNotMatch(p, /only as affected by the scene lighting/);
+  }
+  assert.match(SKIN_TONE, /^Most important, skin tone:/);
+  assert.match(SKIN_TONE, /Never whiten, brighten or pale her skin/);
+  const shot = buildPrompt(modes[3]);
+  assert.match(shot, /do not copy that person's face, skin tone, hair/);
+  assert.match(shot, /never her skin tone, however pale the skin in image 3 looks/);
+  assert.match(buildPrompt(modes[2]), /not the face, skin tone, hair/);
+  assert.match(buildPrompt(modes[0]), /Ignore the face, body, skin tone and background of image 2/);
+  // เลือกแสงของสไตล์แทนแสงรูปต้นแบบ -> ไม่มีประโยคแสงรูปต้นแบบ
+  assert.doesNotMatch(buildPrompt({ ...modes[3], look: 'Soft window light.' }), /however pale the skin/);
+});

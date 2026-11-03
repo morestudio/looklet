@@ -172,8 +172,10 @@ export const describeProduct = (img: Img) => describeItem(img, PRODUCT_DESCRIBE)
 const LIGHT_PROMPT = 'You are a photography lighting expert. Describe only the lighting of this photo so another photographer can recreate it exactly, '
   + 'in 3 to 5 short, concrete English sentences: the main light source and where it comes from (for example a direct on-camera flash, '
   + 'a window on the left, overhead sun), whether it is hard or soft, where the shadows fall and how dark and sharp-edged they are, '
-  + 'how highlights look on skin, the overall exposure, the white balance and the color grading. '
-  + 'Do not describe the people, their clothes, pose or body, or the objects in the scene. Reply with the description only.';
+  + 'how highlights look (hard, bright spots or a soft sheen), the overall exposure, the white balance and the color grading. '
+  + 'Do not describe the people, their clothes, pose or body, or the objects in the scene. '
+  // 3 พ.ย.: เดิมสั่ง "how highlights look on skin" -> ได้ "luminous, even complexion" / "skin slightly washed out" แล้วรูปผิวขาวตาม
+  + "Never describe anyone's skin color or complexion, or how pale, bright, glowing or even their skin looks. Reply with the description only.";
 
 async function lightWithGemini(img: Img) {
   const d = await post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent', {

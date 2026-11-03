@@ -418,7 +418,7 @@ export const PRESETS: Preset[] = [
     color: { label: 'อุ่น สีสดแต่เป็นธรรมชาติ', prompt: 'Warm, rich but natural colors, mixed daylight and tungsten white balance.' } },
   { id: 'flash', name: 'Flash editorial', hint: 'แฟลชตรงแบบนิตยสาร เงาคมหลังตัว ฉากมืดกว่าคน', fullBody: true,
     light: { label: 'แฟลชติดกล้อง แสงแข็งตรงหน้า เงาคมด้านหลัง', prompt:
-      'A direct on-camera flash: hard frontal light, bright skin with crisp specular highlights on the forehead, nose and cheekbones, '
+      'A direct on-camera flash: hard frontal light with crisp specular highlights on the forehead, nose and cheekbones, '
       + 'and a sharp-edged dark shadow cast right behind the person onto the wall or floor, offset slightly to one side. '
       + 'The flash falls off quickly, so the background is noticeably darker than the person.' },
     lens: { label: '35mm ชัดทั้งภาพ', prompt: 'shot on a full-frame camera with a 35mm lens, everything in focus' },
