@@ -37,7 +37,7 @@ await fs.writeFile(new URL('plan.json', folder), JSON.stringify(director, null, 
 const chosen = selectedShot(director);
 console.log(JSON.stringify({ chosen: chosen.title, reason: chosen.reasonThai, candidates: director.candidates.map((c) => ({ title: c.title, feasible: c.feasible, score: c.score, interaction: c.interaction, camera: c.cameraAngle })) }, null, 2));
 if (process.argv.includes('--plan-only')) process.exit(0);
-const prompt = buildPrompt({ hasOutfit: true, hasSceneImage: true, posePlan: shotInstruction(director), directed: director.backgroundMode, framing: chosen.framing, camera: { framing: chosen.framing, angle: chosen.cameraAngle }, placement: chosen.placement, crop: cropLine(input.aspect, false) });
+const prompt = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, posePlan: shotInstruction(director), directed: director.backgroundMode, framing: chosen.framing, camera: { framing: chosen.framing, angle: chosen.cameraAngle }, placement: chosen.placement, crop: cropLine(input.aspect, false) });
 await fs.writeFile(new URL('prompt.txt', folder), prompt);
 const options = { aspect: input.aspect, size: GPT25_SIZES['1024x1536'], quality: 'high' };
 const images = directorRequest(input).images;

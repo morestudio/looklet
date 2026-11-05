@@ -30,6 +30,7 @@ import {
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
   POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
+  MAX_WEAR, WEAR_TABS, wearPart, type WearSlot,
   presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode, type Preset,
 } from '@/lib/catalog';
 
@@ -121,12 +122,21 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
 
+// รองเท้าอยู่ในรายการของเสริม (type shoes) แต่เลือกในขั้นเสื้อผ้า แท็บรองเท้า — ขั้นของเสริมไม่โชว์
+const isShoes = (i: Item) => i.type === 'shoes';
+// เปลี่ยนช่องเสื้อผ้า: ทั้งชุด = ล้างเสื้อ/ท่อนล่าง, เสื้อหรือท่อนล่าง = ล้างทั้งชุด (คำสั่ง AI จะขัดกัน) · รองเท้าแยกอิสระ
+const wearPatch = (slot: WearSlot, id: string | null) => slot === 'set' ? { outfit: id, ...(id ? { top: null, bottom: null } : {}) }
+  : slot === 'shoes' ? { shoes: id }
+    : slot === 'top' ? { top: id, ...(id ? { outfit: null } : {}) } : { bottom: id, ...(id ? { outfit: null } : {}) };
+
 export default function TryOn() {
   const [lists, setLists] = useState(CATALOG);
-  // สิ่งที่เลือกอยู่: outfit/pose/scene = null คือ "ของเดิม", accessory = หลายชิ้นได้
+  // สิ่งที่เลือกอยู่: outfit(ทั้งชุด)/top/bottom/shoes/pose/scene = null คือ "ของเดิม", accessory = หลายชิ้นได้
   const [pick, setPick] = useState({
     model: idOf(MODELS[0]), outfit: null as string | null, accessory: [] as string[], pose: null as string | null, scene: null as string | null,
+    top: null as string | null, bottom: null as string | null, shoes: null as string | null,
   });
+  const [outfitTab, setOutfitTab] = useState<WearSlot>('top'); // แท็บในขั้นเสื้อผ้า
   const [tone, setTone] = useState<string | null>(null); // สีผิว null = สีเดิม
   const [amounts, setAmounts] = useState(NO_RETOUCH);
   const [finish, setFinish] = useState<FinishChoice>('auto');
@@ -179,7 +189,10 @@ export default function TryOn() {
   const [filter, setFilter] = useState('all'); // ตัวกรองในแผงเลือก (SOURCE_FILTERS หรือ id ประเภทของเสริม)
 
   const model = find(lists.model, pick.model) ?? lists.model[0];
-  const outfit = find(lists.outfit, pick.outfit);
+  const outfit = find(lists.outfit, pick.outfit); // ทั้งชุด
+  const top = find(lists.outfit, pick.top), bottom = find(lists.outfit, pick.bottom), shoes = find(lists.accessory, pick.shoes);
+  const wornCount = [outfit, top, bottom, shoes].filter(Boolean).length;
+  const accLimit = Math.max(0, Math.min(MAX_ACCESSORIES, MAX_WEAR - wornCount)); // ของเสริมเหลือได้กี่ชิ้น (รวมกับเสื้อผ้าไม่เกิน MAX_WEAR)
   const posePreset = POSE_PRESET_PICKER && pick.pose?.startsWith(PRESET_POSE) ? POSE_CHOICES.find((p) => PRESET_POSE + p.id === pick.pose) : undefined;
   const isDirector = posePreset?.id === POSE_AUTO.id;
   const pose = posePreset ? undefined : find(lists.pose, pick.pose);
@@ -264,14 +277,26 @@ export default function TryOn() {
 
   // ของเสริม: กดแล้วสลับเลือก/ไม่เลือก, null = ไม่ใส่สักชิ้น
   function toggleAccessory(id: string | null) {
-    if (id !== null && !pick.accessory.includes(id) && pick.accessory.length >= MAX_ACCESSORIES) {
-      return setStatus(`ของเสริมเลือกได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป — กดชิ้นที่เลือกอยู่เพื่อเอาออกก่อน`);
+    if (id !== null && !pick.accessory.includes(id) && pick.accessory.length >= accLimit) {
+      return setStatus(accLimit < MAX_ACCESSORIES
+        ? `เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาของเสริมหรือเสื้อผ้าบางชิ้นออกก่อน`
+        : `ของเสริมเลือกได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป — กดชิ้นที่เลือกอยู่เพื่อเอาออกก่อน`);
     }
     setStatus('');
     setPick((p) => ({
       ...p,
       accessory: id === null ? [] : p.accessory.includes(id) ? p.accessory.filter((x) => x !== id) : [...p.accessory, id],
     }));
+  }
+
+  // ขั้นเสื้อผ้า: เลือกชิ้นในช่องนั้น (null = ของเดิม) · รวมกับของเสริมแล้วเกิน MAX_WEAR = ไม่ให้เลือก
+  function wear(slot: WearSlot, id: string | null) {
+    const after = { outfit: pick.outfit, top: pick.top, bottom: pick.bottom, shoes: pick.shoes, ...wearPatch(slot, id) };
+    if (id && [after.outfit, after.top, after.bottom, after.shoes].filter(Boolean).length + pick.accessory.length > MAX_WEAR) {
+      return setStatus(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาของเสริมออกก่อน`);
+    }
+    setStatus('');
+    setPick((p) => ({ ...p, ...wearPatch(slot, id) }));
   }
 
   // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย
@@ -291,12 +316,16 @@ export default function TryOn() {
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, uploaded: true }] }));
     // ของเสริม: ไม่ใช้ toggleAccessory เพราะระหว่างรอ AI ผู้ใช้อาจเลือก/เอาออกชิ้นอื่นไปแล้ว ต้องนับจากค่าล่าสุด
     // เลือกครบแล้ว -> เพิ่มเข้ารายการเฉยๆ ไม่เลือกให้
-    if (key === 'accessory') setPick((p) => (p.accessory.length < MAX_ACCESSORIES ? { ...p, accessory: [...p.accessory, src] } : p));
+    // เสื้อผ้า: เลือกในช่องตามส่วนของรูป (type) · รองเท้า (ของเสริมประเภท shoes) ไปช่องรองเท้า ไม่นับเป็นของเสริม
+    if (key === 'outfit') setPick((p) => ({ ...p, ...wearPatch(type === 'top' || type === 'bottom' ? type : 'set', src) }));
+    else if (key === 'accessory' && type === 'shoes') setPick((p) => ({ ...p, shoes: src }));
+    else if (key === 'accessory') setPick((p) => (p.accessory.length < accLimit ? { ...p, accessory: [...p.accessory, src] } : p));
     else select(key, src);
   }
 
   // HEIC (รูปจาก iPhone) แปลงเป็น JPEG ก่อน ไม่งั้น browser ส่วนใหญ่เปิดรูปไม่ได้ ย่อ/ส่งให้ AI ไม่ได้
-  async function onFile(key: Key, picked: File) {
+  // slot = แท็บในขั้นเสื้อผ้าที่กดเพิ่มรูป (เสื้อ / ท่อนล่าง / ทั้งชุด เก็บเป็นรูปเสื้อผ้า, รองเท้า เก็บเป็นของเสริมประเภท shoes)
+  async function onFile(key: Key, picked: File, slot?: WearSlot) {
     let file = picked;
     if (isHeic(picked)) {
       setStatus('กำลังแปลงรูป HEIC เป็น JPG...');
@@ -309,7 +338,10 @@ export default function TryOn() {
       }
     }
     if (!(await canOpenImage(file))) return setStatus('เปิดรูปนี้ไม่ได้ (ชนิดไฟล์ไม่รองรับ) — ลองใช้รูป JPG หรือ PNG');
-    if (key !== 'accessory') return void addUpload(key, file, file.name.replace(/\.[^.]+$/, ''));
+    const name = file.name.replace(/\.[^.]+$/, '');
+    if (slot === 'shoes') return void addUpload('accessory', file, name, 'shoes');
+    if (key === 'outfit') return void addUpload('outfit', file, name, slot === 'top' || slot === 'bottom' ? slot : undefined);
+    if (key !== 'accessory') return void addUpload(key, file, name);
     void addAccessory(file);
   }
 
@@ -323,6 +355,7 @@ export default function TryOn() {
     if (!guess) return setDialog({ mode: 'add', file, url });
     URL.revokeObjectURL(url);
     await addUpload('accessory', file, guess.name, guess.type);
+    if (guess.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
   }
 
   async function onDialogDone(info: AccessoryInfo | null) {
@@ -332,6 +365,7 @@ export default function TryOn() {
     if (d.mode === 'add') {
       URL.revokeObjectURL(d.url);
       if (info) await addUpload('accessory', d.file, info.name, info.type);
+      if (info?.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
       return;
     }
     if (!info) return;
@@ -341,6 +375,8 @@ export default function TryOn() {
       return setStatus('แก้ไม่สำเร็จ: ' + (err as Error).message);
     }
     setLists((l) => ({ ...l, accessory: l.accessory.map((a) => (a === d.item ? { ...a, ...info } : a)) }));
+    // แก้เป็นรองเท้า -> ย้ายไปช่องรองเท้าในขั้นเสื้อผ้า (ไม่เป็นของเสริมที่เลือกอยู่แล้ว)
+    if (info.type === 'shoes') setPick((p) => ({ ...p, accessory: p.accessory.filter((x) => x !== idOf(d.item)) }));
   }
 
   async function deleteUpload(key: Key, item: Item) {
@@ -354,7 +390,8 @@ export default function TryOn() {
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
     // ตัวที่เลือกอยู่ถูกลบ -> กลับไปค่าเริ่มต้น
     setPick((p) => {
-      if (key === 'accessory') return { ...p, accessory: p.accessory.filter((x) => x !== id) };
+      if (key === 'accessory') return { ...p, accessory: p.accessory.filter((x) => x !== id), shoes: p.shoes === id ? null : p.shoes };
+      if (key === 'outfit') return { ...p, outfit: p.outfit === id ? null : p.outfit, top: p.top === id ? null : p.top, bottom: p.bottom === id ? null : p.bottom };
       if (p[key] !== id) return p;
       return { ...p, [key]: key === 'model' ? idOf(MODELS[0]) : null };
     });
@@ -398,7 +435,8 @@ export default function TryOn() {
 
   // set = ชุดภาพ 4 มุม (SET_SHOTS): รูปหลักสร้างตามที่เลือก แล้วส่งรูปหลักเป็นต้นแบบให้อีก 3 มุมพร้อมกัน
   async function generate(set = false) {
-    if (!outfit && !accs.length && !pose && !posePreset && !scene) return setStatus('เลือกชุด ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
+    if (!wornCount && !accs.length && !pose && !posePreset && !scene) return setStatus('เลือกเสื้อผ้า ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
+    if (wornCount + accs.length > MAX_WEAR) return setStatus(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาบางชิ้นออกก่อน`);
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
     const platform = PLATFORM_ASPECTS.find((a) => a.id === aspect) ?? PLATFORM_ASPECTS.find((a) => a.id === DEFAULT_ASPECT)!;
@@ -406,7 +444,7 @@ export default function TryOn() {
     const modeName = POSE_MODES.find((m) => m.id === poseMode)!.name;
     const caption = [
       model.name,
-      (outfit?.name ?? 'ชุดเดิม') + accs.map((a) => ' + ' + a.name).join(''),
+      ([outfit, top, bottom, shoes].filter((w): w is Item => Boolean(w)).map((w) => w.name).join(' + ') || 'ชุดเดิม') + accs.map((a) => ' + ' + a.name).join(''),
       ...(pose ? ['ท่า' + pose.name + (shot ? ` (${modeName})` : '')] : posePreset ? ['ท่า AI: ' + posePreset.name] : []),
       shotScene ? 'ฉากจากรูปต้นแบบ' : scene?.name ?? 'ฉากเดิม',
       shot ? (shotPresetLight ? 'แสง ' + preset.name : 'แสงจากรูปต้นแบบ') : preset.name,
@@ -428,6 +466,7 @@ export default function TryOn() {
       // ย่อรูปทุกรูปก่อน (ได้ขนาดจริงที่ส่งไว้ทำ log ด้วย)
       const person = await jpegBase64(model.src!);
       const outfitImg = outfit ? await jpegBase64(outfit.src!) : null;
+      const [topImg, bottomImg, shoesImg] = await Promise.all([top, bottom, shoes].map((w) => (w ? jpegBase64(w.src!) : null)));
       const accImgs = await Promise.all(accs.map((a) => jpegBase64(a.src!)));
       const poseImg = pose ? await jpegBase64(pose.src!) : null;
       const sceneImg = !shotScene && scene?.src ? await jpegBase64(scene.src) : null;
@@ -436,7 +475,8 @@ export default function TryOn() {
       const body = {
         model: choice.id,
         person: person.data,
-        outfit: outfitImg?.data ?? null,
+        outfit: outfitImg?.data ?? null, // ทั้งชุด
+        top: topImg?.data ?? null, bottom: bottomImg?.data ?? null, shoes: shoesImg?.data ?? null, // แยกชิ้น
         accessories: accs.map((a, i) => ({ data: accImgs[i].data, what: accessoryType(a).prompt, show: accessoryType(a).show })),
         pose: poseImg?.data ?? null,
         pose_preset: posePreset?.id ?? null, // server ให้ AI ตัววางแผนคิดท่าจากฉาก
@@ -450,6 +490,7 @@ export default function TryOn() {
         scene_text: shotScene ? null : scene?.prompt ?? null,
         refs: {
           person: ref(model, person), outfit: ref(outfit, outfitImg),
+          top: ref(top, topImg), bottom: ref(bottom, bottomImg), shoes: ref(shoes, shoesImg),
           accessories: accs.map((a, i) => ({ ...ref(a, accImgs[i]), type: accessoryType(a).name })),
           pose: ref(pose, poseImg),
           scene: sceneImg ? ref(scene, sceneImg) : scene && !shotScene ? { name: scene.name } : null, // ฉากแบบคำบรรยาย: ส่งแค่ชื่อ
@@ -675,7 +716,7 @@ export default function TryOn() {
   // ขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดสีเหลืองหม่นบนเมนูซ้าย)
   const stepDone: Record<StepKey, boolean> = {
     model: true,
-    outfit: Boolean(outfit),
+    outfit: wornCount > 0,
     accessory: accs.length > 0,
     pose: Boolean(pose || posePreset || mood.id !== 'auto'),
     scene: Boolean(scene) || shotScene,
@@ -705,7 +746,7 @@ export default function TryOn() {
   );
   const accTypeFilters = [
     { id: 'all', name: 'ทั้งหมด' },
-    ...ACCESSORY_TYPES.filter((t) => lists.accessory.some((a) => accessoryType(a).id === t.id)).map((t) => ({ id: t.id, name: t.name })),
+    ...ACCESSORY_TYPES.filter((t) => t.id !== 'shoes' && lists.accessory.some((a) => accessoryType(a).id === t.id)).map((t) => ({ id: t.id, name: t.name })),
   ];
   const picker = (key: Key, kind: string, cards: ReactNode, { special, filters = SOURCE_FILTERS, note, muted = false }: {
     special?: ReactNode; filters?: { id: string; name: string }[]; note?: ReactNode; muted?: boolean;
@@ -730,12 +771,43 @@ export default function TryOn() {
   if (cur.key === 'model') {
     panel = picker('model', 'models', visible('model').map((m) => uploadedCard('model', m, idOf(m) === pick.model, () => select('model', idOf(m)), true)));
   } else if (cur.key === 'outfit') {
-    panel = picker('outfit', 'outfits', visible('outfit').map((o) => uploadedCard('outfit', o, idOf(o) === pick.outfit, () => select('outfit', idOf(o)))), {
-      special: <Card item={{ name: 'ชุดเดิม' }} active={!outfit} onClick={() => select('outfit', null)} />,
-    });
+    // เสื้อผ้าแยกชิ้น (29 ต.ค.): ช่องสรุป เสื้อ / ท่อนล่าง / รองเท้า (กดเพื่อไปแท็บนั้น) -> แท็บ -> ตารางของแท็บ (เดิม + ตัวอย่าง + ของที่อัปโหลด)
+    // แท็บเสื้อ/ท่อนล่างมีรูปทั้งชุดด้วย (เอาแค่ส่วนนั้นจากรูป) · รองเท้ามาจากของเสริมประเภท shoes
+    const tab = WEAR_TABS.find((t) => t.id === outfitTab) ?? WEAR_TABS[0];
+    const chosenId = { top: pick.top, bottom: pick.bottom, shoes: pick.shoes, set: pick.outfit }[tab.id];
+    const listKey: Key = tab.id === 'shoes' ? 'accessory' : 'outfit';
+    const items = (tab.id === 'shoes' ? lists.accessory.filter(isShoes)
+      : lists.outfit.filter((o) => wearPart(o) === tab.id || (tab.id !== 'set' && wearPart(o) === 'set')))
+      .filter((i) => !q || i.name.toLowerCase().includes(q));
+    const worn = { top: top ?? outfit, bottom: bottom ?? outfit, shoes };
+    panel = <>
+      <div className="wear-summary" aria-label="ชุดที่ใส่">
+        {(['top', 'bottom', 'shoes'] as const).map((slot) => {
+          const item = worn[slot];
+          const goTab: WearSlot = slot !== 'shoes' && outfit ? 'set' : slot;
+          return <button key={slot} type="button" className={'wear-slot' + (outfitTab === goTab ? ' active' : '')} onClick={() => { setOutfitTab(goTab); setQuery(''); }}>
+            <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={item.src} alt="" />}</span>
+            <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
+            <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
+          </button>;
+        })}
+      </div>
+      <ChipGroup options={WEAR_TABS} value={tab.id} onChange={(v) => { setOutfitTab(v as WearSlot); setQuery(''); }} />
+      <label className="search">
+        <IconSearch />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${tab.name}...`} />
+      </label>
+      <p className="muted-text wear-hint">{tab.hint}</p>
+      <div className={'grid ' + (tab.id === 'shoes' ? 'accessories' : 'outfits')}>
+        {!q && <Card item={{ name: tab.keep }} active={!chosenId} onClick={() => wear(tab.id, null)} />}
+        {items.map((o) => uploadedCard(listKey, o, idOf(o) === chosenId, () => wear(tab.id, idOf(o))))}
+        {saving.filter((x) => x.key === listKey).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
+        <AddCard onFile={(f) => onFile('outfit', f, tab.id)} />
+      </div>
+    </>;
   } else if (cur.key === 'accessory') {
     panel = picker('accessory', 'accessories', <>
-      {visible('accessory').map((a) => (
+      {visible('accessory').filter((a) => !isShoes(a)).map((a) => (
         <Card key={idOf(a)} item={a} active={pick.accessory.includes(idOf(a))} onClick={() => toggleAccessory(idOf(a))}
           onDelete={a.uploaded ? () => void deleteUpload('accessory', a) : undefined}
           footer={a.uploaded && (
@@ -1037,7 +1109,7 @@ export default function TryOn() {
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
-            {cur.key === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{MAX_ACCESSORIES} ชิ้น</span>}
+            {cur.key === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{accLimit} ชิ้น</span>}
           </div>
           {panel}
           {nextStep >= 0 && (

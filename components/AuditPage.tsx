@@ -19,7 +19,7 @@ type Filters = { who: string; page: string; status: string }; // who: '' = ท�
 const ACTIONS: Record<string, string> = { generate: 'สร้างรูป (นางแบบ)', packshot: 'สร้างรูปสินค้า', 'local-edit': 'แก้เฉพาะจุด', 'refine-skin': 'ปรับผิว' };
 // ตำแหน่งใน log -> รูปนี้คืออะไร (lib/genlog.ts GenerateLog / PackshotLog)
 const ROLES: Record<string, string> = {
-  model: 'นางแบบ', 'element.outfit': 'ชุด', 'element.accessories': 'ของเสริม', 'element.scene': 'ฉาก', pose: 'ท่าโพสต์', set: 'รูปแรกของชุด',
+  model: 'นางแบบ', 'element.outfit': 'ชุด', 'element.top': 'เสื้อ', 'element.bottom': 'ท่อนล่าง', 'element.shoes': 'รองเท้า', 'element.accessories': 'ของเสริม', 'element.scene': 'ฉาก', pose: 'ท่าโพสต์', set: 'รูปแรกของชุด',
   product: 'สินค้า', supports: 'สินค้า มุมอื่น', 'element.set': 'ฉาก', 'element.reference': 'ช็อตต้นแบบ', 'element.props.image': 'พร็อพของฉัน',
   angleGuide: 'ไกด์มุม (ตั้งมุมเอง)',
 };

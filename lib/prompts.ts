@@ -61,8 +61,12 @@ export const ACCESSORY_RULES =
   + 'where it belongs, at a realistic size relative to the body, lit by the same light as the rest of the photo with '
   + 'matching shadows. Ignore any people, hands, mannequins, packaging or background in the product photos.';
 
+// เสื้อผ้าที่เปลี่ยน (ขั้นเสื้อผ้าแยกชิ้น 29 ต.ค.): outfit = ทั้งชุด, top / bottom / shoes = แยกชิ้น — รูปเรียงตามลำดับนี้ต่อจากนางแบบ
+export type Wear = { outfit?: boolean; top?: boolean; bottom?: boolean; shoes?: boolean };
+export const wearCount = (w: Wear) => [w.outfit, w.top, w.bottom, w.shoes].filter(Boolean).length;
+
 export type PromptInput = {
-  hasOutfit: boolean;
+  wear: Wear;
   hasSceneImage: boolean;
   sceneText?: string | null;
   extra?: string | null;
@@ -101,7 +105,7 @@ export function cropLine(aspect: string, fullBody: boolean) {
 }
 
 export function buildPrompt({
-  hasOutfit, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
+  wear, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
   poseMode = 'pose', framing = null, gaze = null, headGaze = null, props = [], face = null, faceFromRef = false, refLight = null, skinLight = null, sceneLight = null,
   posePlan = null, camera = null, placement = null, crop = null, directed,
 }: PromptInput) {
@@ -111,7 +115,7 @@ export function buildPrompt({
   const newScene = shotScene || hasSceneImage || sceneText;
   const place = Boolean(placement) && !shot && Boolean(newScene || hasPose || autoPose || posePlan);
   const at = place ? `, with her placed ${placedAt(placement!)}` : '';
-  const poseAt = 2 + (hasOutfit ? 1 : 0) + accessories.length; // เลขรูปท่าโพสต์ (ต่อจากชุดและของเสริม)
+  const poseAt = 2 + wearCount(wear) + accessories.length; // เลขรูปท่าโพสต์ (ต่อจากเสื้อผ้าทุกชิ้นและของเสริม)
   let first: string;
   if (directed) {
     first = 'Create one fashion lifestyle photograph following the complete shot plan below.';
@@ -152,14 +156,39 @@ export function buildPrompt({
       + 'do not copy its airbrushed skin or flat lighting, but never change the facial structure.');
   }
   let n = 2;
-  if (hasOutfit) {
+  if (wear.outfit) {
     lines.push(`Image ${n} shows an outfit worn by someone else: dress the model in exactly this outfit `
       + `(same garments, colors, patterns and fit). Ignore the face, body, skin tone and background of image ${n}. `
       + 'Completely replace the clothes the model wears in image 1: none of the original garments '
-      + '(for example shorts under a skirt) may remain visible.');
+      + '(for example shorts under a skirt) may remain visible.' + (wear.shoes ? ' Her shoes come from the shoe photo below.' : ''));
     n += 1;
-  } else {
-    lines.push('Keep the outfit the model is wearing in image 1.');
+  }
+  // แยกชิ้น: บอกว่าเอาแค่ส่วนไหนจากรูป (รูปอาจเป็นคนใส่ทั้งชุด) และส่วนที่ไม่ได้เลือกให้คงของเดิมในรูปนางแบบ
+  if (wear.top) {
+    lines.push(`Image ${n} shows a top (a shirt, T-shirt, blouse, sweater or jacket), possibly worn by someone else: dress the model in `
+      + `exactly this top (same garment, color, pattern, details, length and fit) in place of the top she wears in image 1. `
+      + `Use only the top from image ${n}: ignore any other clothes, the face, body, skin tone and background in it.`);
+    n += 1;
+  }
+  if (wear.bottom) {
+    lines.push(`Image ${n} shows a bottom garment (pants, jeans, shorts or a skirt), possibly worn by someone else: dress the model in `
+      + `exactly this bottom (same garment, color, pattern, details, length and fit) in place of the bottoms she wears in image 1. `
+      + `Use only the bottoms from image ${n}: ignore any other clothes, the face, body, skin tone and background in it.`);
+    n += 1;
+  }
+  if (wear.shoes) {
+    lines.push(`Image ${n} is a photo of a pair of shoes: put exactly these shoes on both of her feet in place of the shoes she wears in `
+      + `image 1 (same design, colors, materials, logos and details). Ignore any people, feet, hands or background in image ${n}.`);
+    n += 1;
+  }
+  if (!wear.outfit && !wear.top && !wear.bottom) {
+    lines.push(wear.shoes ? 'Keep the outfit the model is wearing in image 1; only her shoes change.' : 'Keep the outfit the model is wearing in image 1.');
+  } else if (!wear.outfit) {
+    if (!wear.top) lines.push('Keep the top she wears in image 1 exactly as it is.');
+    if (!wear.bottom) lines.push('Keep the bottoms she wears in image 1 exactly as they are.');
+    if (wear.top && wear.bottom) lines.push('Style the top and the bottoms together naturally, tucked in or left out as suits the two '
+      + 'garments, each keeping its own length and fit.');
+    if (!wear.shoes) lines.push('Keep the shoes she wears in image 1.');
   }
   if (accessories.length) {
     for (const what of accessories) {
@@ -319,11 +348,11 @@ export function buildPrompt({
 // รูปหลักมีคน ชุด ฉาก แสงครบแล้ว ให้ AI ลอกทุกอย่างจากรูปนั้น เปลี่ยนแค่มุมกล้อง/ระยะ/ท่า
 // ไม่ใส่ REALISM/แสงของสไตล์ถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
 export type SetPromptInput = {
-  framing: string; angle: string; fullBody: boolean; hasOutfit: boolean; accessories?: string[]; extra?: string | null;
+  framing: string; angle: string; fullBody: boolean; wear: Wear; accessories?: string[]; extra?: string | null;
   crop?: string | null; // cropLine() เมื่อ server จะตัดรูป
 };
 
-export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessories = [], extra, crop = null }: SetPromptInput) {
+export function buildSetPrompt({ framing, angle, fullBody, wear, accessories = [], extra, crop = null }: SetPromptInput) {
   const lines = [
     `Create one fashion photograph, ${framing}.`,
     'Image 1 is a photo from the same photo shoot. Keep everything from image 1 the same: the same person (face, hairstyle, '
@@ -332,8 +361,10 @@ export function buildSetPrompt({ framing, angle, fullBody, hasOutfit, accessorie
     'Image 2 shows the same model: use it to keep the face identical.',
   ];
   let n = 3;
-  if (hasOutfit) {
-    lines.push(`Image ${n} is the outfit: use it to keep the garments accurate, including parts that are not visible in image 1. `
+  // เสื้อผ้าทุกชิ้นที่เปลี่ยน (ลำดับเดียวกับ buildPrompt): ใช้ให้ส่วนที่มองไม่เห็นในรูปหลักถูกต้อง
+  for (const [on, what] of [[wear.outfit, 'the outfit'], [wear.top, 'the top'], [wear.bottom, 'the bottoms'], [wear.shoes, 'the shoes']] as const) {
+    if (!on) continue;
+    lines.push(`Image ${n} shows ${what}: use it to keep ${what} accurate, including parts that are not visible in image 1. `
       + `Ignore the face, body and background of image ${n}.`);
     n += 1;
   }

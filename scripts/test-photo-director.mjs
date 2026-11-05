@@ -67,7 +67,7 @@ test('reject malformed, duplicate, out-of-range and entirely infeasible plans', 
 test('complete shot owns framing and contact surfaces instead of default standing/feet instructions', () => {
   const plan = parse();
   const shot = selectedShot(plan);
-  const prompt = buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true, posePlan: shotInstruction(plan), directed: 'explore',
+  const prompt = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, fullBody: true, posePlan: shotInstruction(plan), directed: 'explore',
     framing: shot.framing, camera: { framing: shot.framing, angle: 'overhead view' } });
   assert.match(prompt, /complete shot plan/);
   assert.match(prompt, /planned body contact surfaces/);
@@ -75,10 +75,10 @@ test('complete shot owns framing and contact surfaces instead of default standin
   assert.match(prompt, /re-creating its perspective/);
   assert.doesNotMatch(prompt, /Show the full body from head to feet/);
   assert.doesNotMatch(prompt, /feet touch the ground/);
-  const keep = buildPrompt({ hasOutfit: true, hasSceneImage: true, posePlan: shotInstruction(parse(response(), 'keep')), directed: 'keep', camera: { framing: 'full body', angle: 'reference viewpoint' } });
+  const keep = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, posePlan: shotInstruction(parse(response(), 'keep')), directed: 'keep', camera: { framing: 'full body', angle: 'reference viewpoint' } });
   assert.match(keep, /preserve the location reference viewpoint/);
   assert.doesNotMatch(keep, /re-creating its perspective/);
-  assert.match(buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true }), /Show the full body from head to feet/);
+  assert.match(buildPrompt({ wear: { outfit: true }, hasSceneImage: true, fullBody: true }), /Show the full body from head to feet/);
 });
 
 test('uncertainty or unavailable checking is never labeled passed', () => {
@@ -316,20 +316,20 @@ test('head and gaze vary per image instead of always facing the camera', async (
   assert.doesNotMatch(asked, /Plan her gaze and expression too/);
   await planPose(base); // ไม่ได้สุ่ม (ผู้ใช้เลือกการมองเอง) -> คำสั่งเดิม
   assert.match(requests[1].messages[0].content[0].text, /Plan her gaze and expression too/);
-  const prompt = buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true, posePlan: 'She leans on the counter.', headGaze: 'her eyes on the light.' });
+  const prompt = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, fullBody: true, posePlan: 'She leans on the counter.', headGaze: 'her eyes on the light.' });
   assert.match(prompt, /Head and gaze: her eyes on the light\. Show her face naturally from this angle as the camera sees it/);
-  assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: true, fullBody: true }), /Head and gaze/);
+  assert.doesNotMatch(buildPrompt({ wear: { outfit: true }, hasSceneImage: true, fullBody: true }), /Head and gaze/);
 });
 
 test('skin tone is the second sentence of every model prompt and reference photos never pass on their skin', () => {
   // 3 พ.ย.: ผิวออกมาขาว/สว่างเกินจริง ผู้ใช้ขอให้สีผิวสำคัญที่สุดและอยู่ต้นคำสั่ง
   const { SKIN_TONE } = load('lib/prompts.ts');
   const modes = [
-    { hasOutfit: true, hasSceneImage: false }, // เปลี่ยนชุดอย่างเดียว
-    { hasOutfit: true, hasSceneImage: true, fullBody: true, posePlan: 'She leans on the counter.', look: 'Soft window light.' },
-    { hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'pose' },
-    { hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', refLight: 'Bright, high-key window light.' },
-    { hasOutfit: true, hasSceneImage: true, posePlan: 'She sits on the bed.', directed: 'explore', camera: { framing: 'full body', angle: 'eye level' } },
+    { wear: { outfit: true }, hasSceneImage: false }, // เปลี่ยนชุดอย่างเดียว
+    { wear: { outfit: true }, hasSceneImage: true, fullBody: true, posePlan: 'She leans on the counter.', look: 'Soft window light.' },
+    { wear: { outfit: true }, hasSceneImage: false, hasPose: true, poseMode: 'pose' },
+    { wear: { outfit: true }, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', refLight: 'Bright, high-key window light.' },
+    { wear: { outfit: true }, hasSceneImage: true, posePlan: 'She sits on the bed.', directed: 'explore', camera: { framing: 'full body', angle: 'eye level' } },
   ];
   for (const m of modes) {
     const p = buildPrompt(m);
@@ -350,17 +350,17 @@ test('skin tone is the second sentence of every model prompt and reference photo
 
 test('copy-the-shot takes pose and framing from the reference photo, never from the model photo', () => {
   // 3 พ.ย.: รูปท่าเป็นภาพใกล้หน้าตรง รูปนางแบบท้าวคางมองข้าง -> ผลได้ท่า/ระยะของรูปนางแบบ ลอกแค่ฉากกับแสง
-  const shot = buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true, fullBody: true, refLight: 'Soft front light.' });
+  const shot = buildPrompt({ wear: { outfit: true }, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true, fullBody: true, refLight: 'Soft front light.' });
   assert.match(shot, /^Create one fashion photograph that recreates the shot of image 3 with the model from image 1: the same pose, head angle and gaze, framing, camera angle, camera distance and location as image 3\./);
   assert.match(shot, /Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression, or its framing or camera distance\./);
   assert.match(shot, /If image 3 is a close-up of the head and shoulders, the result is the same close-up; never zoom out/);
   assert.doesNotMatch(shot, /feet|top of the frame well above her head/); // ข้อความภาพเต็มตัวดึงให้ถอยกล้อง
   // ของเสริม 2 ชิ้น -> รูปท่าเป็นรูปที่ 5
-  const withAcc = buildPrompt({ hasOutfit: true, hasSceneImage: true, accessories: ['a bag', 'a cap'], hasPose: true, poseMode: 'shot' });
+  const withAcc = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, accessories: ['a bag', 'a cap'], hasPose: true, poseMode: 'shot' });
   assert.match(withAcc, /^Create one fashion photograph that recreates the shot of image 5 with the model from image 1: the same pose, head angle and gaze, framing, camera angle and camera distance as image 5\./);
   assert.match(withAcc, /Frame it exactly like image 5/);
   // ลอกแค่ท่า: ไม่ลอกท่าจากรูปนางแบบ แต่ระยะภาพยังตามที่เลือก
-  const pose = buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', fullBody: true });
+  const pose = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, hasPose: true, poseMode: 'pose', fullBody: true });
   assert.match(pose, /Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression\./);
   assert.doesNotMatch(pose, /recreates the shot|Frame it exactly like/);
   assert.match(pose, /where the feet touch the ground/);
@@ -369,25 +369,25 @@ test('copy-the-shot takes pose and framing from the reference photo, never from 
 
 test('head angle and gaze follow the pose photo whichever way the model photo faces', () => {
   // 3 พ.ย.: รูปท่าหน้าตรงมองกล้อง + รูปนางแบบหันข้าง -> ผลหันข้างตามรูปนางแบบ
-  const shot = buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true });
+  const shot = buildPrompt({ wear: { outfit: true }, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true });
   assert.match(shot, /Image 1 may show the model with a different head angle and gaze; do not copy them\. Turn and tilt her head exactly like the person in image 3, point her eyes exactly where that person's eyes look \(straight into the lens if she looks into the lens\), and show her face naturally/);
   assert.match(shot, /It must not look like the face from image 1 placed on a turned or tilted body\./);
   assert.doesNotMatch(shot, /front-facing face|facing the camera straight on/);
   // ลอกแค่ท่า + เลือกการมองเอง -> ไม่สั่งสายตาตามรูปท่า (ไม่ขัดกับการมองที่เลือก)
-  const chosen = buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', gaze: 'Looking away from the camera.' });
+  const chosen = buildPrompt({ wear: { outfit: true }, hasSceneImage: true, hasPose: true, poseMode: 'pose', gaze: 'Looking away from the camera.' });
   assert.doesNotMatch(chosen, /point her eyes exactly/);
-  assert.match(buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose' }), /point her eyes exactly where that person's eyes look/);
+  assert.match(buildPrompt({ wear: { outfit: true }, hasSceneImage: true, hasPose: true, poseMode: 'pose' }), /point her eyes exactly where that person's eyes look/);
 });
 
 test('copy-the-shot copies how light falls on the skin of the pose photo, never its skin color', async () => {
   // 3 พ.ย.: ทดสอบ 2 เคสแล้วผู้ใช้ให้ใส่ — ไฮไลต์นุ่มกระจายแบบรูปท่า ผิวไม่ขาวขึ้น
   const skin = 'Broad, soft highlights sit on the forehead, nose bridge and cheekbones. The skin reads matte with a faint satin finish.';
-  const shot = buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true, refLight: 'Soft front light.', skinLight: skin });
+  const shot = buildPrompt({ wear: { outfit: true }, hasSceneImage: false, hasPose: true, poseMode: 'shot-scene', faceFromRef: true, refLight: 'Soft front light.', skinLight: skin });
   assert.match(shot, /do not make it softer, dimmer or flatter than in image 3\. Light on her skin exactly like on the person in image 3: Broad, soft highlights/);
   assert.match(shot, /never that person's skin color: her skin tone stays exactly as in image 1\./);
   // แสงของสไตล์ (look) หรือลอกแค่ท่า -> ไม่ใช้
-  assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: false, hasPose: true, poseMode: 'shot', look: 'Lighting: flash.', skinLight: skin }), /Light on her skin/);
-  assert.doesNotMatch(buildPrompt({ hasOutfit: true, hasSceneImage: true, hasPose: true, poseMode: 'pose', skinLight: skin }), /Light on her skin/);
+  assert.doesNotMatch(buildPrompt({ wear: { outfit: true }, hasSceneImage: false, hasPose: true, poseMode: 'shot', look: 'Lighting: flash.', skinLight: skin }), /Light on her skin/);
+  assert.doesNotMatch(buildPrompt({ wear: { outfit: true }, hasSceneImage: true, hasPose: true, poseMode: 'pose', skinLight: skin }), /Light on her skin/);
   const requests = [];
   const app = appLoader({ env: { GEMINI_API_KEY: 'test-only' }, fetchImpl: async (_url, options) => {
     requests.push(JSON.parse(options.body));

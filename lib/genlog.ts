@@ -23,7 +23,8 @@ export type GenerateLog = {
   ai: { model: string; params: Record<string, string> };
   model: LogImage;
   element: {
-    outfit: LogImage | string; // 'ชุดเดิม' = ไม่ได้เปลี่ยนชุด
+    outfit: LogImage | string; // 'ชุดเดิม' = ไม่ได้เปลี่ยนชุด · 'เปลี่ยนแยกชิ้น' = ดู top / bottom / shoes
+    top?: LogImage; bottom?: LogImage; shoes?: LogImage; // เสื้อผ้าแยกชิ้น (ขั้นเสื้อผ้า 29 ต.ค.)
     accessories: LogImage[];
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
