@@ -213,7 +213,11 @@ button, select, input, textarea { font-family: inherit; }
 .card.pending { cursor: default; }
 .card.pending .pic { position: relative; }
 .card.pending .pic img { opacity: .45; }
-.card.pending span { color: var(--mute); }
+.card.pending span, .card.loading span { color: var(--mute); }
+/* .card.loading: img not loaded yet */
+.card.loading .pic img { opacity: 0; }
+/* active + loading: tick to corner (same as .tile.text) so it doesn't cover spinner */
+.card.active.loading .pic::after { inset: 6px 6px auto auto; width: 22px; height: 22px; border-radius: var(--r-full); background: var(--primary); font-size: 12px; }
 .pending-spin { position: absolute; inset: 0; display: grid; place-items: center; }
 .pending-spin .spinner { width: 24px; height: 24px; border: 3px solid rgba(0, 0, 0, .12); border-top-color: var(--ink-soft); }
 .acc-type { margin: var(--space-4) 0 0 var(--space-2); padding: var(--space-2) var(--space-8); border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); font-size: var(--text-2xs); font-weight: 500; cursor: pointer; }

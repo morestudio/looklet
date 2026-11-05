@@ -15,11 +15,20 @@ export function rangeFill(value: number, min: number, max: number): CSSPropertie
 export function Card({ item, active, onClick, zoom = false, onDelete, footer }: {
   item: Item; active: boolean; onClick: () => void; zoom?: boolean; onDelete?: () => void; footer?: ReactNode;
 }) {
+  // loading = loadedSrc !== item.src; onError counts as loaded
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const loading = !!item.src && loadedSrc !== item.src;
+  const done = () => setLoadedSrc(item.src ?? null);
   const card = (
-    <button className={'card' + (active ? ' active' : '')} title={item.name} onClick={onClick}>
+    <button className={'card' + (active ? ' active' : '') + (loading ? ' loading' : '')} title={item.name} onClick={onClick} aria-busy={loading || undefined}>
       {item.src ? (
         // รูปนางแบบเต็มตัว ซูมให้เห็นหน้า
-        <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}><img src={item.src} alt={item.name} /></div>
+        <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}>
+          {/* cached img can complete before hydration attaches onLoad */}
+          <img src={item.src} alt={item.name} onLoad={done} onError={done}
+            ref={(img) => { if (img?.complete && loadedSrc !== item.src) done(); }} />
+          {loading && <div className="pending-spin"><div className="spinner" /></div>}
+        </div>
       ) : (
         <div className="tile text">ไม่เปลี่ยน</div>
       )}
