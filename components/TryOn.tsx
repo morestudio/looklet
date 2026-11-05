@@ -454,8 +454,9 @@ export default function TryOn() {
       ...(moodName ? [moodName] : []),
       ...(gaze ? [gaze.name] : []),
       ...(propChoices.length ? ['ถือ' + propChoices.map((p) => p.name).join('/')] : []),
-      ...(aspect !== DEFAULT_ASPECT ? [platform.name] : []),
-    ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
+      ...(harmonize ? ['ปรับแสงรอบสอง'] : []),
+      `สัดส่วน ${platform.id}`,
+    ].join(' · '); // user's choices + ratio only, no AI vendor/model name (Go list item 12)
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
     setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
@@ -931,7 +932,7 @@ export default function TryOn() {
         {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
-          <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+          <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
             <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
           </Section>
         )}
