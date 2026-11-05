@@ -55,9 +55,14 @@ const REAL_FACE = false;
 // (ตามรูปท่า / ท่าสำเร็จรูป) โค้ดและ prompt ยังอยู่ครบ เปิดใหม่ = true
 const MOOD_PICKER = false;
 
-// ลอกทั้งช็อต / ลอกทั้งช็อต + ฉาก (POSE_MODES shot, shot-scene) — ซ่อนไว้ 29 ต.ค. แล้วเปิดคืน 3 พ.ย. (ผู้ใช้ขอทั้งสองครั้ง)
-// เปิด = ปุ่มเลือกวิธีใช้รูปท่า + แสง (LIGHT_SOURCES) และขั้นที่ไม่ใช้เป็นสีเทา (unusedWhy) · ปิด (false) = รูปท่าโพสต์ใช้แค่ท่าเสมอ ('pose')
-const COPY_SHOT = true;
+// รูปท่าโพสต์ใช้แบบไหน (POSE_MODES): null = ผู้ใช้เลือกเอง (ปุ่ม ลอกแค่ท่า / ลอกทั้งช็อต / ลอกทั้งช็อต + ฉาก และปุ่มแสง LIGHT_SOURCES)
+// id = ใช้แบบนั้นเสมอ ไม่มีปุ่ม แสงจากรูปท่า ('ref') · ขั้นที่ไม่ใช้เป็นสีเทา (unusedWhy) ทั้งสองแบบ
+// 29 ต.ค. 'pose' (ซ่อนลอกทั้งช็อต) · 3 พ.ย. null (เปิดคืน) · 5 พ.ย. 'shot-scene' (ผู้ใช้ขอ: เลือกแค่รูปท่า แล้วลอกทั้งช็อต + ฉากให้อัตโนมัติ)
+const FIXED_POSE_MODE: PoseMode | null = 'shot-scene';
+
+// ท่าสำเร็จรูปในขั้นท่าโพสต์ (ท่าเดิม + POSE_PRESETS + AI จัดท่าและมุมกล้อง) — ซ่อนไว้ 5 พ.ย. (ผู้ใช้ขอ): ขั้นนี้เลือกแค่รูปท่าโพสต์
+// ไม่เลือกรูป = ท่าเดิม (การ์ด "ท่าเดิม" ในรายการรูปแบบ ชุดเดิม/ฉากเดิม) · ค่าท่าสำเร็จรูปที่ค้างอยู่ถูกข้าม · โค้ด UI/API/planner ยังอยู่ครบ เปิดใหม่ = true
+const POSE_PRESET_PICKER = false;
 
 // ชุดภาพ 4 มุม (SET_SHOTS) — ปุ่มเป็นสีเทากดไม่ได้ไว้ก่อน บอก "เร็วๆ นี้" (29 ต.ค. ผู้ใช้ขอ) · โค้ดสร้างชุดภาพยังอยู่ครบ เปิดใหม่ = true
 const SET_SHOOT = false;
@@ -144,14 +149,16 @@ export default function TryOn() {
   const [quality, setQuality] = useState('medium');
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
-  const [poseMode, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์
+  const [poseModeChoice, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์ (ใช้เมื่อ FIXED_POSE_MODE = null)
+  const poseMode = FIXED_POSE_MODE ?? poseModeChoice;
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('explore');
   const [photoGoal, setPhotoGoal] = useState<PhotoGoal>('lifestyle');
   const [autoRepair, setAutoRepair] = useState(true);
   const [shotChoice, setShotChoice] = useState<{
     proposal: ShotProposal; references: { src: string; name: string }[]; choose: (ids: string[]) => void;
   } | null>(null);
-  const [lightSource, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
+  const [lightChoice, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
+  const lightSource: LightSource = FIXED_POSE_MODE ? 'ref' : lightChoice; // ไม่มีปุ่มเลือก = แสงจากรูปท่าเสมอ
   const [faceMood, setFaceMood] = useState('auto'); // สีหน้า (FACE_MOODS)
   const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
   const [aspect, setAspect] = useState(DEFAULT_ASPECT); // ใช้ภาพที่ไหน (PLATFORM_ASPECTS)
@@ -173,7 +180,7 @@ export default function TryOn() {
 
   const model = find(lists.model, pick.model) ?? lists.model[0];
   const outfit = find(lists.outfit, pick.outfit);
-  const posePreset = pick.pose?.startsWith(PRESET_POSE) ? POSE_CHOICES.find((p) => PRESET_POSE + p.id === pick.pose) : undefined;
+  const posePreset = POSE_PRESET_PICKER && pick.pose?.startsWith(PRESET_POSE) ? POSE_CHOICES.find((p) => PRESET_POSE + p.id === pick.pose) : undefined;
   const isDirector = posePreset?.id === POSE_AUTO.id;
   const pose = posePreset ? undefined : find(lists.pose, pick.pose);
   const scene = find(lists.scene, pick.scene);
@@ -680,9 +687,9 @@ export default function TryOn() {
   // ขั้นที่ไม่ใช้ (แบบหน้าสินค้า): ลอกทั้งช็อต = มุมมองตามรูปต้นแบบ · ลอกทั้งช็อต + ฉาก = ฉากด้วย
   // แสงจากรูปต้นแบบ = สไตล์ถ่ายภาพไม่ใช้ · เมนูเป็นสีเทา กดไม่ได้ (บอกเหตุผลตอนชี้) "ถัดไป" ข้ามไป
   const unusedWhy: Partial<Record<StepKey, string>> = {
-    ...(shotScene ? { scene: 'ลอกทั้งช็อต + ฉาก: ใช้ฉากจากรูปท่าโพสต์' } : {}),
-    ...(shot && !shotPresetLight ? { settings: 'ลอกทั้งช็อต: แสงและโทนสีจากรูปท่าโพสต์' } : {}),
-    ...(shot ? { view: 'ลอกทั้งช็อต: ระยะ มุมกล้อง ตำแหน่งตามรูปท่าโพสต์' } : {}),
+    ...(shotScene ? { scene: 'ใช้ฉากจากรูปท่าโพสต์' } : {}),
+    ...(shot && !shotPresetLight ? { settings: 'ใช้แสงและโทนสีจากรูปท่าโพสต์' } : {}),
+    ...(shot ? { view: 'ระยะ มุมกล้อง และตำแหน่งตามรูปท่าโพสต์' } : {}),
   };
   const nextStep = STEPS.findIndex((s, i) => i > step && !unusedWhy[s.key]);
 
@@ -743,9 +750,10 @@ export default function TryOn() {
       filters: accTypeFilters,
     });
   } else if (cur.key === 'pose') {
-    // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
+    // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป, ซ่อนอยู่ POSE_PRESET_PICKER) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
+    const fixedMode = FIXED_POSE_MODE && POSE_MODES.find((m) => m.id === FIXED_POSE_MODE)!;
     panel = <>
-      <Section title="ท่าสำเร็จรูป">
+      {POSE_PRESET_PICKER && <Section title="ท่าสำเร็จรูป">
         {/* การ์ดมีภาพวาดท่า (PoseView) แบบการ์ดมุมมอง/สไตล์ถ่ายภาพ (29 ต.ค.) */}
         <div className="options view-options pose-presets">
           <button type="button" className={'option view-option' + (!pose && !posePreset ? ' active' : '')} aria-pressed={!pose && !posePreset} onClick={() => select('pose', null)}>
@@ -769,24 +777,29 @@ export default function TryOn() {
           <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · AI จัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด</p>
         </div> : posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้</p>}
         {shown?.posePlan && <ShotPlanView plan={shown.posePlan} />}
-      </Section>
+      </Section>}
       {MOOD_PICKER && <Section title="สีหน้า">
         <ChipGroup options={FACE_MOODS} value={isDirector ? 'auto' : faceMood} disabled={isDirector} onChange={setFaceMood} />
         <p className="muted-text">{mood.hint}</p>
       </Section>}
-      <Section title="ใช้รูปท่าของฉัน" note="อัปโหลด หรือเลือกจากตัวอย่าง">
+      <Section title={POSE_PRESET_PICKER ? 'ใช้รูปท่าของฉัน' : 'รูปท่าโพสต์'} note="อัปโหลด หรือเลือกจากตัวอย่าง">
         {/* วิธีใช้รูปท่าอยู่เหนือรายการรูปเสมอ (ยังไม่เลือกรูป = กดไม่ได้) รายการรูปไม่กระโดดตอนกดเลือก */}
-        {COPY_SHOT ? <>
+        {!fixedMode ? <>
           <p className="sub">ใช้รูปท่าแบบไหน</p>
           <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => setPoseMode(v as PoseMode)} />
           <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
-        </> : <p className="muted-text">{POSE_MODES[0].hint}</p>}
-        {shot && <>
+        </> : fixedMode.id === 'shot-scene'
+          ? <p className="muted-text">AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ</p>
+          : <p className="muted-text">{fixedMode.hint}</p>}
+        {shot && !fixedMode && <>
           <p className="sub">แสง</p>
           <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
           <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
         </>}
-        {picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))))}
+        {/* ไม่มีท่าสำเร็จรูป = การ์ด "ท่าเดิม" อยู่หน้ารายการรูปแบบ ชุดเดิม/ฉากเดิม ใช้ยกเลิกรูปท่าที่เลือกไว้ */}
+        {picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))), POSE_PRESET_PICKER ? {} : {
+          special: <Card item={{ name: 'ท่าเดิม' }} active={!pose} onClick={() => select('pose', null)} />,
+        })}
       </Section>
     </>;
   } else if (cur.key === 'scene') {
