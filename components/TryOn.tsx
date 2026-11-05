@@ -211,6 +211,7 @@ export default function TryOn() {
   const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
   const [busy, setBusy] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false); // generate() running: spinner on the "รูปใหม่" tile
   // ชุดภาพที่กำลังสร้างมุมที่เหลือ: รูปหลักโชว์แล้ว ดูได้ระหว่างรอ (ไม่บังรูป) ประวัติรูปโชว์ช่องรอ left ช่อง
   const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
@@ -528,6 +529,7 @@ export default function TryOn() {
       ...(aspect !== DEFAULT_ASPECT ? [platform.name] : []),
     ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}${harmonize ? ' + ปรับแสงรอบสอง' : ''}`;
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
+    setGenerating(true);
     setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
       : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
@@ -698,6 +700,7 @@ export default function TryOn() {
     } finally {
       setBusy(null);
       setPendingSet(null);
+      setGenerating(false);
     }
   }
 
@@ -854,6 +857,9 @@ export default function TryOn() {
     ...(shot ? { view: 'ระยะ มุมกล้อง และตำแหน่งตามรูปท่าโพสต์' } : {}),
   };
   const nextStep = STEPS.findIndex((s, i) => i > step && !unusedWhy[s.key]);
+  // sticky bar (Go list item 5): step 8 is the last step there (step 9 retouch is leaving the rail, item 1) -> generate only
+  const barNext = nextStep >= 0 && STEPS[nextStep].key !== 'retouch' ? nextStep : -1;
+  const genLabel = busy !== null ? 'กำลังสร้างรูป…' : isDirector ? 'คิด 3 ไอเดียให้เลือก' : 'สร้างรูปทันที';
 
   // ---------- paper doll (stage before the first image) ----------
   // null pick: "+" until the step is touched (useChosenSteps), then the keep card (เสื้อเดิม / ไม่ใส่ / ท่าเดิม / ฉากเดิม)
@@ -1114,13 +1120,13 @@ export default function TryOn() {
           <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
         </label>
       </details>
-      {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป): 2 ปุ่มคู่กัน */}
-      <div className="gen-row">
-        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{busy !== null ? 'กำลังทำงาน...' : isDirector ? 'คิด 3 ไอเดียให้เลือก' : 'สร้างรูป'}</button>
-        <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+      {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป) · set button hidden until SET_SHOOT (Go list item 11) */}
+      <div className={'gen-row' + (SET_SHOOT ? '' : ' single')}>
+        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{genLabel}</button>
+        {SET_SHOOT && <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
           title={SET_SHOOT ? `${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า` : 'ยังไม่เปิดให้ใช้'}>
           ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOOT ? `ค่า AI ${SET_SHOTS.length} เท่า` : 'เร็วๆ นี้'}</small>
-        </button>
+        </button>}
       </div>
     </>;
   } else if (cur.key === 'settings') {
@@ -1273,13 +1279,18 @@ export default function TryOn() {
             {cur.key === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{accLimit} ชิ้น</span>}
           </div>
           {shownRecipe && <p className="note">
-            <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูป จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
+            <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูปทันที จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
             <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
           </p>}
           {panel}
           {nextStep >= 0 && (
-            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
+            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
           )}
+          <div className="sticky-bar">
+            {barNext >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
+              onClick={() => goStep(barNext)}>ถัดไป: {STEPS[barNext].label} →</button>}
+            <button className="btn btn-primary" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{genLabel}</button>
+          </div>
         </aside>
 
         <section className="stage">
@@ -1324,10 +1335,12 @@ export default function TryOn() {
             {/* "รูปใหม่" = the setup in progress (paper doll); first tile, always there */}
             <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
               aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
-              <span className="new-plus" aria-hidden="true">+</span><span>รูปใหม่</span>{draftBase && <small>ปรับจากรูปเดิม</small>}
+              {generating
+                ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
+                : <><span className="new-plus" aria-hidden="true">+</span><span>รูปใหม่</span>{draftBase && <small>ปรับจากรูปเดิม</small>}</>}
             </button>
             {historyItems}
-            {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; ในขั้นตั้งค่า</p>}
+            {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูปทันที&quot;</p>}
           </div>
         </section>
 

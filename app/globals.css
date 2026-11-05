@@ -121,7 +121,7 @@ button, select, input, textarea { font-family: inherit; }
 .next { width: 100%; margin-top: var(--space-18); transition: background .25s ease, color .25s ease; }
 /* ปุ่มถัดไปเมื่อผู้ใช้เลือกในขั้นนั้นแล้ว (useChosenSteps ใน components/ui.tsx): พื้นหิน + ขอบหมึก แบบเดียวกับปุ่มที่เปิดค้าง (.on) */
 .btn-ready { background: var(--primary-soft); box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink); }
-.btn-ready:active { background: var(--secondary-pressed); }
+.btn-ready:not(:disabled):active { background: var(--secondary-pressed); } /* Safari applies :active to disabled buttons */
 .note { margin: 0 0 var(--space-12); padding: var(--space-8) var(--space-12); border-radius: var(--r-md); background: var(--surface-card); color: var(--ink-soft); font-size: var(--text-xs); }
 .muted-text { margin: var(--space-4) 0 0; color: var(--mute); font-size: var(--text-xs); line-height: 1.5; }
 
@@ -306,6 +306,7 @@ button, select, input, textarea { font-family: inherit; }
 .history button.new-tile.active { border: 1.5px solid var(--ink); }
 .history button.new-tile.active::after { content: none; }
 .history button.new-tile small { color: var(--accent-text); font-size: var(--text-xs); }
+.history button.new-tile .spinner { width: 18px; height: 18px; border-width: 2px; border-color: rgba(0, 0, 0, .12); border-top-color: var(--ink-soft); }
 .new-plus { font-size: 18px; line-height: 1; }
 .note .link-btn { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 
@@ -396,6 +397,14 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 /* ท้ายขั้นสไตล์ถ่ายภาพ (หน้านางแบบ): สร้างรูป | ชุดภาพ คู่กัน อยู่ส่วนล่างที่ไม่เลื่อน */
 .gen-row { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); margin-top: var(--space-14); }
 .gen-row .gen-btn { margin: 0; }
+.gen-row.single { grid-template-columns: 1fr; }
+/* sticky bar (Go list item 5): pinned to the bottom of the left panel on every step; bleeds over the panel padding */
+.sticky-bar { position: sticky; bottom: calc(-1 * var(--space-24)); z-index: 3; display: flex; gap: var(--space-8); margin: var(--space-18) calc(-1 * var(--space-16)) calc(-1 * var(--space-24)); padding: var(--space-12) var(--space-16); border-top: 1px solid var(--hairline-soft); background: var(--canvas); box-shadow: var(--shadow-pinned); }
+.sticky-bar .btn { flex: 1 1 0; min-width: 0; }
+.sticky-bar .bar-next { flex-grow: 1.3; }
+@media (max-width: 860px) { /* page scrolls: stick to the viewport edge */
+  .sticky-bar { bottom: 0; padding-bottom: calc(var(--space-12) + env(safe-area-inset-bottom, 0px)); }
+}
 .set-btn small { color: var(--mute); font-size: var(--text-2xs); font-weight: 400; }
 /* ชุดภาพหลายมุม: รูปในชุดเดียวกันอยู่ในกรอบเดียว มีชื่อมุมใต้รูป */
 .set-group { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface-card); }
