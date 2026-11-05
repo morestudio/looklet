@@ -7,6 +7,7 @@ import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import { SignOutButton } from './AuthForm';
+import { PaperDoll, type DollChip, type DollSlot } from './PaperDoll';
 import { PersonView } from './PersonView';
 import { PoseView } from './PoseView';
 import { ShotPlanView } from './ShotPlanView';
@@ -734,6 +735,46 @@ export default function TryOn() {
   };
   const nextStep = STEPS.findIndex((s, i) => i > step && !unusedWhy[s.key]);
 
+  // ---------- paper doll (stage before the first image) ----------
+  // null pick: "+" until the step is touched (useChosenSteps), then the keep card (เสื้อเดิม / ไม่ใส่ / ท่าเดิม / ฉากเดิม)
+  const toStep = (key: StepKey, tab?: WearSlot) => () => {
+    if (tab) setOutfitTab(tab);
+    goStep(STEPS.findIndex((s) => s.key === key));
+  };
+  const keepIf = (key: StepKey, text: string) => (chosen.has(key) ? text : undefined);
+  const wearSlot = (id: WearSlot, item: Item | undefined): DollSlot => {
+    const tab = WEAR_TABS.find((t) => t.id === id)!;
+    return { id, label: tab.name, item, keep: keepIf('outfit', tab.keep), fit: 'contain', onClick: toStep('outfit', id) };
+  };
+  const accSlots: DollSlot[] = accs.length
+    ? accs.map((a) => ({ id: idOf(a), label: 'ของเสริม', item: a, fit: 'contain', onClick: toStep('accessory') }))
+    : [{ id: 'accessory', label: 'ของเสริม', keep: keepIf('accessory', 'ไม่ใส่'), onClick: toStep('accessory') }];
+  const poseItem = pose ?? (posePreset ? { name: posePreset.name } : null);
+  const dollLeft: [DollSlot[], DollSlot[], DollSlot[], DollSlot[]] = [
+    [{ id: 'model', label: 'นางแบบ', item: model, onClick: toStep('model') }],
+    [],
+    [{ id: 'pose', label: 'ท่าโพสต์', item: poseItem, keep: keepIf('pose', 'ท่าเดิม'), onClick: toStep('pose') }],
+    [],
+  ];
+  const dollRight: [DollSlot[], DollSlot[], DollSlot[], DollSlot[]] = [
+    accSlots,
+    [outfit ? wearSlot('set', outfit) : wearSlot('top', top)],
+    outfit ? [] : [wearSlot('bottom', bottom)],
+    [wearSlot('shoes', shoes)],
+  ];
+  const dollScene: DollSlot = {
+    id: 'scene', label: 'ฉากหลัง', item: shotScene ? { name: unusedWhy.scene! } : scene, keep: keepIf('scene', 'ฉากเดิม'),
+    onClick: shotScene ? toStep('pose') : toStep('scene'),
+  };
+  const dollChips: DollChip[] = [
+    { id: 'style', label: 'สไตล์', value: shot && !shotPresetLight ? 'ตามรูปท่าโพสต์' : preset.name, onClick: toStep(shot && !shotPresetLight ? 'pose' : 'settings') },
+    {
+      id: 'view', label: 'มุมมอง', value: shot ? 'ตามรูปท่าโพสต์' : [framingChoice?.name, angleChoice?.name].filter(Boolean).join(' · ') || 'ตามสไตล์',
+      onClick: toStep(shot ? 'pose' : 'view'),
+    },
+    { id: 'aspect', label: 'สัดส่วน:', value: aspect, onClick: toStep('output') },
+  ];
+
   // ---------- แผงเลือก (ซ้าย) ----------
   const q = query.trim().toLowerCase();
   const visible = (key: Key) => lists[key].filter((i) => (!q || i.name.toLowerCase().includes(q)) && (
@@ -1119,14 +1160,17 @@ export default function TryOn() {
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>
-            {compare && <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(true)}>
-              <img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption>
-            </figure>}
-            <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(false)}>
-              <canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}
-            </figure>
-            {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
-            {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
+            {/* no generated image shown -> paper doll; canvas unmounts, src change on next result redraws it */}
+            {shown ? <>
+              {compare && <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(true)}>
+                <img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption>
+              </figure>}
+              <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(false)}>
+                <canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}
+              </figure>
+              {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
+              {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
+            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label="พร้อมสร้าง" />}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
