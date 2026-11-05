@@ -9,6 +9,7 @@ import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '
 import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement, wearCount, type Wear } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
 import { cropTo, servable } from '@/lib/images';
+import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
 import { ESTIMATED_TOKENS, quotaBlock, recordUsage } from '@/lib/usage';
 
@@ -52,6 +53,7 @@ export const POST = post(async (req) => {
   const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
     ? { id: req.set.id, index: req.set.index } : null;
   const finish = req.finish === 'phone' || req.finish === 'film' ? req.finish : null; // ลุคที่เหมาะกับรูปนี้ (lib/film.ts) เก็บกับรูป
+  const recipe = storableRecipe(req.recipe); // steps 1–8 choices (lib/recipe.ts), stored with the image
   if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
 
   // รูปที่ส่งให้ AI: นางแบบ (ต้องมี) + ชุด + ของเสริม + ท่าโพสต์ + ฉาก (ถ้าเลือก) — ลำดับต้องตรงกับ buildPrompt
@@ -259,7 +261,7 @@ export const POST = post(async (req) => {
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const save = (img: Img, savedPlan: StoredPosePlan | null) => saveImage({ area: 'results' }, img.data, img.mime,
       { caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
-        ...(savedPlan ? { posePlan: savedPlan } : {}) });
+        ...(savedPlan ? { posePlan: savedPlan } : {}), ...(recipe ? { recipe } : {}) });
     const delivery = director && directorInput && poseMeta ? await deliverDirectedImage(image, poseMeta, req.auto_repair !== false, {
       review: (img) => reviewShot(directorInput, director, img),
       save,

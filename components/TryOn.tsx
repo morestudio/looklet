@@ -20,7 +20,7 @@ import {
   IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { SKIN_MODEL } from '@/lib/skin';
@@ -95,12 +95,67 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = StoredPosePlan;
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan };
+// ---------- recipe: steps 1–8 choices saved with each generated image (meta.recipe, lib/recipe.ts) ----------
+type Pick = { model: string; outfit: string | null; accessory: string[]; pose: string | null; scene: string | null; top: string | null; bottom: string | null; shoes: string | null };
+type Recipe = {
+  pick: Pick; preset: string; framing: string; angle: string; placement: string; poseMode: PoseMode; light: LightSource; mood: string;
+  aspect: string; quality: string; extra: string; harmonize: boolean; gaze: string; props: string[]; background: BackgroundMode; goal: PhotoGoal; autoRepair: boolean;
+};
+const START: Recipe = {
+  pick: { model: idOf(MODELS[0]), outfit: null, accessory: [], pose: null, scene: null, top: null, bottom: null, shoes: null },
+  preset: PRESETS[0].id, framing: 'auto', angle: 'auto', placement: 'auto', poseMode: 'pose', light: 'ref', mood: 'auto',
+  aspect: DEFAULT_ASPECT, quality: 'medium', extra: '', harmonize: false, gaze: '', props: [], background: 'explore', goal: 'lifestyle', autoRepair: true,
+};
+// fixed field order: equal recipes -> equal keys
+const recipeKey = (r: Recipe) => JSON.stringify([r.pick.model, r.pick.outfit, r.pick.accessory, r.pick.pose, r.pick.scene, r.pick.top, r.pick.bottom, r.pick.shoes,
+  r.preset, r.framing, r.angle, r.placement, r.poseMode, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
+const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
+// stored recipe -> valid Recipe; an id no longer in the lists (deleted upload) -> null, its step listed in missing (doll shows "+")
+function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe: Recipe; missing: StepKey[] } {
+  const r = raw as Record<string, unknown>;
+  const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
+  const missing = new Set<StepKey>();
+  const has = (key: Key, id: unknown) => typeof id === 'string' && lists[key].some((i) => idOf(i) === id);
+  const ref = (key: Key, id: unknown, step: StepKey) => {
+    if (id === null || id === undefined) return null;
+    if (has(key, id)) return id as string;
+    missing.add(step);
+    return null;
+  };
+  const accessory = (Array.isArray(p.accessory) ? p.accessory : []).filter((id) => has('accessory', id) || void missing.add('accessory')) as string[];
+  const recipe: Recipe = {
+    pick: {
+      model: has('model', p.model) ? p.model as string : START.pick.model, // required: deleted -> first model (as deleteUpload)
+      outfit: ref('outfit', p.outfit, 'outfit'), accessory,
+      pose: typeof p.pose === 'string' && p.pose.startsWith(PRESET_POSE) ? p.pose : ref('pose', p.pose, 'pose'),
+      scene: ref('scene', p.scene, 'scene'), top: ref('outfit', p.top, 'outfit'), bottom: ref('outfit', p.bottom, 'outfit'), shoes: ref('accessory', p.shoes, 'outfit'),
+    },
+    preset: oneOf(r.preset, PRESETS.map((x) => x.id), START.preset),
+    framing: oneOf(r.framing, ['auto', ...FRAMINGS.map((x) => x.id)], 'auto'),
+    angle: oneOf(r.angle, ['auto', ...ANGLES.map((x) => x.id)], 'auto'),
+    placement: oneOf(r.placement, ['auto', ...PLACEMENTS.map((x) => x.id)], 'auto'),
+    poseMode: oneOf<PoseMode>(r.poseMode, POSE_MODES.map((m) => m.id), START.poseMode),
+    light: oneOf<LightSource>(r.light, LIGHT_SOURCES.map((l) => l.id), START.light),
+    mood: oneOf(r.mood, FACE_MOODS.map((m) => m.id), 'auto'),
+    aspect: oneOf<string>(r.aspect, PLATFORM_ASPECTS.map((a) => a.id), DEFAULT_ASPECT),
+    quality: typeof r.quality === 'string' ? r.quality : START.quality,
+    extra: typeof r.extra === 'string' ? r.extra : '',
+    harmonize: r.harmonize === true,
+    gaze: oneOf(r.gaze, ['', ...GAZES.map((g) => g.id)], ''),
+    props: (Array.isArray(r.props) ? r.props : []).filter((id) => PROPS.some((x) => x.id === id)) as string[],
+    background: oneOf<BackgroundMode>(r.background, ['explore', 'keep'], 'explore'),
+    goal: oneOf<PhotoGoal>(r.goal, ['lifestyle', 'outfit', 'editorial'], 'lifestyle'),
+    autoRepair: r.autoRepair !== false,
+  };
+  return { recipe, missing: [...missing] };
+}
+
+type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; recipe?: Partial<Recipe> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
 type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
 // page = 'product' -> รูปจากหน้าสินค้า (components/Packshot.tsx) ไม่โชว์ในประวัติรูปของหน้านี้
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string };
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string; recipe?: Partial<Recipe> };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
@@ -145,6 +200,13 @@ export default function TryOn() {
   const [results, setResults] = useState<Result[]>([]); // รูปที่สร้างแล้ว ใหม่สุดอยู่หน้า
   const [current, setCurrent] = useState<number | null>(null); // กำลังแสดง: null = รูปนางแบบ (ตัวอย่าง), ตัวเลข = results[current]
   const [zoomed, setZoomed] = useState(false);
+  // past image loads its settings (Go list items 3, 4): draft = setup in progress set aside while a past image's recipe fills the panel
+  const [draft, setDraft] = useState<{ recipe: Recipe; chosen: StepKey[]; base: Recipe | null } | null>(null);
+  const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from
+  const [viewKey, setViewKey] = useState<string | null>(null); // panel recipe key when the shown image was opened; differs -> user changed a choice
+  const [syncedSrc, setSyncedSrc] = useState<string | null>(null); // shown image the panel was last synced to
+  const [cleanKey, setCleanKey] = useState<string | null>(null); // draft key at page open (after models load) / last generate; differs = unsaved picks
+  const [confirmStart, setConfirmStart] = useState(false); // "เริ่มจากรูปนี้?" dialog
   const [original, setOriginal] = useState(false); // กดค้าง "ดูก่อนแต่ง"
   const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
@@ -185,6 +247,7 @@ export default function TryOn() {
   const [dialog, setDialog] = useState<{ mode: 'add'; file: File; url: string } | { mode: 'edit'; item: Item } | null>(null);
   const [localEdit, setLocalEdit] = useState<{ src: string; caption: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
   const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS)
   const [query, setQuery] = useState(''); // ค้นหาตามชื่อในแผงเลือก
   const [filter, setFilter] = useState('all'); // ตัวกรองในแผงเลือก (SOURCE_FILTERS หรือ id ประเภทของเสริม)
@@ -230,7 +293,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.filter((r) => r.page !== 'product').map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan })));
+        setResults(lib.results.filter((r) => r.page !== 'product').map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan, recipe: r.recipe })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({
@@ -272,8 +335,15 @@ export default function TryOn() {
 
   // เปลี่ยนโมเดล AI -> คุณภาพกลับเป็นค่าเริ่มต้นของโมเดลนั้น (ระดับที่รุ่นหนึ่งมี อีกรุ่นอาจไม่มี)
   function select(key: Exclude<Key, 'accessory'>, id: string | null) {
-    setPick((p) => ({ ...p, [key]: id }));
-    if (key === 'model') setCurrent(null); // เปลี่ยนนางแบบ -> โชว์รูปนางแบบคนใหม่เป็นตัวอย่าง
+    setPick((p) => ({ ...p, [key]: id })); // stage switches to the paper doll via the recipe change check (below useChosenSteps)
+  }
+
+  // panel <- recipe (steps = touched steps for useChosenSteps: "+" vs keep cards on the paper doll)
+  function applyRecipe(r: Recipe, steps: StepKey[]) {
+    setPick(r.pick); setPresetId(r.preset); setFramingId(r.framing); setAngleId(r.angle); setPlacementId(r.placement);
+    setPoseMode(r.poseMode); setLightSource(r.light); setFaceMood(r.mood); setAspect(r.aspect); setQuality(r.quality); setExtra(r.extra);
+    setHarmonize(r.harmonize); setGazeId(r.gaze); setHeldProps(r.props); setBackgroundMode(r.background); setPhotoGoal(r.goal); setAutoRepair(r.autoRepair);
+    setChosen(new Set(steps));
   }
 
   // ของเสริม: กดแล้วสลับเลือก/ไม่เลือก, null = ไม่ใส่สักชิ้น
@@ -533,6 +603,18 @@ export default function TryOn() {
         gaze: gaze?.prompt ?? null,
         props: propChoices.map((p) => p.prompt),
         harmonize,
+        recipe, // stored with the image (lib/recipe.ts)
+      };
+      // finished image: open it, unless the user changed choices while waiting (opening it would load its recipe over them)
+      const showMade = (count = 1) => {
+        setCleanKey(liveKey);
+        if (liveKeyRef.current !== liveKey) {
+          setCurrent((c) => (c === null ? c : c + count)); // list grew at the front: keep the same image on the stage
+          setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
+          return;
+        }
+        setCurrent(0);
+        setBase(null); // draft is now an image, no longer "based on" a past one
       };
       const setId = set ? newSetId() : null;
       const setTag = (i: number) => (setId ? { id: setId, index: i } : undefined);
@@ -552,10 +634,10 @@ export default function TryOn() {
           const result = await api<{ src: string; posePlan: PosePlan }>('/api/generate', {
             ...body, shot_proposal: proposal.token, shot_id: id, caption: shotCaption,
           });
-          return { src: result.src, caption: shotCaption, finish: body.finish, posePlan: result.posePlan };
+          return { src: result.src, caption: shotCaption, finish: body.finish, posePlan: result.posePlan, recipe };
         }, (result) => {
           setResults((r) => [result, ...r]);
-          setCurrent(0);
+          showMade();
           prepare(result.src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message}`));
         });
         const needsReview = batch.results.filter((r) => r.posePlan.review?.status !== 'passed').length;
@@ -569,7 +651,7 @@ export default function TryOn() {
         return;
       }
       const out = await api<{ src: string; posePlan: PosePlan | null }>('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
-      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined }]; // server เซฟไว้ใน results/ แล้ว
+      const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined, recipe }]; // server เซฟไว้ใน results/ แล้ว
       if (out.posePlan) setStatus(out.posePlan.review
         ? `${out.posePlan.name} · ${out.posePlan.review.summaryThai}${out.posePlan.repairError ? ' · ' + out.posePlan.repairError : ''}`
         : `ท่าที่ AI คิดให้ (${out.posePlan.name}): ${out.posePlan.th}`);
@@ -586,7 +668,7 @@ export default function TryOn() {
         if (real) made.unshift(real);
       }
       setResults((r) => [...made, ...r]);
-      setCurrent(0);
+      showMade(made.length);
       // เตรียมไว้ก่อน แตะสไลเดอร์แล้วจะไม่ต้องรอ
       prepare(made[0].src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message} — ลองเลื่อนสไลเดอร์อีกครั้ง`));
       frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // จอแคบ: เลื่อนมาให้เห็นรูปที่ได้
@@ -603,7 +685,7 @@ export default function TryOn() {
           caption: setCaption(j + 1),
           set: setTag(j + 1),
         }).then(({ src }) => {
-          setResults((r) => [{ src, caption: setCaption(j + 1), set: setTag(j + 1), finish: body.finish }, ...r]);
+          setResults((r) => [{ src, caption: setCaption(j + 1), set: setTag(j + 1), finish: body.finish, recipe }, ...r]);
           setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
         }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
         const failed = rest.filter((x) => x.status === 'rejected');
@@ -628,7 +710,7 @@ export default function TryOn() {
     try {
       const img = await loadImg(source.src);
       const refined = await api<Result>('/api/refine-skin', {
-        src: source.src, caption: source.caption, size: openaiSize(img.width, img.height),
+        src: source.src, caption: source.caption, size: openaiSize(img.width, img.height), recipe: source.recipe,
       });
       setResults((r) => [refined, ...r]);
       setCurrent(0);
@@ -706,7 +788,45 @@ export default function TryOn() {
   }
 
   const cur = STEPS[step];
-  const { chosen, mark } = useChosenSteps(cur.key);
+  const { chosen, mark, setChosen } = useChosenSteps(cur.key);
+
+  // ---------- recipe sync (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
+  const recipe: Recipe = {
+    pick, preset: presetId, framing: framingId, angle: angleId, placement: placementId, poseMode: poseModeChoice, light: lightChoice, mood: faceMood,
+    aspect, quality, extra, harmonize, gaze: gazeId, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
+  };
+  const liveKey = recipeKey(recipe);
+  useEffect(() => { liveKeyRef.current = liveKey; });
+  const allSteps = STEPS.map((s) => s.key);
+  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
+  const loadShown = () => applyRecipe(shownRecipe!.recipe, allSteps.filter((k) => !shownRecipe!.missing.includes(k)));
+  const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
+  if (cleanKey === null && aiModels !== null) setCleanKey(liveKey); // quality is set when models load
+  const shownSrc = shown?.src ?? null;
+  const syncing = shownSrc !== syncedSrc;
+  if (syncing) {
+    setSyncedSrc(shownSrc);
+    if (shownRecipe) {
+      if (!draft) setDraft({ recipe, chosen: [...chosen], base });
+      loadShown();
+      setViewKey(recipeKey(shownRecipe.recipe));
+    } else {
+      if (draft) { applyRecipe(draft.recipe, draft.chosen); setBase(draft.base); setDraft(null); }
+      setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
+    }
+  } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
+    // a choice changed while viewing: no recipe -> back to the (changed) draft; recipe -> new draft from it, confirm first if unsaved picks
+    if (!shownRecipe) { setViewKey(null); setSyncedSrc(null); setCurrent(null); }
+    else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
+    else startFromShown();
+  }
+  const draftBase = draft ? draft.base : base; // shown on the "รูปใหม่" tile
+  const changed = base && current === null ? { // paper doll highlights what differs from the past image
+    model: base.pick.model !== pick.model, accessory: JSON.stringify(base.pick.accessory) !== JSON.stringify(pick.accessory),
+    set: base.pick.outfit !== pick.outfit, top: base.pick.top !== pick.top, bottom: base.pick.bottom !== pick.bottom, shoes: base.pick.shoes !== pick.shoes,
+    pose: base.pick.pose !== pick.pose, scene: base.pick.scene !== pick.scene, style: base.preset !== presetId,
+    view: base.framing !== framingId || base.angle !== angleId || base.placement !== placementId, aspect: base.aspect !== aspect,
+  } : null;
   const stepReady = chosen.has(cur.key) && (cur.key !== 'model' || Boolean(pick.model)); // ปุ่มถัดไปพื้นหินขอบหมึก = ผู้ใช้เลือกในขั้นนี้แล้ว
   const retouched = tone !== null || Object.values(amounts).some((v) => v > 0);
   const displaySrc = shown?.src ?? model.src!;
@@ -744,16 +864,16 @@ export default function TryOn() {
   const keepIf = (key: StepKey, text: string) => (chosen.has(key) ? text : undefined);
   const wearSlot = (id: WearSlot, item: Item | undefined): DollSlot => {
     const tab = WEAR_TABS.find((t) => t.id === id)!;
-    return { id, label: tab.name, item, keep: keepIf('outfit', tab.keep), fit: 'contain', onClick: toStep('outfit', id) };
+    return { id, label: tab.name, item, keep: keepIf('outfit', tab.keep), fit: 'contain', changed: changed?.[id], onClick: toStep('outfit', id) };
   };
   const accSlots: DollSlot[] = accs.length
-    ? accs.map((a) => ({ id: idOf(a), label: 'ของเสริม', item: a, fit: 'contain', onClick: toStep('accessory') }))
-    : [{ id: 'accessory', label: 'ของเสริม', keep: keepIf('accessory', 'ไม่ใส่'), onClick: toStep('accessory') }];
+    ? accs.map((a) => ({ id: idOf(a), label: 'ของเสริม', item: a, fit: 'contain', changed: changed?.accessory, onClick: toStep('accessory') }))
+    : [{ id: 'accessory', label: 'ของเสริม', keep: keepIf('accessory', 'ไม่ใส่'), changed: changed?.accessory, onClick: toStep('accessory') }];
   const poseItem = pose ?? (posePreset ? { name: posePreset.name } : null);
   const dollLeft: [DollSlot[], DollSlot[], DollSlot[], DollSlot[]] = [
-    [{ id: 'model', label: 'นางแบบ', item: model, onClick: toStep('model') }],
+    [{ id: 'model', label: 'นางแบบ', item: model, changed: changed?.model, onClick: toStep('model') }],
     [],
-    [{ id: 'pose', label: 'ท่าโพสต์', item: poseItem, keep: keepIf('pose', 'ท่าเดิม'), onClick: toStep('pose') }],
+    [{ id: 'pose', label: 'ท่าโพสต์', item: poseItem, keep: keepIf('pose', 'ท่าเดิม'), changed: changed?.pose, onClick: toStep('pose') }],
     [],
   ];
   const dollRight: [DollSlot[], DollSlot[], DollSlot[], DollSlot[]] = [
@@ -763,16 +883,16 @@ export default function TryOn() {
     [wearSlot('shoes', shoes)],
   ];
   const dollScene: DollSlot = {
-    id: 'scene', label: 'ฉากหลัง', item: shotScene ? { name: unusedWhy.scene! } : scene, keep: keepIf('scene', 'ฉากเดิม'),
+    id: 'scene', label: 'ฉากหลัง', item: shotScene ? { name: unusedWhy.scene! } : scene, keep: keepIf('scene', 'ฉากเดิม'), changed: changed?.scene,
     onClick: shotScene ? toStep('pose') : toStep('scene'),
   };
   const dollChips: DollChip[] = [
-    { id: 'style', label: 'สไตล์', value: shot && !shotPresetLight ? 'ตามรูปท่าโพสต์' : preset.name, onClick: toStep(shot && !shotPresetLight ? 'pose' : 'settings') },
+    { id: 'style', label: 'สไตล์', value: shot && !shotPresetLight ? 'ตามรูปท่าโพสต์' : preset.name, changed: changed?.style, onClick: toStep(shot && !shotPresetLight ? 'pose' : 'settings') },
     {
       id: 'view', label: 'มุมมอง', value: shot ? 'ตามรูปท่าโพสต์' : [framingChoice?.name, angleChoice?.name].filter(Boolean).join(' · ') || 'ตามสไตล์',
-      onClick: toStep(shot ? 'pose' : 'view'),
+      changed: changed?.view, onClick: toStep(shot ? 'pose' : 'view'),
     },
-    { id: 'aspect', label: 'สัดส่วน:', value: aspect, onClick: toStep('output') },
+    { id: 'aspect', label: 'สัดส่วน:', value: aspect, changed: changed?.aspect, onClick: toStep('output') },
   ];
 
   // ---------- แผงเลือก (ซ้าย) ----------
@@ -1152,6 +1272,10 @@ export default function TryOn() {
             <h2>{cur.title}</h2>
             {cur.key === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{accLimit} ชิ้น</span>}
           </div>
+          {shownRecipe && <p className="note">
+            <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูป จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
+            <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
+          </p>}
           {panel}
           {nextStep >= 0 && (
             <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
@@ -1170,7 +1294,7 @@ export default function TryOn() {
               </figure>
               {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
               {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
-            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label="พร้อมสร้าง" />}
+            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เลือก' : 'พร้อมสร้าง'} />}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
@@ -1197,6 +1321,11 @@ export default function TryOn() {
           </div>
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
+            {/* "รูปใหม่" = the setup in progress (paper doll); first tile, always there */}
+            <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
+              aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
+              <span className="new-plus" aria-hidden="true">+</span><span>รูปใหม่</span>{draftBase && <small>ปรับจากรูปเดิม</small>}
+            </button>
             {historyItems}
             {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; ในขั้นตั้งค่า</p>}
           </div>
@@ -1206,6 +1335,10 @@ export default function TryOn() {
 
       {shotChoice && <ShotChoiceDialog proposal={shotChoice.proposal} references={shotChoice.references} onChoose={shotChoice.choose} />}
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
+        onCancel={() => { setConfirmStart(false); if (shownRecipe) loadShown(); }}
+        onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);

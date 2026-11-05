@@ -3,8 +3,9 @@
 import type { Item } from '@/lib/catalog';
 
 // item.src -> photo; item without src -> its name as text; keep -> "keep as is" text; neither -> dashed "+"
-export type DollSlot = { id: string; label: string; item?: Item | null; keep?: string; fit?: 'cover' | 'contain'; onClick: () => void };
-export type DollChip = { id: string; label: string; value: string; onClick: () => void };
+// changed: differs from the past image this draft started from (Go list item 4)
+export type DollSlot = { id: string; label: string; item?: Item | null; keep?: string; fit?: 'cover' | 'contain'; changed?: boolean; onClick: () => void };
+export type DollChip = { id: string; label: string; value: string; changed?: boolean; onClick: () => void };
 // rows: 0 head, 1 torso, 2 legs, 3 feet
 type Rows = [DollSlot[], DollSlot[], DollSlot[], DollSlot[]];
 
@@ -13,7 +14,7 @@ function DollCard({ slot, bare = false }: { slot: DollSlot; bare?: boolean }) {
   const empty = !item && !keep;
   const text = item?.name ?? keep;
   return (
-    <button type="button" className={'doll-card' + (empty ? ' empty' : '') + (bare ? ' bare' : '')} onClick={slot.onClick}
+    <button type="button" className={'doll-card' + (empty ? ' empty' : '') + (bare ? ' bare' : '') + (slot.changed ? ' changed' : '')} onClick={slot.onClick}
       title={empty ? `เลือก${label}` : `${label}: ${text}`} aria-label={empty ? `เลือก${label}` : `${label}: ${text}`}>
       <span className={'doll-pic' + (slot.fit === 'contain' ? ' contain' : '')}>
         {item?.src ? <img src={item.src} alt="" /> : <span className="doll-text">{empty ? '+' : text}</span>}
@@ -31,7 +32,7 @@ function DollRow({ slots, row }: { slots: DollSlot[]; row: number }) {
     <div className="doll-row" style={{ gridRow: row + 1 }}>
       <div className="doll-group">
         <div className="doll-group-cards">{slots.map((s) => <DollCard key={s.id} slot={s} bare />)}</div>
-        <b>{slots[0].label}</b>
+        <b className={slots.some((s) => s.changed) ? 'changed' : undefined}>{slots[0].label}</b>
       </div>
     </div>
   );
@@ -53,7 +54,7 @@ export function PaperDoll({ left, right, scene, chips, label }: {
       </div>
       <div className="doll-chips">
         {chips.map((c) => (
-          <button type="button" key={c.id} className="doll-chip" onClick={c.onClick}>{c.label} <b>{c.value}</b></button>
+          <button type="button" key={c.id} className={'doll-chip' + (c.changed ? ' changed' : '')} onClick={c.onClick}>{c.label} <b>{c.value}</b></button>
         ))}
       </div>
     </div>

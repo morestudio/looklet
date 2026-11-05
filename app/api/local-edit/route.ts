@@ -4,6 +4,7 @@ import { localTime, sentences, writeGenerateLog, type GenerateLog } from '@/lib/
 import { LOCAL_EDIT_PROMPT, supportsMaskedEdit } from '@/lib/local-edit';
 import { blendLocalEdit, editCanvas, finishRoughEdit, fromEditCanvas, maskToEditCanvas, prepareLocalEdit, roughEditGuide, toEditCanvas } from '@/lib/local-edit-images';
 import { json, post } from '@/lib/route';
+import { storableRecipe } from '@/lib/recipe';
 import { listImages, readImage, saveImage } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
 
@@ -57,6 +58,7 @@ export const POST = post(async (req) => {
     const blended = mode === 'rough' ? await finishRoughEdit(source, edited) : await blendLocalEdit(source, edited, feather);
     const meta = { caption, finish: 'off' as const, editedFrom: req.src,
       ...(product ? { page: 'product' as const, ...(original.stylePlan ? { stylePlan: original.stylePlan } : {}) } : {}),
+      ...(original?.recipe && storableRecipe(original.recipe) ? { recipe: original.recipe } : {}), // source image's recipe
     };
     const src = await saveImage({ area: 'results' }, blended.data, blended.mime, meta);
     const entry = await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
