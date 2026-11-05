@@ -1174,11 +1174,11 @@ export default function TryOn() {
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
-            <div className="caption" title={shown?.caption}>{shown ? shown.caption : `ตัวอย่าง: ${model.name} (ยังไม่ได้สร้าง)`}</div>
+            <div className="caption" title={shown?.caption}>{shown ? shown.caption : 'ดาวน์โหลด ซูม และเปรียบเทียบ ใช้ได้หลังสร้างรูปแรก'}</div>
             {shown?.posePlan?.review && <button className="btn btn-secondary tool" onClick={() => setStep(STEPS.findIndex((s) => s.key === 'pose'))}>
               {shown.posePlan.review.status === 'passed' ? 'ผ่านการตรวจด้วย AI · ดูแผนภาพ' : 'ควรตรวจภาพก่อนใช้ · ดูรายละเอียด'}
             </button>}
-            <button className="btn btn-secondary tool" onClick={save}><IconDownload /> ดาวน์โหลด</button>
+            <button className="btn btn-secondary tool" onClick={save} disabled={!shown}><IconDownload /> ดาวน์โหลด</button>
             {shown && <button className="btn btn-secondary tool" disabled={busy !== null}
               onClick={() => setLocalEdit({ src: shown.src, caption: shown.caption })}><IconRetouch /> แก้เฉพาะจุด</button>}
             {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
@@ -1187,10 +1187,10 @@ export default function TryOn() {
               title="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8 ได้รูปใหม่ 1664×2496" onClick={() => void refineSkin()}>
               <IconSparkle /> ปรับผิวสมจริง
             </button>}
-            <button className={'btn btn-secondary tool' + (zoomed ? ' on' : '')} onClick={() => { setZoomed((z) => !z); setRetouchStatus(''); }}>
+            <button className={'btn btn-secondary tool' + (zoomed ? ' on' : '')} disabled={!shown} onClick={() => { setZoomed((z) => !z); setRetouchStatus(''); }}>
               <IconZoom /> {zoomed ? 'ดูทั้งรูป' : 'ซูมหน้า'}
             </button>
-            <button className="btn btn-secondary tool"
+            <button className="btn btn-secondary tool" disabled={!shown}
               onPointerDown={() => setOriginal(true)} onPointerUp={() => setOriginal(false)} onPointerLeave={() => setOriginal(false)}>
               <IconCompare /> กดค้างดูก่อนแต่ง
             </button>
