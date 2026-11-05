@@ -4,6 +4,7 @@ import { loadImg } from '@/lib/browser';
 import { MAX_EDIT_PIXELS, supportsMaskedEdit, type LocalEditMode } from '@/lib/local-edit';
 import { DEFAULT_AI_MODEL } from '@/lib/catalog';
 import { IconBrush, IconEraser } from './icons';
+import { rangeFill } from './ui';
 
 // มีแค่แบบไฮไลต์คร่าว ๆ (เอา "ระบายแบบละเอียด" ออก 28 ต.ค.) — API ยังรับ precise สำหรับคำขอเก่า
 const MODE: LocalEditMode = 'rough';
@@ -14,7 +15,7 @@ export type LocalEditRequest = { mask: string | null; instruction: string; model
 function paint(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   if (stroke.tool === 'clear') { ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); return; }
   ctx.globalCompositeOperation = stroke.tool === 'erase' ? 'destination-out' : 'source-over';
-  ctx.fillStyle = ctx.strokeStyle = '#e60023';
+  ctx.fillStyle = ctx.strokeStyle = '#9c6b26'; // สีเหลืองหม่น (--accent) ไว้ให้เห็นบนจอเท่านั้น mask ใช้แค่ความทึบ (alpha)
   ctx.lineWidth = stroke.size; ctx.lineCap = ctx.lineJoin = 'round';
   const first = stroke.points[0];
   if (!first) return;
@@ -153,11 +154,11 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
           <canvas className="local-edit-selection" ref={selection} aria-label="ระบายพื้นที่ที่ต้องการแก้" style={{ cursor: tool === 'erase' ? 'cell' : 'crosshair' }}
             onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} />
         </div>{!ready && !error && <p className="muted-text">กำลังโหลดรูป...</p>}</div>
-        <p className="muted-text">สีแดง = จุดอ้างอิง ไม่ใช่ขอบเขตการแก้ · AI อาจเปลี่ยนรายละเอียดใกล้เคียงได้</p>
+        <p className="muted-text">ส่วนที่ระบาย = จุดอ้างอิง ไม่ใช่ขอบเขตการแก้ · AI อาจเปลี่ยนรายละเอียดใกล้เคียงได้</p>
       </section>
       <section className="local-edit-controls">
         <label className="shot-field">ขนาดแปรง <output>{brushSize}</output>
-          <input type="range" min="8" max="120" value={brushSize} disabled={busy || drawing} onChange={(e) => setBrushSize(Number(e.target.value))} />
+          <input type="range" min="8" max="120" value={brushSize} style={rangeFill(brushSize, 8, 120)} disabled={busy || drawing} onChange={(e) => setBrushSize(Number(e.target.value))} />
         </label>
         <label className="shot-field">ต้องการแก้อะไร
           <textarea className="text-input" rows={4} maxLength={1200} value={instruction} disabled={busy} onChange={(e) => setInstruction(e.target.value)} placeholder="เช่น เอาพร็อพออกทั้งหมด หรือ เปลี่ยนกระเป๋าเป็นสีแดงทั้งใบ รวมสาย โดยคงทรง ลาย และวัสดุเดิม" />

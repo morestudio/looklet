@@ -3,8 +3,8 @@
 // ระยะ = ตัดคนที่ความสูงต่างกัน · มุมกล้อง = กล้องเล็กๆ ที่ความสูงนั้น + เส้นสายตา (มุมต่ำขายาว หัวเล็ก · มุมสูงกลับกัน)
 // ตำแหน่ง = คนอยู่ 1/3 ซ้าย / กลาง / 1/3 ขวา มีเส้นแบ่งสามส่วนจางๆ
 import type { ReactNode } from 'react';
+import { CLOTH, HAIR, INK, LABEL, PAPER, SHADE, WALL } from './drawing-colors';
 
-const INK = '#77776f', PAPER = '#fafaf8', CLOTH = '#e7e6df', SHADE = '#dcdbd2', HAIR = '#cfcdc4', LABEL = '#b8b8ae';
 // เส้นหนาเท่ากันทุกขนาดตัว (ตัวคนถูกขยายถึง 5 เท่าในการ์ด "ใกล้")
 const line = { stroke: INK, strokeWidth: 1.2, vectorEffect: 'non-scaling-stroke', strokeLinejoin: 'round' } as const;
 const thin = { stroke: LABEL, strokeWidth: 1.2, vectorEffect: 'non-scaling-stroke', fill: 'none' } as const;
@@ -41,7 +41,7 @@ export function Person({ x, top, h, legs = 1, head = 1, turn = false, ghost = fa
 
 // ฉากสตูดิโอ: ผนัง + พื้นโค้งต่อผนัง · horizon = ขอบพื้น (สูง = เห็นพื้นเยอะ)
 const Room = ({ horizon = 100 }: { horizon?: number }) => <>
-  <rect width="240" height="150" fill="#f3f3f0" />
+  <rect width="240" height="150" fill={WALL} />
   <path d={`M0 ${horizon} Q120 ${horizon - 9} 240 ${horizon} V150 H0Z`} fill="#000" opacity=".04" />
 </>;
 const Shadow = ({ x, y, rx }: { x: number; y: number; rx: number }) => <ellipse cx={x} cy={y} rx={rx} ry="4" fill="#000" opacity=".08" />;
@@ -68,7 +68,7 @@ const ANGLE_ART: Record<string, () => ReactNode> = {
 const FRAMING_ART: Record<string, () => ReactNode> = {
   full: () => <><Room /><Shadow x={120} y={118} rx={20} /><Person x={120} top={31} h={90} /></>,
   wide: () => <><Room horizon={98} />
-    <rect x="26" y="22" width="44" height="54" rx="2" fill="#fbfbf9" stroke={INK} strokeWidth="1.2" />
+    <rect x="26" y="22" width="44" height="54" rx="2" fill={PAPER} stroke={INK} strokeWidth="1.2" />
     <path d="M48 22 V76 M26 49 H70" stroke={INK} strokeWidth="1.2" />
     <path d="M196 104 h18 l-3 16 h-12Z" fill={CLOTH} stroke={INK} strokeWidth="1.2" />
     <path d="M205 104 C200 92 190 86 184 84 M205 104 C206 90 212 80 220 76 M205 104 C204 94 198 80 199 70" stroke="#8fa77a" strokeWidth="2.2" fill="none" />

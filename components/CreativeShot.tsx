@@ -4,6 +4,7 @@
 // จึงรวมเป็นหน้าเดียว และเรียกว่า "ไอเดีย" อย่างเดียว (ไม่ปน คอนเซปต์ / วางแผน)
 import { Fragment, type ReactNode } from 'react';
 import type { CreativeConcept } from '@/lib/creative';
+import { IconSparkle } from './icons';
 import { Section } from './ui';
 
 export default function CreativeShot({ idea, onIdea, facts, onFacts, inspiration, concepts, selected, onSelect, onPlan, planning, canPlan, hasProduct, onGenerate, canGenerate, generating }: {
@@ -26,7 +27,7 @@ export default function CreativeShot({ idea, onIdea, facts, onFacts, inspiration
     </Section>
     {!hasProduct && <p className="note">เลือกสินค้าในขั้นที่ 1 ก่อน</p>}
     {!concepts.length && <button className="btn btn-primary gen-btn" disabled={!canPlan || planning} onClick={onPlan}>
-      {planning ? 'AI กำลังคิด 3 ไอเดีย...' : '✨ ให้ AI คิด 3 ไอเดีย'}
+      {planning ? 'AI กำลังคิด 3 ไอเดีย...' : <><IconSparkle /> ให้ AI คิด 3 ไอเดีย</>}
     </button>}
     {planning && <p className="muted-text" role="status">กำลังดูสินค้า แล้วคิดฉาก พร็อพ แสง และองค์ประกอบให้เข้ากัน</p>}
     {concepts.length > 0 && <Section title="เลือก 1 ไอเดีย" note="ยังไม่ได้สร้างรูป">

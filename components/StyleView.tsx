@@ -4,15 +4,16 @@
 // ต่างกันที่ ฉาก · ไฟ (มาจากไหน แข็ง/นุ่ม) · เงา (คม/ฟุ้ง) · โทนสี (ทับทั้งภาพแบบ multiply)
 import { useId, type ReactNode } from 'react';
 import { Person } from './PersonView';
+import { INK, LABEL, STUDIO } from './drawing-colors';
 
-const INK = '#77776f', LABEL = '#b8b8ae', WHITE = '#ffffff';
+const WHITE = '#ffffff', SOFTBOX_SIDE = '#eae5dd';
 const stroke = { stroke: INK, strokeWidth: 1.2 } as const;
 const grade = (color: string, opacity: number) => <rect width="240" height="150" fill={color} opacity={opacity} style={{ mixBlendMode: 'multiply' }} />;
 
 // ไฟสตูดิโอ: แผงซอฟต์บ็อกซ์บนขาตั้ง หันไปทางขวา
 const Softbox = ({ x, y }: { x: number; y: number }) => <g transform={`translate(${x} ${y})`}>
   <path d="M13 38 V92 M13 92 L4 100 M13 92 L22 100" {...stroke} fill="none" />
-  <path d="M0 4 L8 0 V38 L0 34Z" fill="#e9e8e2" {...stroke} />
+  <path d="M0 4 L8 0 V38 L0 34Z" fill={SOFTBOX_SIDE} {...stroke} />
   <rect x="8" y="-4" width="20" height="46" rx="2" fill={WHITE} {...stroke} />
   <rect x="12" y="1" width="12" height="36" rx="1" fill="none" stroke={LABEL} strokeWidth="1" />
 </g>;
@@ -38,10 +39,19 @@ export function StyleView({ id }: { id: string }) {
 
   let art: ReactNode;
   switch (id) {
+    case 'normal': // ภาพถ่ายธรรมดา: ห้องจริงตามที่เป็น หน้าต่างให้แสงธรรมชาติ ไม่มีไฟเสริม ไม่เกรดสี กล้องระดับสายตา
+      art = <>
+        <rect width="240" height="150" fill="#f1eee8" />
+        <rect y="106" width="240" height="44" fill="#ddd6ca" />
+        <rect x="172" y="16" width="46" height="64" rx="2" fill="#f7f9fb" {...stroke} /><path d="M195 16 V80 M172 48 H218" {...stroke} />
+        <rect x="20" y="80" width="46" height="26" rx="2" fill="#e6ddcf" {...stroke} /><path d="M43 80 V106" {...stroke} />
+        {softShadow(122, 26)}{figure()}
+      </>;
+      break;
     case 'studio': // ฉากกระดาษขาวโค้ง ซอฟต์บ็อกซ์ซ้าย แผ่นสะท้อนขวา เงาจาง
       art = <>
-        <rect width="240" height="150" fill="#f8f8f6" />
-        <path d="M0 98 Q120 90 240 98 V150 H0Z" fill="#ecece8" />
+        <rect width="240" height="150" fill="#faf7f2" />
+        <path d="M0 98 Q120 90 240 98 V150 H0Z" fill={STUDIO} />
         <path d="M44 22 L112 48 L112 112 L44 70Z" fill={WHITE} opacity=".55" filter={ref('soft')} />
         <Softbox x={14} y={20} />
         <path d="M204 48 L216 44 L216 112 L204 116Z" fill={WHITE} {...stroke} />
@@ -50,10 +60,10 @@ export function StyleView({ id }: { id: string }) {
       break;
     case 'closeup': // ครึ่งตัว ไฟหน้า + แผ่นสะท้อน + ไฟขอบหลัง (ขอบตัวสว่าง)
       art = <>
-        <rect width="240" height="150" fill="#ecebe8" />
+        <rect width="240" height="150" fill={STUDIO} />
         <Softbox x={-6} y={30} />
         <circle cx="214" cy="20" r="18" fill={ref('glow')} />
-        <path d="M208 14 L220 10 L222 24 L210 28Z" fill="#e9e8e2" {...stroke} /><path d="M216 26 V60" {...stroke} />
+        <path d="M208 14 L220 10 L222 24 L210 28Z" fill={SOFTBOX_SIDE} {...stroke} /><path d="M216 26 V60" {...stroke} />
         {rim('rimWhite', { top: 8, h: 280 })}{figure({ top: 8, h: 280 })}
         <path d="M200 96 L222 90 L222 150 L200 150Z" fill={WHITE} {...stroke} />
       </>;
@@ -116,7 +126,7 @@ export function StyleView({ id }: { id: string }) {
       break;
     case 'phone': // ถ่ายมือถือลงไอจี: ภาพอยู่ในจอมือถือ กรอบไอจี ฉากเอียงนิดๆ แบบถ่ายเร็วๆ
       art = <>
-        <rect width="240" height="150" fill="#eeece7" />
+        <rect width="240" height="150" fill="#efebe4" />
         <rect x="76" y="3" width="88" height="144" rx="13" fill="#2f2f33" />
         <rect x="80" y="9" width="80" height="132" rx="8" fill="#fbfaf7" />
         <circle cx="89" cy="17" r="4" fill="#e9b0a0" /><rect x="96" y="15" width="30" height="4" rx="2" fill={LABEL} />

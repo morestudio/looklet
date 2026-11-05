@@ -50,12 +50,15 @@ assert.match(message[0].text, /No invented ingredients, fragrance notes/);
 assert.match(message[0].text, /Do not repeat these earlier concepts/);
 assert.equal(requests.at(-1).response_format.json_schema.schema.required.length, 24);
 assert.match(message[0].text, /Choose freely based on the visual product/);
+assert.match(message[0].text, /exactly ONE product/);
+assert.match(message[0].text, /Never drape, hook, loop or thread them/); // สายต้องตกตามแรงโน้มถ่วง ไม่พาดเฟอร์นิเจอร์ (30 ต.ค.)
+assert.doesNotMatch(message[0].text, /The user named this product/);
 let count = requests.length;
 out = await POST({ ...base, product: '' });
 assert.equal(out.status, 400);
 assert.equal(requests.length, count);
 // ไอเดียที่พิมพ์ + ภาพแรงบันดาลใจ + ข้อมูลสินค้า ใส่พร้อมกันได้ (ไม่มีโหมดแล้ว)
-out = await POST({ ...base, idea: 'minimal silver', inspiration: 'mood-photo', facts: 'กลิ่นไม้', previous: ['Old idea'] });
+out = await POST({ ...base, idea: 'minimal silver', inspiration: 'mood-photo', facts: 'กลิ่นไม้', previous: ['Old idea'], product_name: 'เซรั่มขวดฟ้า' });
 assert.equal(out.status, 200);
 const inspirationRequest = requests.at(-1).messages[0].content;
 assert.equal(inspirationRequest.filter((m) => m.type === 'image_url').length, 3);
@@ -64,6 +67,7 @@ assert.match(inspirationRequest[0].text, /ORIGINAL arrangements/);
 assert.match(inspirationRequest[0].text, /minimal silver/);
 assert.match(inspirationRequest[0].text, /กลิ่นไม้/);
 assert.match(inspirationRequest[0].text, /Old idea/);
+assert.match(inspirationRequest[0].text, /The user named this product "เซรั่มขวดฟ้า"/); // ชื่อสินค้าบอกว่าชิ้นไหนคือสินค้า
 response = { ...response, title_2: response.title_1 };
 out = await POST(base);
 assert.equal(out.status, 503);

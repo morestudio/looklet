@@ -1,4 +1,5 @@
-// genlog.ts — บันทึกสิ่งที่ส่งให้ AI ทุกครั้งที่เจนรูป (สำเร็จหรือพังก็บันทึก) ใช้ฝั่ง server เท่านั้น ไม่โชว์ในหน้าเว็บ
+// genlog.ts — บันทึกสิ่งที่ส่งให้ AI ทุกครั้งที่เจนรูป (สำเร็จหรือพังก็บันทึก) ใช้ฝั่ง server เท่านั้น ไม่โชว์ในหน้าเว็บของลูกค้า
+// (เก็บซ้ำในตาราง usage ด้วย recordUsage: superadmin ดูได้ที่หน้าตรวจงาน /admin/audit เพราะไฟล์ logs/ บน Vercel หาย)
 // 1 รูป = 1 ไฟล์ใน logs/ (JSON จัดย่อหน้า เปิดใน VS Code แล้วพับ/กางทีละ section ได้)
 //   ชื่อไฟล์ = ชื่อรูปผลลัพธ์: results/20261015-152904-f43438.jpg -> logs/20261015-152904-f43438.json
 //   สร้างไม่สำเร็จ (ไม่มีรูป) -> logs/<วันเวลา>-<สุ่ม>-error.json
@@ -10,6 +11,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { DirectorPlan, StoredPosePlan } from './photo-director';
 
 export type LogImage = { image: number; name?: string; type?: string; file?: string; sent: string };
 export type GenerateLog = {
@@ -21,11 +23,13 @@ export type GenerateLog = {
   ai: { model: string; params: Record<string, string> };
   model: LogImage;
   element: {
-    outfit: LogImage | string; // 'ชุดเดิม' = ไม่ได้เปลี่ยนชุด
+    outfit: LogImage | string; // 'ชุดเดิม' = ไม่ได้เปลี่ยนชุด · 'เปลี่ยนแยกชิ้น' = ดู top / bottom / shoes
+    top?: LogImage; bottom?: LogImage; shoes?: LogImage; // เสื้อผ้าแยกชิ้น (ขั้นเสื้อผ้า 29 ต.ค.)
     accessories: LogImage[];
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
-  pose: { mode: string; moment?: string; plan_th?: string; plan_en?: string } & Partial<LogImage>; // moment = จังหวะที่สุ่มให้ท่าสำเร็จรูป // plan = ท่าที่ AI ตัววางแผนคิด (ท่าสำเร็จรูป)
+  pose: { mode: string; moment?: string; headGaze?: string; plan_th?: string; plan_en?: string; director?: DirectorPlan } & Partial<LogImage>; // headGaze = ทิศหน้า/สายตาที่สุ่ม (HEAD_GAZES)
+  delivery?: StoredPosePlan | null;
   set?: { shot: string } & Partial<LogImage>; // ชุดภาพหลายมุม: มุมของรูปนี้ + รูปหลักที่ใช้เป็นต้นแบบ
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
@@ -48,6 +52,8 @@ export type PackshotLog = {
     props: { style: string; moment?: string; plan_th?: string; plan_en?: string; own?: string; image?: LogImage }; // own/image = พร็อพของฉัน
   };
   set?: { shot: string } & Partial<LogImage>;
+  supports?: LogImage[]; // รูปสินค้าเพิ่มเติม (มุมอื่น) ที่ส่งไปต่อท้าย
+  angleGuide?: LogImage; // ตั้งมุมเอง: ภาพไกด์มุม (ตัวแทนสามมิติ) ที่ server วาดเอง ไม่ได้เก็บไฟล์
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
 };
@@ -65,7 +71,8 @@ function logName(entry: GenerateLog | PackshotLog) {
   return `${stamp}-${randomUUID().replaceAll('-', '').slice(0, 6)}-error`;
 }
 
-export async function writeGenerateLog(entry: GenerateLog | PackshotLog) {
+// คืน entry เดิม ให้ route ส่งต่อไปเก็บกับแถวการใช้งาน (recordUsage -> หน้าตรวจงาน /admin/audit)
+export async function writeGenerateLog<T extends GenerateLog | PackshotLog>(entry: T): Promise<T> {
   const file = path.join(LOG_DIR, logName(entry) + '.json');
   try {
     await fs.mkdir(LOG_DIR, { recursive: true });
@@ -75,4 +82,5 @@ export async function writeGenerateLog(entry: GenerateLog | PackshotLog) {
   }
   console.log(`[generate] ${entry.status} · ${entry.ai.model} · ${entry.duration}`
     + `${entry.error ? ' · ' + entry.error : ''} (log: logs/${path.basename(file)})`);
+  return entry;
 }

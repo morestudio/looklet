@@ -1,4 +1,4 @@
-// catalog.ts — รายการให้เลือกใน Looklet
+// catalog.ts — รายการให้เลือกใน SnapAds
 // เพิ่มรูปใหม่: ใส่ไฟล์ในโฟลเดอร์ public/images แล้วเพิ่มบรรทัดตรงนี้ (หรือกด "+ เพิ่มรูป" ในหน้าเว็บ)
 //
 // รูปที่ได้ผลดีที่สุด:
@@ -8,8 +8,8 @@
 //   ท่าโพสต์ = คนเดียวเต็มตัว เห็นแขนขาชัด ไม่มีตัวอักษร/ไอคอนแอปทับ (แคปจากมือถือให้ตัดขอบแอปออกก่อน)
 //   ฉาก    = ฉากว่างไม่มีคน แนวตั้ง เห็นพื้นตรงที่จะให้นางแบบยืน
 
-// รายการให้กดเลือก: src = รูป, emoji/prompt = ฉากที่ไม่มีรูป, type = ประเภทของเสริม, uploaded = เพิ่มเองในหน้าเว็บ (ลบได้)
-export type Item = { name: string; src?: string; emoji?: string; prompt?: string; type?: string; uploaded?: boolean };
+// รายการให้กดเลือก: src = รูป, prompt = ฉากที่ไม่มีรูป (คำบรรยาย), type = ประเภทของเสริม, uploaded = เพิ่มเองในหน้าเว็บ (ลบได้)
+export type Item = { name: string; src?: string; prompt?: string; type?: string; uploaded?: boolean };
 export type AccessoryType = { id: string; name: string; prompt: string; show: string; face?: boolean };
 export type AccessoryInfo = { name: string; type: string }; // ชื่อ + ประเภท (id) ของของเสริมหนึ่งชิ้น
 
@@ -22,16 +22,42 @@ export const MODELS: Item[] = [
   { name: 'นางแบบผมบลอนด์', src: img('แฟชั่นสตูดิโอเรียบหรูในชุดขาวและยีนส์.png') },
   { name: 'นางแบบผมรวบ ผิวขาว', src: img('แฟชั่นสตูดิโอสไตล์มินิมอลในชุดขาวและยีนส์.png') },
   { name: 'นางแบบผมรวบ ผิวแทน', src: img('แฟชั่นสตูดิโอเสื้อครอปและยีนส์ขาสั้น.png') },
+  { name: 'นางแบบผมยาว ริมทะเล', src: img('นางแบบผมยาวริมทะเล.jpg') }, // จากบัญชี Tae (29 ต.ค.)
 ];
 
 export const OUTFITS: Item[] = [
   { name: 'เสื้อกีฬาชมพู + กระโปรงระบาย', src: img('ชุดสปอร์ตชมพูและกระโปรงระบายลูกไม้.png') },
   { name: 'เชิ้ตครีม + กางเกงเบจ', src: img('ชุดเสื้อเชิ้ตสีครีมกับกางเกงขายาวสีเบจ.png') },
   { name: 'เสื้อแขนพองขาว + ยีนส์ขาสั้น', src: img('ชุดเสื้อแขนพองสีขาวกับกางเกงยีนส์ขาสั้น.png') },
+  // จากบัญชี Tae (29 ต.ค.)
+  { name: 'เสื้อยืดสีครีม ลายภูเขา', src: img('เสื้อยืดสีครีมลายภูเขา.jpg'), type: 'top' },
+  { name: 'เสื้อแขนยาวเขียวอ่อน + กางเกงครีม', src: img('เสื้อแขนยาวสีเขียวอ่อนกับกางเกงครีม.jpg') },
+  { name: 'บิกินี่สีน้ำตาล', src: img('บิกินี่สีน้ำตาล.jpg') },
 ];
 
+// เสื้อผ้าแยกชิ้น (29 ต.ค.): ขั้นเสื้อผ้าแบ่งเป็น เสื้อ / ท่อนล่าง / รองเท้า / ทั้งชุด แต่ละช่องเริ่มที่ "เดิม" (ของที่นางแบบใส่อยู่)
+// รูปเสื้อผ้าเก็บส่วนไว้ใน type: 'top' / 'bottom' / ไม่มี = ทั้งชุด (รูปเก่าทั้งหมด) · รองเท้า = ของเสริมประเภท shoes (รูปเดิมย้ายมาเอง)
+// แท็บเสื้อ/ท่อนล่างโชว์รูปทั้งชุดด้วย: เลือกรูปทั้งชุดในแท็บเสื้อ = เอาแค่เสื้อจากรูปนั้น (lib/prompts.ts)
+// เลือกทั้งชุด = ล้างเสื้อ/ท่อนล่าง, เลือกเสื้อหรือท่อนล่าง = ล้างทั้งชุด · รองเท้าเลือกแยกได้เสมอ
+export type WearSlot = 'top' | 'bottom' | 'shoes' | 'set';
+export const WEAR_TABS: { id: WearSlot; name: string; keep: string; hint: string }[] = [
+  { id: 'top', name: 'เสื้อ', keep: 'เสื้อเดิม', hint: 'เสื้อ เสื้อยืด เชิ้ต เสื้อคลุม · เลือกรูปทั้งชุดได้ จะใช้แค่เสื้อจากรูปนั้น' },
+  { id: 'bottom', name: 'ท่อนล่าง', keep: 'ท่อนล่างเดิม', hint: 'กางเกง กระโปรง กางเกงขาสั้น · เลือกรูปทั้งชุดได้ จะใช้แค่ท่อนล่างจากรูปนั้น' },
+  { id: 'shoes', name: 'รองเท้า', keep: 'รองเท้าเดิม', hint: 'รองเท้าคู่ที่จะใส่แทนคู่เดิม เห็นชัดเมื่อถ่ายเต็มตัว' },
+  { id: 'set', name: 'ทั้งชุด', keep: 'ชุดเดิม', hint: 'เดรส จั๊มสูท หรือรูปคนใส่ทั้งชุด เปลี่ยนทั้งเสื้อและท่อนล่าง' },
+];
+// ส่วนของรูปเสื้อผ้า (รูปที่ไม่ได้บอกส่วน = ทั้งชุด)
+export const wearPart = (item: Item): Exclude<WearSlot, 'shoes'> => (item.type === 'top' || item.type === 'bottom' ? item.type : 'set');
+// เสื้อผ้า + ของเสริม รวมกันไม่เกินนี้ต่อรูป (รูปที่ส่ง AI ยิ่งเยอะ ยิ่งแพงและ AI ยิ่งใส่ไม่ครบ) server เช็กด้วย
+export const MAX_WEAR = 4;
+
 // ของเสริม: เครื่องประดับ/กระเป๋า/รองเท้า ใส่เพิ่มบนชุด เลือกได้หลายชิ้น — { name, src, type: id ใน ACCESSORY_TYPES }
-export const ACCESSORIES: Item[] = [];
+// ตัวอย่างจากของที่บัญชี Tae อัปโหลด (29 ต.ค.) ผู้ใช้ใหม่ลองได้ทันทีโดยไม่ต้องอัปโหลดเอง
+export const ACCESSORIES: Item[] = [
+  { name: 'รองเท้าผ้าใบวิ่งเทรลสีดำ', src: img('รองเท้าผ้าใบวิ่งเทรลสีดำ.png'), type: 'shoes' },
+  { name: 'รองเท้าผ้าใบวิ่งสีน้ำตาล', src: img('รองเท้าผ้าใบวิ่งสีน้ำตาล.png'), type: 'shoes' },
+  { name: 'หมวกแก๊ปผ้าสีครีม', src: img('หมวกแก๊ปผ้าสีครีม.png'), type: 'hat' },
+];
 export const MAX_ACCESSORIES = 3; // รูปที่ส่งให้ AI ยิ่งเยอะ ยิ่งแพงและ AI ยิ่งใส่ไม่ครบ/ไม่ตรง (server เช็กค่านี้ด้วย)
 
 // ประเภทของเสริม: prompt = บอก AI ว่าคืออะไร ใส่ตรงไหน, show = ท่าที่ทำให้ของชิ้นนี้เด่น (ใช้ตอน "AI เลือกท่าให้")
@@ -83,6 +109,7 @@ export const POSES: Item[] = [
   { name: 'นั่งเอนเก้าอี้ เงยหน้ารับแดด', src: '/images/poses/pose-19.jpg' },
   // อื่นๆ
   { name: 'เซลฟี่กระจก ถือแก้วกาแฟ', src: '/images/poses/pose-20.jpg' },
+  { name: 'นั่งพื้น ถือมือถือ', src: '/images/poses/pose-21.jpg' }, // จากบัญชี Tae (29 ต.ค.)
 ];
 
 // ---------- ท่าสำเร็จรูป: ไม่ต้องมีรูปท่า ให้ AI ตัววางแผนท่า (planPose ใน lib/ai.ts) ดูฉาก + ชุด + ของเสริม แล้วคิดท่าที่เข้ากับฉากนั้น ----------
@@ -161,7 +188,7 @@ export const POSE_PRESETS: PosePreset[] = [
 ];
 // สุ่มจังหวะของท่า 1 แบบ (ทุกครั้งที่สร้างได้ท่าไม่ซ้ำ)
 export const pickMoment = (p: PosePreset) => p.moments[Math.floor(Math.random() * p.moments.length)];
-export const POSE_AUTO = { id: 'auto', name: 'AI เลือกให้', hint: 'AI ดูฉาก ชุด ของเสริม แล้วเลือกแบบที่เข้ากันที่สุดให้' };
+export const POSE_AUTO = { id: 'auto', name: 'AI จัดท่าและมุมกล้อง', hint: 'ดูนางแบบ ชุด และฉาก คิด 3 ไอเดีย เลือกภาพที่เหมาะที่สุด' };
 
 // เอาอะไรจากรูปท่าโพสต์: shot = ท่า + มุมกล้อง + ระยะ + การมอง + แสง/โทนสี (ล็อกตัวเลือกกล้องกับแสงสี), shot-scene = รวมฉากในรูปด้วย
 export const POSE_MODES = [
@@ -180,6 +207,38 @@ export const GAZES: Choice[] = [
   { id: 'away', name: 'มองไปทางอื่น (ถ่ายเผลอ)', prompt: 'Gaze: a candid moment: the model looks away from the camera, off to the side, '
     + 'with a relaxed natural expression, as if not posing.' },
 ];
+
+// มุมหน้า + สายตา สุ่มต่อรูป (2 พ.ย. ผู้ใช้: หน้ามองกล้องตรงๆ ทุกรูป ดูไม่เป็นธรรมชาติ)
+// สาเหตุ: AI ตัววางแผน (ท่าสำเร็จรูป planPose + AI จัดท่าและมุมกล้อง directPhoto) เขียน "turn her head toward the camera" เอง 10/10 รูปล่าสุด
+// ท่าสำเร็จรูป: สุ่มทิศหน้า/สายตาแล้วสั่งตัววางแผนให้ทำตาม แบบเดียวกับ moments · AI จัดท่าฯ: ตัววางแผนเลือกเองตามท่า (ผู้ใช้ขอ 2 พ.ย.)
+// ใช้เมื่อผู้ใช้ไม่ได้เลือกการมอง (GAZES) และไม่มีรูปท่าโพสต์ · contact = สบตากล้อง รวมกันราว 1 ใน 3 (น้ำหนัก 4 จาก 12)
+export type HeadGaze = { id: string; name: string; weight: number; contact: boolean; prompt: string };
+export const HEAD_GAZES: HeadGaze[] = [
+  { id: 'camera', name: 'มองกล้อง หน้าเอียงนิดๆ', weight: 3, contact: true,
+    prompt: 'her head turned about 15 to 20 degrees off straight-on and slightly tilted, with her eyes looking into the lens' },
+  { id: 'shoulder', name: 'หันกลับมามองข้ามไหล่', weight: 1, contact: true,
+    prompt: 'her shoulders turned away from the camera and her head turned back over one shoulder in three-quarter view, her eyes glancing into the lens' },
+  { id: 'away', name: 'มองเลยกล้องออกไปไกล', weight: 3, contact: false,
+    prompt: 'her head turned about 30 to 45 degrees away from the camera in three-quarter view, her eyes looking past the camera into the distance, not at the lens' },
+  { id: 'down', name: 'ก้มมองลง', weight: 2, contact: false,
+    prompt: 'her head tipped slightly down and turned a little to one side, eyelids lowered as she looks down at her hands, the outfit or something she holds, not at the camera' },
+  { id: 'light', name: 'หันหน้าไปทางแสง', weight: 2, contact: false,
+    prompt: 'her face turned toward the main light, such as a window or the brightest side of the location, seen in three-quarter view, her eyes on the light, not at the camera' },
+  { id: 'profile', name: 'หันข้างเกือบเต็ม', weight: 1, contact: false,
+    prompt: 'her head turned to a near profile, about 60 to 70 degrees from the camera, looking ahead into the scene, not at the camera, with her features still clearly recognizable' },
+];
+// สุ่ม n แบบไม่ซ้ำตามน้ำหนัก · สบตากล้องได้ไม่เกิน 1 แบบ · ใช้กับท่าสำเร็จรูป (AI จัดท่าฯ ให้ตัววางแผนคิดมุมหน้าเอง)
+export function pickHeadGazes(n: number, random = Math.random): HeadGaze[] {
+  let pool = [...HEAD_GAZES];
+  const out: HeadGaze[] = [];
+  while (out.length < n && pool.length) {
+    let r = random() * pool.reduce((s, g) => s + g.weight, 0);
+    const g = pool.find((x) => (r -= x.weight) < 0) ?? pool[pool.length - 1];
+    out.push(g);
+    pool = pool.filter((x) => x !== g && !(g.contact && x.contact));
+  }
+  return out;
+}
 
 // สีหน้า: auto = ท่าสำเร็จรูป -> สีหน้าตาม brief ของท่านั้น (อยู่ในท่าที่ AI วางแผน), รูปท่าโพสต์ -> ลอกสีหน้าจากรูปนั้น,
 //   ท่าเดิม -> ตามรูปนางแบบ (ไม่สั่ง) · เลือกแบบอื่น = ใช้แทนสีหน้าในท่าสำเร็จรูป
@@ -206,14 +265,13 @@ export const PROPS: Choice[] = [
 // สัดส่วนภาพ (ไม่เลือก = ตามรูปนางแบบ) — OpenAI ทำได้แค่ 2:3 / 3:2 / 1:1 แนวตั้งทุกแบบจะได้ 2:3
 
 // ฉาก: มี src = ส่งรูปฉากให้ AI ดู, มี prompt = บอก AI เป็นคำบรรยาย (ภาษาอังกฤษ AI เข้าใจแม่นกว่า)
+// ตัวอย่างเดิม (ถนนยุโรป + ฉากคำบรรยาย 6 แบบ) เอาออกตามที่ผู้ใช้ขอ · ตอนนี้ใช้รูปสถานที่จริงที่บัญชี Tae อัปโหลด (29 ต.ค.)
 export const SCENES: Item[] = [
-  { name: 'ถนนยุโรป', src: img('ถนนยุโรปเงียบสงบสู่โดมคลาสสิก.png') },
-  { name: 'สตูดิโอพื้นขาว', emoji: '📸', prompt: 'a photo studio with an off-white seamless paper backdrop curving into the floor, light falling off slightly toward the edges, and a soft shadow on the floor under the model' },
-  { name: 'ชายหาด', emoji: '🏖️', prompt: 'a sunny tropical beach with white sand and turquoise sea at golden hour' },
-  { name: 'ถนนกลางคืน', emoji: '🌃', prompt: 'a stylish city street at night with neon signs and wet reflective pavement' },
-  { name: 'คาเฟ่', emoji: '☕', prompt: 'a cozy minimalist cafe interior with warm natural daylight' },
-  { name: 'สวนดอกไม้', emoji: '🌸', prompt: 'a blooming flower garden in spring with soft sunlight' },
-  { name: 'รันเวย์', emoji: '✨', prompt: 'a high-end fashion show runway with spotlights and an audience' },
+  { name: 'คาเฟ่ต้นไม้', src: img('คาเฟ่ในร่มต้นไม้เยอะหน้าต่างกว้าง.jpg') },
+  { name: 'หน้าร้านต้นไม้', src: img('หน้าร้านต้นไม้ผนังลอนใส.jpg') },
+  { name: 'ชายหาด', src: img('ชายหาดทรายขาวน้ำทะเลใส.jpg') },
+  { name: 'เคาน์เตอร์คาเฟ่', src: img('เคาน์เตอร์คาเฟ่ผนังลอนใสสีชมพู.jpg') },
+  { name: 'ลานสวนร้านกาแฟ', src: img('ลานสวนร้านกาแฟต้นไม้เขตร้อน.jpg') },
 ];
 
 // ---------- สไตล์ถ่ายภาพ (preset): แสง + เลนส์ + มุมกล้อง + ระยะ + โทนสี ที่เข้ากันเป็นชุดเดียว ----------
@@ -222,7 +280,7 @@ export const SCENES: Item[] = [
 // แสง: บอก "แสงมาจากไหน ตกบนหน้า/ตัว/ฉากยังไง เงาไปทางไหน" ดูจากรูปตัวอย่างของ notamodel.studio
 // framing ใส่ในบรรทัดแรกของคำสั่ง (ไม่งั้น AI ยึดระยะจากรูปนางแบบ), fullBody = เห็นทั้งตัว (lib/prompts.ts สั่งเพิ่มท้ายคำสั่ง)
 export type PresetPart = { label: string; prompt: string };
-// scene = คำสั่งเรื่องฉากเพิ่ม (มีเฉพาะบางสไตล์ เช่น Looklet signature ทำฉากให้มินิมอล) ต่อท้ายคำสั่งสไตล์ ไม่ใช้ตอนลอกทั้งช็อต
+// scene = คำสั่งเรื่องฉากเพิ่ม (มีเฉพาะบางสไตล์ เช่น SnapAds signature ทำฉากให้มินิมอล) ต่อท้ายคำสั่งสไตล์ ไม่ใช้ตอนลอกทั้งช็อต
 export type Preset = {
   id: string; name: string; hint: string; fullBody: boolean;
   light: PresetPart; lens: PresetPart; angle: PresetPart; framing: PresetPart; color: PresetPart; scene?: PresetPart;
@@ -300,7 +358,7 @@ export const ANGLES: AngleChoice[] = [
     + 'we look down on her, much more of the floor around her is visible, and her head looks slightly larger than her feet' },
 ];
 
-// ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — Looklet signature ใช้ชุดเดียวกัน
+// ไฟซอฟต์บ็อกซ์ / เลนส์ / โทนสีของ Studio lookbook — SnapAds signature ใช้ชุดเดียวกัน
 const SOFTBOX_LIGHT: PresetPart = { label: 'ซอฟต์บ็อกซ์ใหญ่ ไฟนุ่ม เงาบางๆ', prompt:
   'One very large softbox high and slightly to the front-left as the key light with soft fill, so shadows are soft but present: '
   + 'under the jaw and on the neck, along the side of the body and in the folds of the clothes. '
@@ -312,10 +370,20 @@ const LENS_85: PresetPart = { label: '85mm f/8 ชัดทั้งตัว', 
 const NEUTRAL_COLOR: PresetPart = { label: 'โทนกลาง ขาวอมฟ้าเล็กน้อย', prompt: 'Neutral, slightly cool white balance, low contrast, clean colors.' };
 
 export const PRESETS: Preset[] = [
-  // ฟีลประจำของ Looklet (ค่าเริ่มต้น = ตัวแรก): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
+  // Normal (ค่าเริ่มต้น = ตัวแรก ตั้งแต่ 2 พ.ย. ผู้ใช้ขอ): ภาพถ่ายธรรมดา ไม่จัดไฟ ไม่เกรดสี ไม่แต่งฉาก — แสงที่มีในสถานที่จริง เลนส์มาตรฐาน ระดับสายตา
+  // (SnapAds signature เก็บฉากให้มินิมอล + ไฟซอฟต์บ็อกซ์ f/8 ภาพออกมาดูจัดฉากเกินไปสำหรับงานทั่วไป)
+  { id: 'normal', name: 'Normal', hint: 'ภาพถ่ายธรรมดา แสงตามสถานที่จริง สีจริง ไม่จัดไฟ ไม่แต่งฉาก', fullBody: true,
+    light: { label: 'แสงที่มีในสถานที่ ไม่เพิ่มไฟ', prompt:
+      "Only the light that is already at the location (daylight from windows or the sky, or the room's own lamps), with no added studio "
+      + 'lights, reflectors or flash. Brightness, shadows and contrast are exactly what that light naturally makes.' },
+    lens: { label: '50mm มาตรฐาน', prompt: 'shot on a full-frame camera with a 50mm lens at f/4' },
+    angle: { label: 'ระดับสายตา', prompt: "camera at the model's eye level" },
+    framing: { label: 'เต็มตัว หัวจรดเท้า', prompt: FULL_BODY },
+    color: { label: 'สีจริง ไม่แต่งสี', prompt: 'True-to-life, natural colors with the white balance of the location; no color grading or filter look.' } },
+  // ฟีลประจำของ SnapAds (ค่าเริ่มต้นเดิมจนถึง 2 พ.ย.): ทดสอบ 21 ต.ค. กับรูปตัวอย่างที่ผู้ใช้เลือก (ยืนจับเท้า พิงผนัง ห้องมินิมอล)
   // แสง/เลนส์/โทนสีของ Studio lookbook ให้สีกลางๆ อมเย็นนิดๆ ตรงรูปตัวอย่างโดยไม่ต้องเกรดสีเพิ่ม (แสงอุ่นแบบเดิมออกมาเหลือง/สว่างเกิน)
   // + ระยะ 3/4 ของภาพ มีขอบผนังด้านหน้า + ฉากมินิมอล (ฉากที่รกจะถูกเก็บให้เรียบ เห็นผลชัดกับฉากถนน/ร้าน)
-  { id: 'signature', name: 'Looklet signature', hint: 'ฟีลของ Looklet: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
+  { id: 'signature', name: 'SnapAds signature', hint: 'ฟีลของ SnapAds: ฉากมินิมอลโทนครีม ไฟนุ่ม สีกลางๆ เต็มตัว ใช้ได้กับทุกฉาก', fullBody: true,
     light: SOFTBOX_LIGHT, lens: LENS_85,
     angle: { label: 'ระดับอก เฉียงข้างนิดๆ', prompt: 'camera at chest height, level, seen from slightly to the side' },
     framing: { label: 'เต็มตัว ราว 60% ของภาพ มีขอบผนังด้านหน้า', prompt: 'framed full body from head to feet, the person about 60 percent '
@@ -323,6 +391,7 @@ export const PRESETS: Preset[] = [
       + 'one side and the space continuing behind' },
     color: NEUTRAL_COLOR,
     scene: { label: 'มินิมอลมาก ผนังขาวครีม พื้นไม้อ่อน/หิน ไม่มีของรก ชุดเป็นสีหลักของภาพ', prompt:
+      // คำว่า Looklet ในคำสั่ง AI คงไว้ตามเดิม (เปลี่ยนชื่อแบรนด์ 29 ต.ค. แค่ในหน้าเว็บ ผลรูปจะได้ไม่เปลี่ยน)
       'Looklet signature setting, super minimal: keep only the essence of the location and show it as an almost empty, calm space. '
       + 'The frame contains only clean, plain surfaces (smooth warm off-white plaster walls, a pale stone or light oak floor, at most one '
       + 'simple window or doorway) and at most one or two simple pieces of furniture, in warm neutral tones (cream, beige, light oak, '
@@ -365,7 +434,7 @@ export const PRESETS: Preset[] = [
     color: { label: 'อุ่น สีสดแต่เป็นธรรมชาติ', prompt: 'Warm, rich but natural colors, mixed daylight and tungsten white balance.' } },
   { id: 'flash', name: 'Flash editorial', hint: 'แฟลชตรงแบบนิตยสาร เงาคมหลังตัว ฉากมืดกว่าคน', fullBody: true,
     light: { label: 'แฟลชติดกล้อง แสงแข็งตรงหน้า เงาคมด้านหลัง', prompt:
-      'A direct on-camera flash: hard frontal light, bright skin with crisp specular highlights on the forehead, nose and cheekbones, '
+      'A direct on-camera flash: hard frontal light with crisp specular highlights on the forehead, nose and cheekbones, '
       + 'and a sharp-edged dark shadow cast right behind the person onto the wall or floor, offset slightly to one side. '
       + 'The flash falls off quickly, so the background is noticeably darker than the person.' },
     lens: { label: '35mm ชัดทั้งภาพ', prompt: 'shot on a full-frame camera with a 35mm lens, everything in focus' },

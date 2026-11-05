@@ -11,23 +11,42 @@ const require = createRequire(import.meta.url);
 const db = { images: [], invites: [], usage: [] };
 const users = new Map();
 const signIns = [];
+let noAuditColumns = false; // จำลองฐานข้อมูลที่ยังไม่ได้รัน db-apply (ไม่มีคอลัมน์ usage.result / usage.log)
+const missing = { message: "Could not find the 'log' column of 'usage' in the schema cache" };
 function table(name) {
   const filters = [];
-  let patch = null, del = false, head = false, single = false;
+  let patch = null, del = false, head = false, single = false, cols = null, sort = null, lim = Infinity;
   const rows = () => db[name].filter((r) => filters.every((f) => f(r)));
+  // select('a, b, alias:col->>key') แบบ PostgREST
+  const pick = (r) => (!cols || cols.includes('*') ? r : Object.fromEntries(cols.map((c) => {
+    const [alias, expr] = c.includes(':') ? c.split(':') : [null, c];
+    const [col, key] = expr.split('->>');
+    return [alias ?? col, key ? r[col]?.[key] ?? null : r[col]];
+  })));
   const b = {
-    select: (_cols, opts) => { head = Boolean(opts?.head); return b; },
+    select: (c, opts) => { head = Boolean(opts?.head); cols = c ? c.split(',').map((x) => x.trim()) : null; return b; },
     eq: (k, v) => { filters.push((r) => r[k] === v); return b; },
     is: (k, v) => { filters.push((r) => (r[k] ?? null) === v); return b; },
-    order: () => b, limit: () => b,
-    insert: (row) => { db[name].push({ id: db[name].length + 1, created: new Date().toISOString(), ...row }); return Promise.resolve({ error: null }); },
+    lt: (k, v) => { filters.push((r) => r[k] < v); return b; },
+    gte: (k, v) => { filters.push((r) => r[k] >= v); return b; },
+    lte: (k, v) => { filters.push((r) => r[k] <= v); return b; },
+    in: (k, vs) => { filters.push((r) => vs.includes(r[k])); return b; },
+    order: (k, opts) => { const dir = opts?.ascending === false ? -1 : 1; sort = (x, y) => (x[k] < y[k] ? -dir : x[k] > y[k] ? dir : 0); return b; },
+    limit: (n) => { lim = n; return b; },
+    insert: (row) => {
+      if (noAuditColumns && name === 'usage' && ('log' in row || 'result' in row)) return Promise.resolve({ error: missing });
+      db[name].push({ id: db[name].length + 1, created: new Date().toISOString(), ...row });
+      return Promise.resolve({ error: null });
+    },
     update: (p) => { patch = p; return b; },
     delete: () => { del = true; return b; },
     maybeSingle: () => { single = true; return b; },
     then: (ok) => {
-      const found = rows();
-      if (patch) found.forEach((r) => Object.assign(r, patch));
-      if (del) db[name] = db[name].filter((r) => !found.includes(r));
+      if (noAuditColumns && name === 'usage' && cols?.some((c) => /\b(result|log)\b/.test(c))) return Promise.resolve({ data: null, error: missing }).then(ok);
+      const all = rows();
+      if (patch) all.forEach((r) => Object.assign(r, patch));
+      if (del) db[name] = db[name].filter((r) => !all.includes(r));
+      const found = (sort ? [...all].sort(sort) : all).slice(0, lim).map(pick);
       return Promise.resolve(single ? { data: found[0] ?? null, error: null } : { data: head ? null : found, count: found.length, error: null }).then(ok);
     },
   };
@@ -99,6 +118,7 @@ const { post } = load('lib/route.ts');
 const { quotaBlock, recordUsage } = load('lib/usage.ts');
 const inviteLogin = load('app/api/invite-login/route.ts');
 const admin = load('app/api/admin/route.ts');
+const audit = load('app/api/admin/audit/route.ts');
 const request = (body) => new Request('http://test/api', { method: 'POST', body: JSON.stringify(body) });
 
 const alice = { id: 'alice', email: 'a@x', role: 'customer' };
@@ -212,4 +232,54 @@ caller = undefined;
 assert.equal(await login(code1), 401);
 assert.equal(await login(code2), 200);
 
-console.log('Accounts passed: invite codes, code login, per-account image privacy, owner cannot be forged, forced model, token quota (failures free, unknown tokens estimated), disable, and superadmin-only admin.');
+// ---------- ตรวจงาน (/admin/audit): ทุกการสร้างรูป + พรอมต์ เฉพาะ superadmin ----------
+db.usage = [];
+// แถวก่อนเริ่มเก็บพรอมต์: ไม่มี result/log -> จับคู่รูปของบัญชีเดียวกันจากเวลา (รูปของ bob เวลาเดียวกันต้องไม่ถูกจับ)
+db.usage.push({ id: 1, user_id: 'alice', email: 'a@x', page: 'product', action: 'packshot', model: 'm', quality: 'high', status: 'ok', tokens: 5000, cost_thb: 2, created: '2026-10-30T09:32:21.745Z' });
+db.images.push({ path: 'results/bob.jpg', area: 'results', kind: null, meta: { owner: 'bob', caption: 'bob' }, created: '2026-10-30T09:32:21.700Z' });
+db.images.push({ path: 'results/old.jpg', area: 'results', kind: null, meta: { owner: 'alice', caption: 'old bag', stylePlan: { name: 'Walnut Pause', th: 'บนเก้าอี้' } }, created: '2026-10-30T09:32:20.626Z' });
+const packshotLog = (extra) => ({ time: '2026-11-02 10:00:00', duration: '40.0 วินาที', page: 'สินค้า', ai: { model: 'm', params: { size: '1664x2496' } },
+  product: { image: 1, name: 'กระเป๋า', file: '/api/files/uploads/products/a.jpg', sent: '1024×1280 · 120 KB' }, supports: [{ image: 2, file: '/api/files/uploads/products/b.jpg', sent: '80 KB' }],
+  element: { set: 'ฉาก', props: { style: 'ไม่มีพร็อพ' } }, style: { preset: 'Creative Packshot · Walnut Pause' }, prompt: ['A photo of the bag.', 'Its strap rests on the table.'], ...extra });
+const usageOf = (status, log) => ({ page: 'product', action: 'packshot', model: 'm', quality: 'high', status, tokens: 6000, log });
+await withAccount(alice, () => recordUsage(usageOf('ok', packshotLog({ status: 'สำเร็จ', result: aliceSrc }))));
+await withAccount(team, () => recordUsage(usageOf('error', packshotLog({ status: 'พัง', error: 'AI timeout' }))));
+assert.equal(db.usage[1].result, aliceSrc);
+assert.deepEqual(db.usage[1].log.prompt, ['A photo of the bag.', 'Its strap rests on the table.']);
+const auditGet = async (query = '') => audit.GET(new Request('http://test/api/admin/audit' + query), {});
+caller = alice;
+assert.equal((await auditGet()).status, 403);
+caller = team;
+assert.equal((await auditGet()).status, 403);
+caller = boss;
+let list = await (await auditGet()).json();
+assert.deepEqual(list.rows.map((x) => x.id), [3, 2, 1]); // ใหม่สุดก่อน
+const [failed, fresh, old] = list.rows;
+assert.deepEqual([fresh.src, fresh.hasLog, fresh.caption, fresh.who, fresh.customer], [aliceSrc, true, 'alice', 'ร้าน A', true]);
+assert.deepEqual([failed.status, failed.error, failed.src, failed.who], ['error', 'AI timeout', null, 'team@x']);
+assert.deepEqual([old.src, old.guessed, old.hasLog, old.plan.name], ['/api/files/results/old.jpg', true, false, 'Walnut Pause']);
+assert(list.people.some((x) => x.user === 'alice' && x.label === 'ร้าน A') && list.people.some((x) => x.email === 'team@x'));
+assert.equal(list.next, null);
+const detail = await (await auditGet('?id=2')).json();
+assert.deepEqual(detail.log.prompt, ['A photo of the bag.', 'Its strap rests on the table.']);
+assert.equal(detail.log.supports[0].file, '/api/files/uploads/products/b.jpg');
+assert.deepEqual((await (await auditGet('?status=error')).json()).rows.map((x) => x.id), [3]);
+assert.deepEqual((await (await auditGet('?user=alice')).json()).rows.map((x) => x.id), [2, 1]);
+assert.deepEqual((await (await auditGet('?email=team@x')).json()).rows.map((x) => x.id), [3]);
+assert.deepEqual((await (await auditGet('?before=3')).json()).rows.map((x) => x.id), [2, 1]);
+// superadmin เปิดรูปของลูกค้าได้เมื่อรู้ชื่อไฟล์ (รูปในพรอมต์/ผลลัพธ์) แต่คลังรูปของตัวเองยังไม่ปนของลูกค้า
+assert(await withAccount(boss, () => storage.readImage(parts(aliceSrc))));
+assert.equal(await withAccount(team, () => storage.readImage(parts(aliceSrc))), null);
+assert.deepEqual(await captions(boss), ['team']);
+// ยังไม่ได้รัน db-apply: บันทึกการใช้งานต้องไม่หาย (โควตานับต่อ) และหน้าตรวจงานยังเปิดได้
+noAuditColumns = true;
+await withAccount(alice, () => recordUsage(usageOf('ok', packshotLog({ status: 'สำเร็จ', result: aliceSrc }))));
+assert.equal(db.usage.length, 4);
+assert.equal(db.usage[3].log, undefined);
+assert.equal(db.usage[3].tokens, 6000);
+list = await (await auditGet()).json();
+assert.equal(list.rows.length, 4);
+assert(list.rows.every((x) => !x.hasLog));
+noAuditColumns = false;
+
+console.log('Accounts passed: invite codes, code login, per-account image privacy, owner cannot be forged, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');

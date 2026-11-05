@@ -2,7 +2,7 @@
 // ขั้นสินค้า: สินค้าของฉัน (เพิ่มสินค้าใหม่ + รายการ ใหม่สุดก่อน) ด้านบน -> รายละเอียดสินค้า (ชื่อ + รูปทุกมุม + เพิ่มรูปมุมอื่น + นำรูปออก) ด้านล่าง
 // ปรับ 27 ต.ค. ผู้ใช้สับสน: สินค้าที่เลือก (ใหม่สุด) อยู่ท้ายกล่องเลื่อนเล็กๆ มองไม่เห็น, คำว่า "กลุ่ม", ปุ่มอัปโหลด 2 ปุ่มคล้ายกัน, ชื่อไฟล์แก้ไม่ได้
 import { useState, type ChangeEvent } from 'react';
-import type { ProductGroup } from '@/lib/product-groups';
+import { isSampleGroup, type ProductGroup } from '@/lib/product-groups';
 import { PendingCard } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
@@ -17,6 +17,7 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
 }) {
   const [editing, setEditing] = useState<string | null>(null); // ชื่อที่กำลังแก้ (null = ไม่ได้แก้)
   const [removed, setRemoved] = useState<{ group: string; src: string } | null>(null); // รูปที่เพิ่งนำออก ไว้กด "เอากลับ"
+  const sample = selected && isSampleGroup(selected); // สินค้าตัวอย่าง (lib/product-groups.ts PRODUCT_SAMPLES): ใช้ได้ แต่แก้ชื่อ/รูปไม่ได้
   const [over, setOver] = useState(false); // กำลังลากไฟล์อยู่เหนือกล่องเพิ่มสินค้า
   const pick = (append: boolean) => (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -51,16 +52,16 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       {[...groups].reverse().map((g) => <button type="button" key={g.id} aria-pressed={selected?.id === g.id} disabled={busy}
         onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '')}>
         {g.main?.src ? <img src={g.main.src} alt={g.name} /> : <span className="product-empty">ยังไม่มีรูป</span>}
-        <b>{g.name}</b><small>{g.photos.length} รูป</small>
+        <b>{g.name}</b><small>{isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}{g.photos.length} รูป</small>
       </button>)}
     </div>
 
-    {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องแดง): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
+    {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องสี): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
     {selected && <section className="current-product" aria-labelledby="product-detail-title">
       <p className="sub" id="product-detail-title">รายละเอียดสินค้า</p>
       {editing === null ? <div className="current-product-name">
         <b>{selected.name}</b>
-        <button type="button" className="btn btn-tertiary" disabled={busy} onClick={() => setEditing(selected.name)}>✎ เปลี่ยนชื่อ</button>
+        {!sample && <button type="button" className="btn btn-tertiary" disabled={busy} onClick={() => setEditing(selected.name)}>✎ เปลี่ยนชื่อ</button>}
       </div> : <form className="current-product-name editing" onSubmit={(e) => { e.preventDefault(); void saveName(); }}>
         <input className="text-input" autoFocus value={editing} maxLength={80} aria-label="ชื่อสินค้า"
           onChange={(e) => setEditing(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditing(null); }} />
@@ -72,17 +73,19 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
         <img src={p.src} alt={`${selected.name} รูปที่ ${i + 1}`} />
         {p.src === selected.main?.src && <span className="current-product-main">รูปหลัก</span>}
         {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
-        {selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}
+        {!sample && selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}
           onClick={() => void onRemovePhoto(selected, p.src!).then(() => setRemoved({ group: selected.id, src: p.src! }), () => {})}>×</button>}
       </figure>)}
-        <label className={'current-product-add' + (busy ? ' busy' : '')} title="เพิ่มรูปมุมอื่นของสินค้านี้">
+        {!sample && <label className={'current-product-add' + (busy ? ' busy' : '')} title="เพิ่มรูปมุมอื่นของสินค้านี้">
           <span aria-hidden="true">+</span>
           <input type="file" aria-label="เพิ่มรูปมุมอื่นของสินค้านี้" accept={ACCEPT} multiple disabled={busy} onChange={pick(true)} />
-        </label>
+        </label>}
       </div>
       {removed?.group === selected.id && <p className="muted-text">นำรูปออกแล้ว · <button type="button" className="btn btn-tertiary" disabled={busy}
         onClick={() => void onRestorePhoto(selected, removed.src).then(() => setRemoved(null), () => {})}>เอากลับ</button></p>}
-      <p className="muted-text">กด + เพิ่มรูปด้านหลัง ด้านข้าง หรือรายละเอียด (โลโก้ ซิป) ช่วยให้ AI ทำสินค้าได้ตรงกว่า</p>
+      <p className="muted-text">{sample
+        ? 'สินค้าตัวอย่าง ลองสร้างรูปได้เลย — สินค้าของคุณเองเพิ่มได้ที่ช่อง "เพิ่มสินค้าใหม่" ด้านบน'
+        : 'กด + เพิ่มรูปด้านหลัง ด้านข้าง หรือรายละเอียด (โลโก้ ซิป) ช่วยให้ AI ทำสินค้าได้ตรงกว่า'}</p>
     </section>}
   </div>;
 }

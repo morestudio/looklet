@@ -53,3 +53,9 @@ alter table public.usage enable row level security;
 revoke all on public.invites, public.usage from anon, authenticated;
 grant select, insert, update, delete on public.invites, public.usage to service_role;
 grant usage, select on sequence public.usage_id_seq to service_role;
+
+-- หน้าตรวจงาน /admin/audit (2 พ.ย.): เก็บสิ่งที่ส่งให้ AI ของทุกการสร้างรูปไว้กับแถวการใช้งาน
+-- (log เดียวกับไฟล์ logs/ ในเครื่อง ซึ่งบน Vercel หายไปเมื่อ function จบ) · แถวก่อนหน้านี้ไม่มี 2 คอลัมน์นี้
+alter table public.usage add column if not exists result text;  -- รูปที่ได้ (/api/files/results/...) null = พัง หรือแถวก่อน 2 พ.ย.
+alter table public.usage add column if not exists log jsonb;     -- GenerateLog / PackshotLog (lib/genlog.ts): พรอมต์ทีละประโยค รูปที่ส่ง ค่าที่เลือก แผนของ AI
+create index if not exists usage_created on public.usage (created desc);

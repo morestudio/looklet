@@ -9,8 +9,9 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ownerMeta, visibleTo } from './account';
+import { me, ownerMeta, visibleTo } from './account';
 import { sbDelete, sbList, sbMeta, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
+import type { StoredPosePlan } from './photo-director';
 
 const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
@@ -77,7 +78,7 @@ export type Stored = {
   src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off';
   productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
   editedFrom?: string;
-  refinedFrom?: string; posePlan?: { name: string; th: string }; page?: 'product'; stylePlan?: { name: string; th: string };
+  refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
 };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
@@ -115,10 +116,12 @@ function resolveFile(parts: string[]) {
   return type ? { full: path.join(/*turbopackIgnore: true*/ folder, file), key: [...parts.slice(0, -1), file].join('/'), type } : null;
 }
 
+// superadmin เปิดรูปของทุกบัญชีได้เมื่อรู้ชื่อไฟล์ (หน้าตรวจงาน /admin/audit) แต่รายการรูปในคลัง (listImages) ยังเห็นเฉพาะของตัวเองเหมือนเดิม
 export async function readImage(parts: string[]) {
   const f = resolveFile(parts);
   if (!f) return null;
-  const data = supabaseEnabled ? await sbRead(f.key, (meta) => visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
+  const auditor = me()?.role === 'superadmin';
+  const data = supabaseEnabled ? await sbRead(f.key, (meta) => auditor || visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
 }
 

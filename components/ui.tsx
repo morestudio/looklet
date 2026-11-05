@@ -1,10 +1,15 @@
 'use client';
 // ui.tsx — ชิ้นส่วนหน้าเว็บที่ใช้ซ้ำ: การ์ดรูป, ปุ่มกลุ่ม (chips), หัวข้อในแผง
 import Link from 'next/link';
-import { useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react';
 import { authEnabled } from '@/lib/auth';
 import { USAGE_EVENT } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
+
+// แถบเลื่อน (input range): Chrome/Safari ระบายส่วนที่เลือกเป็นสีหมึกไม่ได้เอง ต้องบอกเปอร์เซ็นต์ผ่าน --fill (globals.css)
+export function rangeFill(value: number, min: number, max: number): CSSProperties {
+  return { '--fill': `${((value - min) / (max - min)) * 100}%` } as CSSProperties;
+}
 
 // ---------- การ์ดให้กดเลือก ----------
 export function Card({ item, active, onClick, zoom = false, onDelete, footer }: {
@@ -16,7 +21,7 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
         // รูปนางแบบเต็มตัว ซูมให้เห็นหน้า
         <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}><img src={item.src} alt={item.name} /></div>
       ) : (
-        <div className={'tile' + (item.emoji ? '' : ' text')}>{item.emoji ?? 'ไม่เปลี่ยน'}</div>
+        <div className="tile text">ไม่เปลี่ยน</div>
       )}
       <span>{item.name}</span>
     </button>
@@ -99,7 +104,7 @@ export function Section({ title, note, children }: { title: string; note?: React
 }
 
 // สลับหน้า นางแบบ (components/TryOn.tsx) / สินค้า (components/Packshot.tsx) อยู่ในหัวเว็บของทั้งสองหน้า
-// ปุ่ม "ถัดไป" เป็นสีชมพูเมื่อผู้ใช้เลือกอะไรในขั้นนั้นแล้ว (คลิกตัวเลือก / พิมพ์ / อัปโหลด) — ค่าเริ่มต้นที่เลือกไว้ให้ไม่นับ
+// ปุ่ม "ถัดไป" เป็นพื้นหินขอบหมึก (.btn-ready) เมื่อผู้ใช้เลือกอะไรในขั้นนั้นแล้ว (คลิกตัวเลือก / พิมพ์ / อัปโหลด) — ค่าเริ่มต้นที่เลือกไว้ให้ไม่นับ
 // ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และปุ่มถัดไปเองไม่นับเป็นการเลือก
 export function useChosenSteps<K extends string>(current: K) {
   const [chosen, setChosen] = useState<ReadonlySet<K>>(new Set());
@@ -136,8 +141,16 @@ export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin'
   </nav>;
 }
 
+// แท็บในหน้าแอดมิน: ภาพรวม (โค้ดเชิญ/การใช้งาน) | ตรวจงาน (ทุกรูปที่สร้าง + พรอมต์)
+export function AdminTabs({ current }: { current: 'overview' | 'audit' }) {
+  const tab = (id: 'overview' | 'audit', href: string, label: string) => (
+    <Link href={href} className={'chip' + (current === id ? ' active' : '')} aria-current={current === id ? 'page' : undefined}>{label}</Link>
+  );
+  return <nav className="chips admin-tabs" aria-label="หน้าแอดมิน">{tab('overview', '/admin', 'ภาพรวม')}{tab('audit', '/admin/audit', 'ตรวจงาน')}</nav>;
+}
+
 // ลูกค้า: แถบโทเคนใช้ไป / ทั้งหมด มุมขวาบนข้างปุ่มออกจากระบบ (โควตาเป็นโทเคนแทนจำนวนรูป 28 ต.ค.)
-// อัปเดตเองหลังสร้างรูปทุกครั้ง (USAGE_EVENT) · ใช้ไป ≥ 90% เป็นสีแดง
+// อัปเดตเองหลังสร้างรูปทุกครั้ง (USAGE_EVENT) · ใช้ไป ≥ 90% เป็นสีดินเผา (--danger)
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }); // 4116 -> 4.1K, 200000 -> 200K
 export function TokenUsage() {
   const me = useMe();

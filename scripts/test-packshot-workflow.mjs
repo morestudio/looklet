@@ -22,7 +22,7 @@ function load(file) {
   const mocks = {
     'server-only': {}, '@/lib/ai': ai,
     '@/lib/catalog': { isGpt25: () => false, GPT25_SIZES: {} },
-    '@/lib/images': { cropTo: async (o) => o, servable: async (o) => o },
+    '@/lib/images': { cropTo: async (o) => o, servable: async (o) => o, svgJpeg: async (svg) => (svg.startsWith('<svg') ? 'guide-jpeg' : 'bad-svg') },
     '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }) },
     '@/lib/storage': { saveImage: async () => '/test/result.jpg' },
     '@/lib/usage': { quotaBlock: async () => null, recordUsage: async () => {} },
@@ -34,6 +34,7 @@ function load(file) {
     if (id === '@/lib/packshot') return load('lib/packshot.ts');
     if (id === '@/lib/packshot-prompts') return load('lib/packshot-prompts.ts');
     if (id === './aspects' || id === '@/lib/aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
+    if (id === './turntable' || id === '@/lib/turntable') return load('lib/turntable.ts'); // ตั้งมุมเอง
     return require(id);
   }, loaded, loaded.exports);
   cache.set(file, loaded.exports);
@@ -48,7 +49,7 @@ async function shoot(options) {
   const result = await POST({ ...base, ...options });
   return { result, call: calls[0] };
 }
-assert.equal(catalog.SHOT_TYPES.length, 6);
+assert.equal(catalog.SHOT_TYPES.length, 7);
 assert.deepEqual(catalog.PRODUCT_SET_SHOTS.map((s) => s.id), ['front', 'back', 'side', 'three-quarter', 'top', 'bottom']);
 for (const shot of catalog.SHOT_TYPES) {
   const preset = catalog.productPreset('clean');
@@ -164,6 +165,7 @@ out = await shoot({ shot_type: 'creative', creative_concept: creative, props: 'f
 assert.equal(out.result.status, 200);
 assert.match(out.call.prompt, /Selected art direction: An editorial photograph/);
 assert.match(out.call.prompt, /polished silver tray/);
+assert.match(out.call.prompt, /Show exactly one product/); // รูปสินค้ามีหลายชิ้นได้: เอาเฉพาะชิ้นที่ไอเดียพูดถึง
 assert.doesNotMatch(out.call.prompt, /No props:|raw plywood|camera low|One very large, soft/);
 assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'back']);
 assert.equal(out.result.body.stylePlan.name, creative.title);
@@ -197,4 +199,65 @@ assert.doesNotMatch(out.call.prompt, /own prop/);
 out = await shoot({ shot_type: 'styled', props: 'none', framing: 'medium' });
 assert.match(out.call.prompt, /the product about 60 percent of the frame width, with some space of the set around it, the product centered horizontally/);
 assert.match(out.call.prompt, /No props: nothing in the frame/);
-console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups and own props.');
+// Handshot: ท่าถือตามประเภทสินค้า (UI กับ API ใช้ resolveHandPose ตัวเดียวกัน) · รองเท้าถือข้างเดียว · ไม่มีฉาก/พร็อพ/ชุดภาพ
+assert.deepEqual(catalog.handPoses('bag').map((p) => p.id), ['hold', 'handle', 'chest', 'arm', 'side']);
+assert.deepEqual(catalog.handPoses('shoes').map((p) => p.id), ['hold', 'palm', 'chest']);
+assert.equal(catalog.resolveHandPose('shoes', 'handle').id, 'hold');
+assert.equal(catalog.resolveHandPose('tote', 'arm').id, 'arm');
+out = await shoot({ shot_type: 'handshot', product_type: 'shoes', hand_pose: 'palm', aspect: '4:5', props: 'fruit', set_id: 'plinth', set_image: 'room', ref: 'style', support_images: ['side'] });
+assert.equal(out.result.status, 200);
+assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'side']);
+assert.match(out.call.prompt, /^A professional handheld product photograph of one single shoe from the pair from Image 1/);
+assert.match(out.call.prompt, /show only one single shoe from the pair, never both/);
+assert.match(out.call.prompt, /Pose: The product rests on a flat, open palm/);
+assert.match(out.call.prompt, /hand and wrist entering from the lower edge/);
+assert.match(out.call.prompt, /plain seamless backdrop in a soft color that complements the product/);
+assert.match(out.call.prompt, /Soft natural daylight from a large window/);
+assert.match(out.call.prompt, /exactly five fingers/);
+assert.match(out.call.prompt, /Images 2 are additional photographs/);
+assert.match(out.call.prompt, /Most important: only one single shoe from the pair, resting on an open palm/);
+assert.doesNotMatch(out.call.prompt, /Props:|small pear|sculptural plinth|reference photo by another brand|Image 2 is the set/);
+assert.equal(planned.length, 0);
+out = await shoot({ shot_type: 'handshot', product_type: 'shoes', hand_pose: 'arm' }); // ท่ากระเป๋ากับรองเท้า -> ถือโชว์
+assert.match(out.call.prompt, /Pose: One hand holds the product up toward the camera/);
+out = await shoot({ shot_type: 'handshot', product_type: 'bag', hand_pose: 'arm' });
+assert.match(out.call.prompt, /crook of a bent forearm/);
+assert.match(out.call.prompt, /her face is never shown/);
+assert.match(out.call.prompt, /Show exactly one product/);
+assert.doesNotMatch(out.call.prompt, /never both/);
+out = await shoot({ shot_type: 'handshot', set_ref: 'hero', set_shot: 'back' });
+assert.equal(out.result.status, 400);
+assert.equal(calls.length, 0);
+// ตั้งมุมเอง (turntable): ภาพไกด์มุมต่อจากรูปพร็อพ ก่อนรูปสินค้าเพิ่มเติม · ใช้ได้แค่ Clean / Custom · ตัวเลขผิด = 400 ก่อนเรียก AI
+const turntable = load('lib/turntable.ts');
+assert.deepEqual(turntable.readTurn({ yaw: 400, elev: 99 }), { yaw: 180, elev: 60 });
+assert.deepEqual(turntable.readTurn({ yaw: -35.4, elev: -3 }), { yaw: -35, elev: 0 });
+assert.equal(turntable.readTurn({ yaw: 'left' }), null);
+// ถ้อยคำมุมตรงกับที่ทดสอบ 2 พ.ย. (A และ B)
+assert.equal(turntable.describeTurn('bag', { yaw: -35, elev: 25 }), "the product turned about 35 degrees so its front faces a little to the viewer's left and one end panel is visible on the viewer's right, with the camera about 25 degrees above the product looking down at it so its top edge is visible");
+assert.match(turntable.describeTurn('bag', { yaw: 150, elev: 12 }), /^a three-quarter back view: the product turned about 150 degrees so its back faces the camera and one end panel is visible on the viewer's right; the front is not visible/);
+assert.match(turntable.describeTurn('shoes', { yaw: 90, elev: 10 }), /side profile: the toes point to the viewer's right/);
+assert.match(turntable.guideSentence('shoes', 3), /^Image 3 is an angle guide.*darkest end of each block is the toe/);
+assert.match(turntable.turntableSvg('beauty', { yaw: 0, elev: 0 }, { orient: 'square' }), /^<svg[^>]+width="1024" height="1024"/);
+out = await shoot({ shot_type: 'styled', angle: 'custom', turn: { yaw: -35, elev: 25 }, props: 'ceramics', set_image: 'scene', prop_image: 'prop-photo', support_images: ['detail-photo'] });
+assert.equal(out.result.status, 200);
+assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'scene', 'prop-photo', 'guide-jpeg', 'detail-photo']);
+assert.match(out.call.prompt, /Image 4 is an angle guide, not a product photo: a plain grey stand-in block with a thin arc for the strap/);
+assert.match(out.call.prompt, /Images 5 are additional photographs/);
+assert.match(out.call.prompt, /Camera: [^.]*the product turned about 35 degrees so its front faces a little to the viewer's left/);
+assert.match(out.call.prompt, /match Image 4 exactly\. Use Image 4 only for orientation and viewpoint[^.]*\. Most important: the product turned about 35 degrees/);
+out = await shoot({ shot_type: 'clean', product_type: 'beauty', angle: 'custom', turn: { yaw: 20, elev: 10 } });
+assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'guide-jpeg']);
+assert.match(out.call.prompt, /Image 2 is an angle guide[^.]*stand-in cylinder/);
+assert.match(out.call.prompt, /It stands upright on its base, perfectly vertical\./); // ตัด "label facing the camera" ที่ขัดกับมุมที่ตั้ง
+assert.match(out.call.prompt, /This is a catalog packshot/);
+out = await shoot({ shot_type: 'styled', angle: 'custom', turn: { yaw: 'x', elev: 10 } });
+assert.equal(out.result.status, 400);
+assert.equal(calls.length, 0);
+for (const other of [{ shot_type: 'detail', detail_target: 'logo' }, { shot_type: 'handshot' }, { shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }]) {
+  out = await shoot({ ...other, angle: 'custom', turn: { yaw: 90, elev: 10 } });
+  assert.equal(out.result.status, 200, other.shot_type);
+  assert(!out.call.images.some((i) => i.data === 'guide-jpeg'), other.shot_type);
+  assert.doesNotMatch(out.call.prompt, /angle guide/);
+}
+console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props, handshot poses and custom turntable angles.');

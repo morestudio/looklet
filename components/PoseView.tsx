@@ -3,8 +3,9 @@
 // แต่ละท่าวาดจาก "จังหวะ" แรกใน moments ของท่านั้น (lib/catalog.ts POSE_PRESETS) — AI สุ่มจังหวะจริงทุกครั้ง รูปนี้แค่ตัวอย่าง
 import type { ReactNode } from 'react';
 import { Person } from './PersonView';
+import { CLOTH, HAIR, INK, LABEL, PAPER, STUDIO, WALL } from './drawing-colors';
 
-const INK = '#77776f', PAPER = '#fafaf8', CLOTH = '#e7e6df', HAIR = '#cfcdc4', LABEL = '#b8b8ae', WOOD = '#ddd0bc';
+const WOOD = '#ddd0bc';
 type P = [number, number];
 type Limb = [P, P]; // [ข้อศอก/เข่า, มือ/เท้า]
 type Body = {
@@ -61,7 +62,7 @@ function Figure({ head, neck, hip, tilt = 0, laugh = false, side = false, arms, 
 }
 
 const Room = () => <>
-  <rect width="240" height="150" fill="#f3f3f0" />
+  <rect width="240" height="150" fill={WALL} />
   <path d="M0 102 Q120 93 240 102 V150 H0Z" fill="#000" opacity=".04" />
 </>;
 const Shadow = ({ x, rx = 22 }: { x: number; rx?: number }) => <ellipse cx={x} cy="127" rx={rx} ry="4" fill="#000" opacity=".08" />;
@@ -70,10 +71,19 @@ const Sparkle = ({ x, y }: { x: number; y: number }) => <path d={`m${x} ${y} 3 7
 const POSES: Record<string, () => ReactNode> = {
   // ท่าเดิม: ลอกท่าจากรูปนางแบบ — รูปนางแบบเล็กๆ ทางซ้าย ลูกศรมาหาคนตรงกลาง (ท่าเดียวกัน)
   keep: () => <><Room />
-    <rect x="30" y="36" width="36" height="54" rx="3" fill="#fbfbf9" stroke={INK} strokeWidth="1.2" />
+    <rect x="30" y="36" width="36" height="54" rx="3" fill={PAPER} stroke={INK} strokeWidth="1.2" />
     <Person x={48} top={42} h={44} />
     <path d="M76 63 H100 M94 57 L100 63 L94 69" stroke={LABEL} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     <Shadow x={140} /><Person x={140} top={24} h={104} /></>,
+  // Photo director: person, a usable scene surface and a camera choosing its viewpoint.
+  auto: () => <><Room />
+    <rect x="144" y="86" width="47" height="7" rx="2" fill={WOOD} stroke={INK} strokeWidth="1.2" />
+    <path d="M149 93 V127 M186 93 V127" stroke={INK} strokeWidth="1.2" />
+    <Shadow x={120} /><Person x={120} top={28} h={99} />
+    <rect x="47" y="40" width="33" height="24" rx="4" fill={PAPER} stroke={INK} strokeWidth="1.5" />
+    <circle cx="64" cy="52" r="7" fill="none" stroke={INK} strokeWidth="1.5" />
+    <path d="M80 52 L99 38 M80 57 L100 77" fill="none" stroke={LABEL} strokeWidth="1.2" strokeDasharray="3 3" />
+    <Sparkle x={173} y={42} /></>,
   // สบายๆ ตามฉาก: ทิ้งน้ำหนักขาเดียว มือหนึ่งล้วงกระเป๋า อีกมือวางบนโต๊ะในฉาก
   relaxed: () => <><Room />
     <path d="M140 84 H190 M146 84 V127 M184 84 V127" stroke={INK} strokeWidth="1.2" /><rect x="138" y="80" width="54" height="5" rx="1.5" fill={WOOD} stroke={INK} strokeWidth="1.2" />
@@ -92,7 +102,7 @@ const POSES: Record<string, () => ReactNode> = {
       legs={{ l: [[138, 90], [140, 124]], r: [[136, 93], [132, 124]] }} /></>,
   // พิงผนัง / เสา: ไหล่พิงเสา กอดอก ไขว้ขา
   lean: () => <><Room />
-    <rect x="70" y="0" width="24" height="128" fill="#ecebe6" stroke={INK} strokeWidth="1.2" />
+    <rect x="70" y="0" width="24" height="128" fill={STUDIO} stroke={INK} strokeWidth="1.2" />
     <Shadow x={116} />
     <Figure head={[101, 32]} neck={[104, 43]} hip={[112, 76]} tilt={-10}
       arms={{ l: [[98, 60], [116, 57]], r: [[116, 62], [102, 55]] }} front={['l', 'r']}

@@ -58,12 +58,12 @@ export const POST = post(async (req) => {
     }
     // เก็บเป็นรูปใหม่ก่อนเขียน log เสมอ ต้นฉบับยังอยู่แม้ขั้นตอนถัดไปมีปัญหา
     const src = await saveImage({ area: 'results' }, saved.data, saved.mime, meta);
-    await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
-    await recordUsage({ page: 'model', action: 'refine-skin', model: SKIN_MODEL, quality: 'high', status: 'ok', tokens });
+    const entry = await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
+    await recordUsage({ page: 'model', action: 'refine-skin', model: SKIN_MODEL, quality: 'high', status: 'ok', tokens, log: entry });
     return json(200, { src, ...meta });
   } catch (e) {
-    await writeGenerateLog({ ...log, status: 'พัง', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, error: (e as Error).message });
-    await recordUsage({ page: 'model', action: 'refine-skin', model: SKIN_MODEL, quality: 'high', status: 'error', tokens });
+    const entry = await writeGenerateLog({ ...log, status: 'พัง', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, error: (e as Error).message });
+    await recordUsage({ page: 'model', action: 'refine-skin', model: SKIN_MODEL, quality: 'high', status: 'error', tokens, log: entry });
     throw e;
   }
 });
