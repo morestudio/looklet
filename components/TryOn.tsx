@@ -17,7 +17,7 @@ import { generateSelectedShots } from '@/lib/shot-batch';
 import { StyleView } from './StyleView';
 import { PLATFORM_ASPECTS } from '@/lib/aspects';
 import {
-  IconBag, IconCompare, IconDownload, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
@@ -159,7 +159,7 @@ type Stored = { src: string; name?: string; caption?: string; type?: string; set
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
-type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'settings' | 'view' | 'output' | 'retouch';
+type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'settings' | 'view' | 'output';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
   { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
@@ -173,7 +173,6 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   { key: 'view', label: 'มุมมอง', title: 'เลือกมุมมอง', Icon: IconFrame },
   // ตั้งค่า (แบบหน้าสินค้า 29 ต.ค.): ใช้ภาพที่ไหน + สั่งเพิ่มเติม + ขั้นสูง + ปุ่มสร้างรูปท้ายเส้นทาง
   { key: 'output', label: 'ตั้งค่า', title: 'ตั้งค่า', Icon: IconSettings },
-  { key: 'retouch', label: 'แต่งรูป', title: 'แต่งรูป', Icon: IconRetouch },
 ];
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
@@ -200,6 +199,7 @@ export default function TryOn() {
   const [results, setResults] = useState<Result[]>([]); // รูปที่สร้างแล้ว ใหม่สุดอยู่หน้า
   const [current, setCurrent] = useState<number | null>(null); // กำลังแสดง: null = รูปนางแบบ (ตัวอย่าง), ตัวเลข = results[current]
   const [zoomed, setZoomed] = useState(false);
+  const [editing, setEditing] = useState(false); // edit mode: edit panel instead of rail + left panel (Go list items 1, 6, 7)
   // past image loads its settings (Go list items 3, 4): draft = setup in progress set aside while a past image's recipe fills the panel
   const [draft, setDraft] = useState<{ recipe: Recipe; chosen: StepKey[]; base: Recipe | null } | null>(null);
   const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from
@@ -248,6 +248,9 @@ export default function TryOn() {
   const [dialog, setDialog] = useState<{ mode: 'add'; file: File; url: string } | { mode: 'edit'; item: Item } | null>(null);
   const [localEdit, setLocalEdit] = useState<{ src: string; caption: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const editBtnRef = useRef<HTMLButtonElement>(null);
+  const editCloseRef = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
   const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
   const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS)
   const [query, setQuery] = useState(''); // ค้นหาตามชื่อในแผงเลือก
@@ -723,7 +726,7 @@ export default function TryOn() {
       setZoomed(false);
       setOriginal(false);
       setRetouchStatus('');
-      goStep(STEPS.findIndex((s) => s.key === 'retouch'));
+      setEditing(true); // see the refined skin next to the original
       setStatus('ปรับผิวแล้ว เก็บรูปต้นฉบับและรูปใหม่ไว้ในคลังให้เทียบกัน');
     } catch (err) {
       setStatus('ปรับผิวไม่สำเร็จ: ' + (err as Error).message);
@@ -799,6 +802,18 @@ export default function TryOn() {
     aspect, quality, extra, harmonize, gaze: gazeId, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
   };
   const liveKey = recipeKey(recipe);
+  // edit panel focus: open -> its close button, close -> back to แต่งรูป (the button that had focus unmounts); Esc closes
+  useEffect(() => {
+    if (editing) editCloseRef.current?.focus();
+    else if (wasEditing.current) editBtnRef.current?.focus();
+    wasEditing.current = editing;
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('dialog[open]')) setEditing(false); // open dialogs handle their own Esc
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing]);
   useEffect(() => { liveKeyRef.current = liveKey; });
   const allSteps = STEPS.map((s) => s.key);
   const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
@@ -835,7 +850,12 @@ export default function TryOn() {
   const displaySrc = shown?.src ?? model.src!;
   const skinOriginal = shown?.refinedFrom && results.some((r) => r.src === shown.refinedFrom) ? shown.refinedFrom : null;
   const canRefineSkin = Boolean(shown && aiModels?.some((m) => m.id === SKIN_MODEL));
-  const compare = cur.key === 'retouch' && !zoomed; // ขั้นแต่งรูป: ก่อน/หลังแต่งคู่กัน (ซูมหน้าอยู่ = ดูแค่หลังแต่ง)
+  // edit mode (Go list items 1, 6, 7): opened from a generated image only; leaves when the stage has none
+  if (editing && !shown) setEditing(false);
+  const compare = editing && !zoomed; // แก้ไข: ก่อน/หลังแต่งคู่กัน (ซูมหน้าอยู่ = ดูแค่หลังแต่ง)
+  // item 8: "after" frame stays empty until the user adjusts something (the auto film look alone doesn't count)
+  const edited = retouched || finish !== 'auto' || JSON.stringify(film) !== JSON.stringify(FILM_DEFAULT);
+  const awaiting = compare && !skinOriginal && !edited; // placeholder in the after frame
 
   // ขั้นไหนเปลี่ยนจากค่าเริ่มต้นแล้ว (จุดสีเหลืองหม่นบนเมนูซ้าย)
   const stepDone: Record<StepKey, boolean> = {
@@ -847,7 +867,6 @@ export default function TryOn() {
     view: Boolean(framingChoice || angleChoice || placementChoice),
     output: Boolean(aspect !== DEFAULT_ASPECT || gaze || propChoices.length || extra.trim() || harmonize),
     settings: presetId !== PRESETS[0].id,
-    retouch: retouched,
   };
   // ขั้นที่ไม่ใช้ (แบบหน้าสินค้า): ลอกทั้งช็อต = มุมมองตามรูปต้นแบบ · ลอกทั้งช็อต + ฉาก = ฉากด้วย
   // แสงจากรูปต้นแบบ = สไตล์ถ่ายภาพไม่ใช้ · เมนูเป็นสีเทา กดไม่ได้ (บอกเหตุผลตอนชี้) "ถัดไป" ข้ามไป
@@ -857,8 +876,7 @@ export default function TryOn() {
     ...(shot ? { view: 'ระยะ มุมกล้อง และตำแหน่งตามรูปท่าโพสต์' } : {}),
   };
   const nextStep = STEPS.findIndex((s, i) => i > step && !unusedWhy[s.key]);
-  // sticky bar (Go list item 5): step 8 is the last step there (step 9 retouch is leaving the rail, item 1) -> generate only
-  const barNext = nextStep >= 0 && STEPS[nextStep].key !== 'retouch' ? nextStep : -1;
+  const barNext = nextStep; // sticky bar (Go list item 5): step 8 is the last step -> generate only
   const genLabel = busy !== null ? 'กำลังสร้างรูป…' : isDirector ? 'คิด 3 ไอเดียให้เลือก' : 'สร้างรูปทันที';
 
   // ---------- paper doll (stage before the first image) ----------
@@ -1157,8 +1175,9 @@ export default function TryOn() {
         </Section>
       )}
     </>;
-  } else {
-    panel = <>
+  }
+  // edit panel content = production step-9 panel unchanged (Go list item 7)
+  const editPanel = <>
       <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
         <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
         <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
@@ -1212,7 +1231,6 @@ export default function TryOn() {
         <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
       </Section>
     </>;
-  }
 
   // ---------- ประวัติรูป: รูปในชุดภาพเดียวกันอยู่ในกรอบเดียว เรียงตามมุม (SET_SHOTS) ----------
   const thumb = (i: number, label?: string) => (
@@ -1259,8 +1277,8 @@ export default function TryOn() {
         </div>
       </header>
 
-      <div className="workspace">
-        <nav className="rail" aria-label="ขั้นตอน">
+      <div className={'workspace' + (editing ? ' editing' : '')}>
+        <nav className="rail" aria-label="ขั้นตอน" inert={editing}>
           {STEPS.map((s, i) => (
             <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}
               disabled={Boolean(unusedWhy[s.key])} title={unusedWhy[s.key]}>
@@ -1272,7 +1290,7 @@ export default function TryOn() {
           ))}
         </nav>
 
-        <aside className="panel" onClickCapture={mark} onInputCapture={mark}>
+        <aside className="panel" onClickCapture={mark} onInputCapture={mark} inert={editing}>
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
@@ -1300,9 +1318,14 @@ export default function TryOn() {
               {compare && <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(true)}>
                 <img src={skinOriginal ?? displaySrc} alt={skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'} /><figcaption>{skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง'}</figcaption>
               </figure>}
-              <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer(false)}>
+              {/* item 8: until something is adjusted the "after" frame is empty; canvas stays mounted (useRetouchCanvas draws into it) */}
+              <figure className={'zoomable' + (awaiting ? ' awaiting' : '')} title={awaiting ? undefined : 'กดเพื่อดูเต็มจอและซูม'}
+                onClick={awaiting ? undefined : () => void openViewer(false)}>
                 <canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}
+                {awaiting && <div className="after-empty"><b>ยังไม่มีการปรับ</b><span>ปรับรีทัชหรือกดปรับผิวสมจริงในแผงแต่งรูป ผลจะขึ้นที่นี่</span></div>}
               </figure>
+              {/* item 6: on the stage background, generated images only */}
+              {!editing && <button type="button" ref={editBtnRef} className="btn btn-primary edit-btn" onClick={() => setEditing(true)}><IconEdit /> แต่งรูป</button>}
               {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
               {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
             </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เลือก' : 'พร้อมสร้าง'} />}
@@ -1344,6 +1367,14 @@ export default function TryOn() {
           </div>
         </section>
 
+        {/* item 7: production step-9 panel, header without the number + close; slides in from the right */}
+        <aside className="panel edit-panel" aria-label="แต่งรูป" inert={!editing}>
+          <div className="panel-head">
+            <h2>แต่งรูป</h2>
+            <button type="button" ref={editCloseRef} className="edit-close" aria-label="ปิดแผงแต่งรูป" onClick={() => setEditing(false)}>✕</button>
+          </div>
+          {shown && editPanel}
+        </aside>
       </div>
 
       {shotChoice && <ShotChoiceDialog proposal={shotChoice.proposal} references={shotChoice.references} onChoose={shotChoice.choose} />}

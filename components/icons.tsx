@@ -29,6 +29,7 @@ export const IconSettings = () => (
 export const IconRetouch = () => (
   <Svg><path d="M4 20 14 10" /><path d="m15 3 1 2 2 1-2 1-1 2-1-2-2-1 2-1z" /><path d="m19 11 .5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z" /></Svg>
 );
+export const IconEdit = () => <Svg size={18}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m13 7 4 4" /></Svg>; // แต่งรูป button (Go list item 6)
 export const IconDownload = () => <Svg size={18}><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></Svg>;
 export const IconSearch = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5" /></Svg>;
 export const IconZoom = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5M11 8v6M8 11h6" /></Svg>;

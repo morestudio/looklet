@@ -92,10 +92,17 @@ button, select, input, textarea { font-family: inherit; }
 .top-actions { display: flex; align-items: center; gap: var(--space-8); margin-left: auto; }
 
 /* ไม่มีแผงขวาแล้วทั้ง 2 หน้า (เอาออก 28 ต.ค.): เมนูขั้นตอน | แผงเลือก | รูป */
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--panel-width) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage"; }
+.workspace { --side: var(--panel-width); flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--side) minmax(0, 1fr) 0px; grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage edit"; overflow: clip; transition: grid-template-columns .35s ease; } /* clip, not hidden: hidden is a scroll container and breaks the phone sticky rail / bar */
 .rail { grid-area: rail; }
 .panel { grid-area: panel; }
 .stage { grid-area: stage; }
+/* edit mode (Go list item 7): rail + left panel columns shrink to 0, edit column grows; each keeps its width and hugs
+   the outer edge, so it slides out left / in from the right instead of being squeezed */
+.workspace.editing { grid-template-columns: 0px 0px minmax(0, 1fr) var(--side); }
+.workspace > .rail { width: var(--rail-width); justify-self: end; }
+.workspace > .panel { width: var(--side); justify-self: end; }
+.workspace > .edit-panel { grid-area: edit; justify-self: start; border-right: 0; border-left: 1px solid var(--hairline-soft); }
+@media (prefers-reduced-motion: reduce) { .workspace { transition: none; } }
 
 /* เมนูขั้นตอน (ซ้ายสุด) */
 .rail { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-12) var(--space-8); overflow-y: auto; background: var(--canvas); border-right: 1px solid var(--hairline-soft); }
@@ -293,6 +300,22 @@ button, select, input, textarea { font-family: inherit; }
   .doll-side.left { padding-top: calc(var(--tab-height) + var(--space-4)); }
 }
 
+/* edit mode pieces */
+.edit-btn { position: absolute; right: var(--space-12); bottom: var(--space-12); z-index: 1; } /* item 6: stage corner, not on the image */
+.edit-panel .panel-head { margin-bottom: var(--space-14); }
+.edit-close { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; padding: 0; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--ink); font-size: var(--text-sm); cursor: pointer; }
+/* item 8: empty "after" frame until something is adjusted (canvas kept, hidden) */
+.frame figure.awaiting { cursor: default; }
+.frame figure.awaiting canvas { filter: brightness(0) invert(1); } /* drawn image -> blank white box of the image's exact size */
+.frame figure.awaiting figcaption { z-index: 1; }
+.after-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: var(--space-4); padding: 0 18%; color: var(--mute); font-size: var(--text-xs); text-align: center; pointer-events: none; }
+.after-empty b { color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; }
+@media (max-width: 860px) {
+  .workspace > .rail, .workspace > .panel { width: auto; }
+  .workspace > .edit-panel, .workspace.editing > .rail, .workspace.editing > .panel:not(.edit-panel) { display: none; }
+  .workspace.editing > .edit-panel { display: block; border-left: 0; border-top: 1px solid var(--hairline-soft); }
+}
+
 .history-head { display: flex; gap: var(--space-6); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 700; }
 .history-head span { color: var(--ash); font-weight: 500; }
 .history { flex: 0 0 auto; display: flex; gap: var(--space-8); min-height: 40px; overflow-x: auto; padding-bottom: var(--space-4); }
@@ -366,7 +389,7 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 
 /* ---------- จอกลาง: แผงเลือกแคบลง ---------- */
 @media (max-width: 1279px) {
-  .workspace { grid-template-columns: var(--rail-width) var(--panel-width-md) minmax(0, 1fr); }
+  .workspace { --side: var(--panel-width-md); }
 }
 /* ---------- จอเล็ก (มือถือ): เรียงลงทีละส่วน เลื่อนทั้งหน้า เมนูขั้นตอนเป็นแถบบน ---------- */
 @media (max-width: 860px) {
