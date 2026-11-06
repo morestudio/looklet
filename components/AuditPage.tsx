@@ -12,7 +12,7 @@ type Row = {
   caption: string | null; plan: { name: string; th: string } | null; from: string | null;
 };
 type Person = { user?: string; email?: string; label: string };
-type Log = Record<string, unknown> & { prompt?: string[]; harmonizePrompt?: string[]; error?: string; duration?: string };
+type Log = Record<string, unknown> & { prompt?: string[]; harmonizePrompt?: string[]; roomPrompt?: string[]; error?: string; duration?: string };
 type Input = { image: number; label: string; name?: string; file?: string; sent: string };
 type Filters = { who: string; page: string; status: string }; // who: '' = ทุกบัญชี · 'user:<id>' · 'email:<อีเมล>'
 
@@ -59,7 +59,7 @@ function inputsOf(log: Log): Input[] {
       out.push({ image: o.image as number, sent: o.sent as string, name: o.name as string | undefined, file: o.file as string | undefined,
         label: edit && at === 'model' ? 'รูปต้นฉบับ' : ROLES[at] ?? at });
     }
-    for (const [k, x] of Object.entries(o)) if (k !== 'prompt' && k !== 'harmonizePrompt') walk(x, at ? `${at}.${k}` : k);
+    for (const [k, x] of Object.entries(o)) if (k !== 'prompt' && k !== 'harmonizePrompt' && k !== 'roomPrompt') walk(x, at ? `${at}.${k}` : k);
   };
   walk(log, '');
   return out.sort((a, b) => a.image - b.image);
@@ -78,7 +78,7 @@ function detailsOf(log: Log) {
       for (const [k, x] of Object.entries(o)) if (!(isImage(o) && IMAGE_KEYS.has(k))) walk(x, `${at}.${k}`);
     } else out.push([at, String(v)]);
   };
-  for (const [k, v] of Object.entries(log)) if (!['prompt', 'harmonizePrompt', 'time', 'status', 'result', 'error', 'duration'].includes(k)) walk(v, k);
+  for (const [k, v] of Object.entries(log)) if (!['prompt', 'harmonizePrompt', 'roomPrompt', 'time', 'status', 'result', 'error', 'duration'].includes(k)) walk(v, k);
   return out;
 }
 
@@ -203,6 +203,11 @@ function AuditDetail({ row, onClose }: { row: Row; onClose: () => void }) {
                   : <div className="audit-noimg">ไม่มีไฟล์</div>}
                 <figcaption><b>Image {i.image}</b> · {i.label}{i.name ? ` · ${i.name}` : ''}<br />{i.sent}</figcaption>
               </figure>)}</div>
+            </section>}
+            {log.roomPrompt && <section className="audit-section">
+              <h3>พรอมต์ขั้น 1 (ห้องของฉัน: ถ่ายห้องใหม่ตามรูปท่า)</h3>
+              <p className="muted-text">ส่ง Image 1 = รูปห้อง (รูปฉากด้านบน) · Image 2 = รูปท่า ตัดเป็นสัดส่วนของรูปสุดท้ายแล้ว · ฉากที่ได้ส่งต่อแทนรูปห้องในพรอมต์หลักด้านล่าง</p>
+              <ol className="audit-prompt">{log.roomPrompt.map((s, n) => <li key={n}>{s}</li>)}</ol>
             </section>}
             <section className="audit-section">
               <h3>พรอมต์ <button className="btn btn-secondary" onClick={copy}><IconCopy /> {copied ? 'คัดลอกแล้ว' : 'คัดลอก'}</button></h3>

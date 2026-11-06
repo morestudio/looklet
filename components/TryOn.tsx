@@ -61,6 +61,9 @@ const MOOD_PICKER = false;
 // id = ใช้แบบนั้นเสมอ ไม่มีปุ่ม แสงจากรูปท่า ('ref') · ขั้นที่ไม่ใช้เป็นสีเทา (unusedWhy) ทั้งสองแบบ
 // 29 ต.ค. 'pose' (ซ่อนลอกทั้งช็อต) · 3 พ.ย. null (เปิดคืน) · 5 พ.ย. 'shot-scene' (ผู้ใช้ขอ: เลือกแค่รูปท่า แล้วลอกทั้งช็อต + ฉากให้อัตโนมัติ)
 const FIXED_POSE_MODE: PoseMode | null = 'shot-scene';
+// ฉากหลังเมื่อเลือกรูปท่า (FIXED_POSE_MODE 'shot-scene'): ฉากจากรูปท่า (เดิม) หรือห้องของฉัน ('shot-room' 6 พ.ย. ผู้ใช้ทดสอบแล้วเลือก)
+// ห้องของฉัน: server ถ่ายรูปห้องที่เลือกในขั้นฉากหลังใหม่ตามรูปท่าก่อน แล้วลอกทั้งช็อตลงห้องนั้น (สร้าง 2 รูป) · ฉากจากรูปท่าทำงานเหมือนเดิมทุกอย่าง
+const ROOM_CHOICES = [{ id: 'pose', name: 'ฉากจากรูปท่า' }, { id: 'room', name: 'ห้องของฉัน' }];
 
 // ท่าสำเร็จรูปในขั้นท่าโพสต์ (ท่าเดิม + POSE_PRESETS + AI จัดท่าและมุมกล้อง) — ซ่อนไว้ 5 พ.ย. (ผู้ใช้ขอ): ขั้นนี้เลือกแค่รูปท่าโพสต์
 // ไม่เลือกรูป = ท่าเดิม (การ์ด "ท่าเดิม" ในรายการรูปแบบ ชุดเดิม/ฉากเดิม) · ค่าท่าสำเร็จรูปที่ค้างอยู่ถูกข้าม · โค้ด UI/API/planner ยังอยู่ครบ เปิดใหม่ = true
@@ -98,17 +101,17 @@ type PosePlan = StoredPosePlan;
 // ---------- recipe: steps 1–8 choices saved with each generated image (meta.recipe, lib/recipe.ts) ----------
 type Pick = { model: string; outfit: string | null; accessory: string[]; pose: string | null; scene: string | null; top: string | null; bottom: string | null; shoes: string | null };
 type Recipe = {
-  pick: Pick; preset: string; framing: string; angle: string; placement: string; poseMode: PoseMode; light: LightSource; mood: string;
+  pick: Pick; preset: string; framing: string; angle: string; placement: string; poseMode: PoseMode; room: boolean; light: LightSource; mood: string;
   aspect: string; quality: string; extra: string; harmonize: boolean; gaze: string; props: string[]; background: BackgroundMode; goal: PhotoGoal; autoRepair: boolean;
 };
 const START: Recipe = {
   pick: { model: idOf(MODELS[0]), outfit: null, accessory: [], pose: null, scene: null, top: null, bottom: null, shoes: null },
-  preset: PRESETS[0].id, framing: 'auto', angle: 'auto', placement: 'auto', poseMode: 'pose', light: 'ref', mood: 'auto',
+  preset: PRESETS[0].id, framing: 'auto', angle: 'auto', placement: 'auto', poseMode: 'pose', room: false, light: 'ref', mood: 'auto',
   aspect: DEFAULT_ASPECT, quality: 'medium', extra: '', harmonize: false, gaze: '', props: [], background: 'explore', goal: 'lifestyle', autoRepair: true,
 };
 // fixed field order: equal recipes -> equal keys
 const recipeKey = (r: Recipe) => JSON.stringify([r.pick.model, r.pick.outfit, r.pick.accessory, r.pick.pose, r.pick.scene, r.pick.top, r.pick.bottom, r.pick.shoes,
-  r.preset, r.framing, r.angle, r.placement, r.poseMode, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
+  r.preset, r.framing, r.angle, r.placement, r.poseMode, r.room, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
 const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
 // stored recipe -> valid Recipe; an id no longer in the lists (deleted upload) -> null, its step listed in missing (doll shows "+")
 function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe: Recipe; missing: StepKey[] } {
@@ -135,6 +138,7 @@ function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe:
     angle: oneOf(r.angle, ['auto', ...ANGLES.map((x) => x.id)], 'auto'),
     placement: oneOf(r.placement, ['auto', ...PLACEMENTS.map((x) => x.id)], 'auto'),
     poseMode: oneOf<PoseMode>(r.poseMode, POSE_MODES.map((m) => m.id), START.poseMode),
+    room: r.room === true,
     light: oneOf<LightSource>(r.light, LIGHT_SOURCES.map((l) => l.id), START.light),
     mood: oneOf(r.mood, FACE_MOODS.map((m) => m.id), 'auto'),
     aspect: oneOf<string>(r.aspect, PLATFORM_ASPECTS.map((a) => a.id), DEFAULT_ASPECT),
@@ -224,7 +228,8 @@ export default function TryOn() {
   const [extra, setExtra] = useState('');
   const [harmonize, setHarmonize] = useState(false);
   const [poseModeChoice, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์ (ใช้เมื่อ FIXED_POSE_MODE = null)
-  const poseMode = FIXED_POSE_MODE ?? poseModeChoice;
+  const [roomScene, setRoomScene] = useState(false); // ROOM_CHOICES: true = ห้องของฉัน (ใช้เมื่อ FIXED_POSE_MODE = 'shot-scene')
+  const poseMode: PoseMode = FIXED_POSE_MODE === 'shot-scene' && roomScene ? 'shot-room' : FIXED_POSE_MODE ?? poseModeChoice;
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('explore');
   const [photoGoal, setPhotoGoal] = useState<PhotoGoal>('lifestyle');
   const [autoRepair, setAutoRepair] = useState(true);
@@ -268,6 +273,7 @@ export default function TryOn() {
   // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
   const shot = Boolean(pose) && poseMode !== 'pose';
   const shotScene = Boolean(pose) && poseMode === 'shot-scene';
+  const shotRoom = Boolean(pose) && poseMode === 'shot-room'; // ห้องของฉัน: ต้องมีรูปห้องในขั้นฉากหลัง
   const shotPresetLight = shot && lightSource === 'preset'; // ลอกทั้งช็อตแต่ใช้แสง/โทนสีของสไตล์ถ่ายภาพ
   const mood = FACE_MOODS.find((m) => m.id === (isDirector ? 'auto' : faceMood)) ?? FACE_MOODS[0];
   const moodName = mood.id !== 'auto' ? mood.name : pose ? 'สีหน้าตามรูปท่า' : null; // null = ตามรูปนางแบบ ไม่ต้องบอก
@@ -345,7 +351,7 @@ export default function TryOn() {
   // panel <- recipe (steps = touched steps for useChosenSteps: "+" vs keep cards on the paper doll)
   function applyRecipe(r: Recipe, steps: StepKey[]) {
     setPick(r.pick); setPresetId(r.preset); setFramingId(r.framing); setAngleId(r.angle); setPlacementId(r.placement);
-    setPoseMode(r.poseMode); setLightSource(r.light); setFaceMood(r.mood); setAspect(r.aspect); setQuality(r.quality); setExtra(r.extra);
+    setPoseMode(r.poseMode); setRoomScene(r.room); setLightSource(r.light); setFaceMood(r.mood); setAspect(r.aspect); setQuality(r.quality); setExtra(r.extra);
     setHarmonize(r.harmonize); setGazeId(r.gaze); setHeldProps(r.props); setBackgroundMode(r.background); setPhotoGoal(r.goal); setAutoRepair(r.autoRepair);
     setChosen(new Set(steps));
   }
@@ -512,6 +518,7 @@ export default function TryOn() {
   async function generate(set = false) {
     if (!wornCount && !accs.length && !pose && !posePreset && !scene) return setStatus('เลือกเสื้อผ้า ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
     if (wornCount + accs.length > MAX_WEAR) return setStatus(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาบางชิ้นออกก่อน`);
+    if (shotRoom && !scene?.src) return setStatus('ห้องของฉัน: เลือกหรืออัปโหลดรูปห้องของคุณในขั้นฉากหลังก่อน');
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
     const platform = PLATFORM_ASPECTS.find((a) => a.id === aspect) ?? PLATFORM_ASPECTS.find((a) => a.id === DEFAULT_ASPECT)!;
@@ -536,6 +543,7 @@ export default function TryOn() {
     setGenerating(true);
     setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
+      : shotRoom ? 'AI กำลังถ่ายห้องของคุณใหม่ตามรูปท่า แล้วใส่นางแบบ... (ประมาณ 1–2 นาที)'
       : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
         : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
           : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
@@ -564,7 +572,7 @@ export default function TryOn() {
           .map((r) => r.posePlan!.director!.candidates.find((c) => c.id === r.posePlan!.director!.selectedId)!.interaction.slice(0, 400)) : [],
         pose_mode: poseMode,
         scene_image: sceneImg?.data ?? null,
-        scene_text: shotScene ? null : scene?.prompt ?? null,
+        scene_text: shotScene || shotRoom ? null : scene?.prompt ?? null,
         refs: {
           person: ref(model, person), outfit: ref(outfit, outfitImg),
           top: ref(top, topImg), bottom: ref(bottom, bottomImg), shoes: ref(shoes, shoesImg),
@@ -799,7 +807,7 @@ export default function TryOn() {
 
   // ---------- recipe sync (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
   const recipe: Recipe = {
-    pick, preset: presetId, framing: framingId, angle: angleId, placement: placementId, poseMode: poseModeChoice, light: lightChoice, mood: faceMood,
+    pick, preset: presetId, framing: framingId, angle: angleId, placement: placementId, poseMode: poseModeChoice, room: roomScene, light: lightChoice, mood: faceMood,
     aspect, quality, extra, harmonize, gaze: gazeId, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
   };
   const liveKey = recipeKey(recipe);
@@ -1046,9 +1054,14 @@ export default function TryOn() {
           <p className="sub">ใช้รูปท่าแบบไหน</p>
           <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => setPoseMode(v as PoseMode)} />
           <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
-        </> : fixedMode.id === 'shot-scene'
-          ? <p className="muted-text">AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ</p>
-          : <p className="muted-text">{fixedMode.hint}</p>}
+        </> : fixedMode.id === 'shot-scene' ? <>
+          {shotRoom
+            ? <p className="muted-text">AI ถ่ายรูปห้องของคุณใหม่ให้มุมกล้อง ระยะ และแสงเหมือนรูปท่าก่อน แล้วลอกท่า การมอง แสง และโทนสีจากรูปท่า ใส่นางแบบ ชุด และของเสริมที่คุณเลือกลงในห้องนั้น · ไม่เลือกรูป = ท่าเดิมของนางแบบ</p>
+            : <p className="muted-text">AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ</p>}
+          <p className="sub">ฉากหลัง</p>
+          <ChipGroup options={ROOM_CHOICES} value={roomScene ? 'room' : 'pose'} disabled={!pose} onChange={(v) => setRoomScene(v === 'room')} />
+          {roomScene && <p className="muted-text">เลือกรูปห้องของคุณในขั้นฉากหลัง · ได้ผลดีเมื่อรูปห้องถ่ายจากมุมใกล้เคียงรูปท่า และมีที่แบบเดียวกับในรูปท่า (เตียง เก้าอี้ หรือโซฟา) · สร้าง 2 รูปต่อครั้ง ใช้โทเคนประมาณ 1.6 เท่า และรอนานขึ้น</p>}
+        </> : <p className="muted-text">{fixedMode.hint}</p>}
         {shot && !fixedMode && <>
           <p className="sub">แสง</p>
           <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
@@ -1063,7 +1076,8 @@ export default function TryOn() {
   } else if (cur.key === 'scene') {
     panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
       special: <Card item={{ name: 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
-      note: shotScene && 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้',
+      note: shotScene ? 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้'
+        : shotRoom && 'ห้องของฉัน: เลือกหรืออัปโหลดรูปห้องของคุณ (ต้องเป็นรูปถ่าย) AI จะถ่ายห้องนี้ใหม่ให้มุมกล้องและแสงเหมือนรูปท่าก่อน แล้วใส่นางแบบ',
       muted: shotScene,
     });
   } else if (cur.key === 'view') {
