@@ -49,6 +49,27 @@ export function PendingCard({ src, label = 'AI กำลังดูว่าเ
   );
 }
 
+// modal confirm (DS Dialog): Esc / backdrop close = cancel
+export function ConfirmDialog({ title, body, cancel, confirm, onCancel, onConfirm }: {
+  title: string; body: string; cancel: string; confirm: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const confirmed = useRef(false);
+  useEffect(() => {
+    if (!ref.current?.open) ref.current?.showModal();
+  }, []);
+  return (
+    <dialog ref={ref} onClose={() => (confirmed.current ? onConfirm() : onCancel())}>
+      <h2>{title}</h2>
+      <p className="sub">{body}</p>
+      <form method="dialog" className="retouch-actions">
+        <button className="btn btn-tertiary">{cancel}</button>
+        <button className="btn btn-primary" onClick={() => { confirmed.current = true; }}>{confirm}</button>
+      </form>
+    </dialog>
+  );
+}
+
 // บันทึกรูปแบบกดค้าง: browser ในแอป (LINE ฯลฯ) ดาวน์โหลดไฟล์ไม่ได้ -> โชว์รูปให้กดค้างแล้ว "บันทึกรูปภาพ"
 export function SaveImageDialog({ src, onClose }: { src: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -122,7 +143,7 @@ export function useChosenSteps<K extends string>(current: K) {
     if (target.closest('.next, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
     setChosen((prev) => (prev.has(current) ? prev : new Set(prev).add(current)));
   };
-  return { chosen, mark };
+  return { chosen, mark, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
 }
 
 // บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นแท็บแอดมิน · ลูกค้าเห็นแถบโทเคน (TokenUsage มุมขวาบน)

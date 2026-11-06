@@ -92,10 +92,17 @@ button, select, input, textarea { font-family: inherit; }
 .top-actions { display: flex; align-items: center; gap: var(--space-8); margin-left: auto; }
 
 /* ไม่มีแผงขวาแล้วทั้ง 2 หน้า (เอาออก 28 ต.ค.): เมนูขั้นตอน | แผงเลือก | รูป */
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--panel-width) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage"; }
+.workspace { --side: var(--panel-width); flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--side) minmax(0, 1fr) 0px; grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage edit"; overflow: clip; transition: grid-template-columns .35s ease; } /* clip, not hidden: hidden is a scroll container and breaks the phone sticky rail / bar */
 .rail { grid-area: rail; }
 .panel { grid-area: panel; }
 .stage { grid-area: stage; }
+/* edit mode (Go list item 7): rail + left panel columns shrink to 0, edit column grows; each keeps its width and hugs
+   the outer edge, so it slides out left / in from the right instead of being squeezed */
+.workspace.editing { grid-template-columns: 0px 0px minmax(0, 1fr) var(--side); }
+.workspace > .rail { width: var(--rail-width); justify-self: end; }
+.workspace > .panel { width: var(--side); justify-self: end; }
+.workspace > .edit-panel { grid-area: edit; justify-self: start; border-right: 0; border-left: 1px solid var(--hairline-soft); }
+@media (prefers-reduced-motion: reduce) { .workspace { transition: none; } }
 
 /* เมนูขั้นตอน (ซ้ายสุด) */
 .rail { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-12) var(--space-8); overflow-y: auto; background: var(--canvas); border-right: 1px solid var(--hairline-soft); }
@@ -121,7 +128,7 @@ button, select, input, textarea { font-family: inherit; }
 .next { width: 100%; margin-top: var(--space-18); transition: background .25s ease, color .25s ease; }
 /* ปุ่มถัดไปเมื่อผู้ใช้เลือกในขั้นนั้นแล้ว (useChosenSteps ใน components/ui.tsx): พื้นหิน + ขอบหมึก แบบเดียวกับปุ่มที่เปิดค้าง (.on) */
 .btn-ready { background: var(--primary-soft); box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink); }
-.btn-ready:active { background: var(--secondary-pressed); }
+.btn-ready:not(:disabled):active { background: var(--secondary-pressed); } /* Safari applies :active to disabled buttons */
 .note { margin: 0 0 var(--space-12); padding: var(--space-8) var(--space-12); border-radius: var(--r-md); background: var(--surface-card); color: var(--ink-soft); font-size: var(--text-xs); }
 .muted-text { margin: var(--space-4) 0 0; color: var(--mute); font-size: var(--text-xs); line-height: 1.5; }
 
@@ -288,10 +295,29 @@ button, select, input, textarea { font-family: inherit; }
 .doll-group-cards { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .doll-group .doll-card { width: min(calc(var(--doll-card) * .8), calc((var(--doll-side) - var(--space-6)) / 2)); }
 .doll-group > b { padding-left: 0; color: var(--ink-soft); }
+/* changed from the past image (Go list item 4): thin ochre edge + ochre label (DS: accent = small highlight only) */
+.doll-card.changed, .doll-chip.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.doll-card.changed b, .doll-chip.changed b, .doll-group > b.changed { color: var(--accent-text); }
 /* narrow stage (phone): scene joins the left column's feet row; left column starts under the label */
 @container doll (max-width: 520px) {
   .doll-scene { position: static; grid-row: 4; grid-column: 1; align-self: end; }
   .doll-side.left { padding-top: calc(var(--tab-height) + var(--space-4)); }
+}
+
+/* edit mode pieces */
+.edit-btn { position: absolute; right: var(--space-12); bottom: var(--space-12); z-index: 1; } /* item 6: stage corner, not on the image */
+.edit-panel .panel-head { margin-bottom: var(--space-14); }
+.edit-close { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; padding: 0; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--ink); font-size: var(--text-sm); cursor: pointer; }
+/* item 8: empty "after" frame until something is adjusted (canvas kept, hidden) */
+.frame figure.awaiting { cursor: default; }
+.frame figure.awaiting canvas { filter: brightness(0) invert(1); } /* drawn image -> blank white box of the image's exact size */
+.frame figure.awaiting figcaption { z-index: 1; }
+.after-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: var(--space-4); padding: 0 18%; color: var(--mute); font-size: var(--text-xs); text-align: center; pointer-events: none; }
+.after-empty b { color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; }
+@media (max-width: 860px) {
+  .workspace > .rail, .workspace > .panel { width: auto; }
+  .workspace > .edit-panel, .workspace.editing > .rail, .workspace.editing > .panel:not(.edit-panel) { display: none; }
+  .workspace.editing > .edit-panel { display: block; border-left: 0; border-top: 1px solid var(--hairline-soft); }
 }
 
 .history-head { display: flex; gap: var(--space-6); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 700; }
@@ -302,6 +328,14 @@ button, select, input, textarea { font-family: inherit; }
 .history button:not(.del) { position: relative; flex: 0 0 auto; width: var(--thumb-width); padding: 0; border: 0; border-radius: var(--r-thumb); overflow: hidden; background: var(--canvas); cursor: pointer; }
 .history button:not(.del).active::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; background: var(--tick-overlay); color: var(--on-primary); font-size: 16px; font-weight: 500; line-height: 1; pointer-events: none; }
 .history img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
+/* "รูปใหม่" tile: DS add-tile dashed edge; active = solid ink edge (no tick overlay) */
+.history button.new-tile { align-self: flex-start; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); aspect-ratio: 2 / 3; padding: var(--space-4); border: 1px dashed var(--control-edge); background: transparent; color: var(--ink); font-size: var(--text-xs); line-height: 1.35; text-align: center; }
+.history button.new-tile.active { border: 1.5px solid var(--ink); }
+.history button.new-tile.active::after { content: none; }
+.history button.new-tile small { color: var(--accent-text); font-size: var(--text-xs); }
+.history button.new-tile .spinner { width: 18px; height: 18px; border-width: 2px; border-color: rgba(0, 0, 0, .12); border-top-color: var(--ink-soft); }
+.new-plus { font-size: 18px; line-height: 1; }
+.note .link-btn { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 
 /* ---------- แต่งรูป ---------- */
 .sliders { display: grid; gap: var(--space-14); }
@@ -359,7 +393,7 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 
 /* ---------- จอกลาง: แผงเลือกแคบลง ---------- */
 @media (max-width: 1279px) {
-  .workspace { grid-template-columns: var(--rail-width) var(--panel-width-md) minmax(0, 1fr); }
+  .workspace { --side: var(--panel-width-md); }
 }
 /* ---------- จอเล็ก (มือถือ): เรียงลงทีละส่วน เลื่อนทั้งหน้า เมนูขั้นตอนเป็นแถบบน ---------- */
 @media (max-width: 860px) {
@@ -390,6 +424,14 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 /* ท้ายขั้นสไตล์ถ่ายภาพ (หน้านางแบบ): สร้างรูป | ชุดภาพ คู่กัน อยู่ส่วนล่างที่ไม่เลื่อน */
 .gen-row { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); margin-top: var(--space-14); }
 .gen-row .gen-btn { margin: 0; }
+.gen-row.single { grid-template-columns: 1fr; }
+/* sticky bar (Go list item 5): pinned to the bottom of the left panel on every step; bleeds over the panel padding */
+.sticky-bar { position: sticky; bottom: calc(-1 * var(--space-24)); z-index: 3; display: flex; gap: var(--space-8); margin: var(--space-18) calc(-1 * var(--space-16)) calc(-1 * var(--space-24)); padding: var(--space-12) var(--space-16); border-top: 1px solid var(--hairline-soft); background: var(--canvas); box-shadow: var(--shadow-pinned); }
+.sticky-bar .btn { flex: 1 1 0; min-width: 0; }
+.sticky-bar .bar-next { flex-grow: 1.3; }
+@media (max-width: 860px) { /* page scrolls: stick to the viewport edge */
+  .sticky-bar { bottom: 0; padding-bottom: calc(var(--space-12) + env(safe-area-inset-bottom, 0px)); }
+}
 .set-btn small { color: var(--mute); font-size: var(--text-2xs); font-weight: 400; }
 /* ชุดภาพหลายมุม: รูปในชุดเดียวกันอยู่ในกรอบเดียว มีชื่อมุมใต้รูป */
 .set-group { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface-card); }
