@@ -4,6 +4,7 @@ import { editCanvas, fromEditCanvas, toEditCanvas } from '@/lib/local-edit-image
 import { json, post } from '@/lib/route';
 import { SKIN_MODEL, SKIN_PROMPT, SKIN_SIZES } from '@/lib/skin';
 import sharp from 'sharp';
+import { storableRecipe } from '@/lib/recipe';
 import { readImage, saveImage } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
 
@@ -24,7 +25,8 @@ export const POST = post(async (req) => {
   const image = await readImage(req.src.slice('/api/files/'.length).split('/'));
   if (!image) return json(404, { error: 'ไม่พบรูปต้นฉบับ อาจถูกลบไปแล้ว' });
   const caption = `${typeof req.caption === 'string' ? req.caption.slice(0, 260) : 'รูปที่สร้างไว้'} · ผิวสมจริง`;
-  const meta = { caption, finish: 'off' as const, refinedFrom: req.src };
+  const recipe = storableRecipe(req.recipe); // source image's recipe, sent by the page
+  const meta = { caption, finish: 'off' as const, refinedFrom: req.src, ...(recipe ? { recipe } : {}) };
   const t0 = Date.now();
   const log: Omit<GenerateLog, 'status' | 'duration'> = {
     time: localTime(),

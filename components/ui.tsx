@@ -15,11 +15,20 @@ export function rangeFill(value: number, min: number, max: number): CSSPropertie
 export function Card({ item, active, onClick, zoom = false, onDelete, footer }: {
   item: Item; active: boolean; onClick: () => void; zoom?: boolean; onDelete?: () => void; footer?: ReactNode;
 }) {
+  // loading = loadedSrc !== item.src; onError counts as loaded
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const loading = !!item.src && loadedSrc !== item.src;
+  const done = () => setLoadedSrc(item.src ?? null);
   const card = (
-    <button className={'card' + (active ? ' active' : '')} title={item.name} onClick={onClick}>
+    <button className={'card' + (active ? ' active' : '') + (loading ? ' loading' : '')} title={item.name} onClick={onClick} aria-busy={loading || undefined}>
       {item.src ? (
         // รูปนางแบบเต็มตัว ซูมให้เห็นหน้า
-        <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}><img src={item.src} alt={item.name} /></div>
+        <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}>
+          {/* cached img can complete before hydration attaches onLoad */}
+          <img src={item.src} alt={item.name} onLoad={done} onError={done}
+            ref={(img) => { if (img?.complete && loadedSrc !== item.src) done(); }} />
+          {loading && <div className="pending-spin"><div className="spinner" /></div>}
+        </div>
       ) : (
         <div className="tile text">ไม่เปลี่ยน</div>
       )}
@@ -37,6 +46,27 @@ export function PendingCard({ src, label = 'AI กำลังดูว่าเ
       <div className="pic"><img src={src} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
       <span>{label}</span>
     </div>
+  );
+}
+
+// modal confirm (DS Dialog): Esc / backdrop close = cancel
+export function ConfirmDialog({ title, body, cancel, confirm, onCancel, onConfirm }: {
+  title: string; body: string; cancel: string; confirm: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const confirmed = useRef(false);
+  useEffect(() => {
+    if (!ref.current?.open) ref.current?.showModal();
+  }, []);
+  return (
+    <dialog ref={ref} onClose={() => (confirmed.current ? onConfirm() : onCancel())}>
+      <h2>{title}</h2>
+      <p className="sub">{body}</p>
+      <form method="dialog" className="retouch-actions">
+        <button className="btn btn-tertiary">{cancel}</button>
+        <button className="btn btn-primary" onClick={() => { confirmed.current = true; }}>{confirm}</button>
+      </form>
+    </dialog>
   );
 }
 
@@ -113,7 +143,7 @@ export function useChosenSteps<K extends string>(current: K) {
     if (target.closest('.next, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
     setChosen((prev) => (prev.has(current) ? prev : new Set(prev).add(current)));
   };
-  return { chosen, mark };
+  return { chosen, mark, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
 }
 
 // บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นแท็บแอดมิน · ลูกค้าเห็นแถบโทเคน (TokenUsage มุมขวาบน)

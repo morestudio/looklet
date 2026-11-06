@@ -590,13 +590,13 @@ export default function Packshot() {
     setStatus('');
     const shotsAfter = selectedShots.slice(1);
     const caption = shotType === 'handshot' ? [product.name, shotTypeDef.name, handPose.name, HAND_MODES.find((m) => m.id === handPose.mode)!.name]
-      .join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}` : [
+      .join(' · ') : [
       product.name, shotTypeDef.name,
       ...(ref ? [`${REF_MODES.find((m) => m.id === refMode)!.name}จากต้นแบบ`] : []),
       ...(shotType === 'creative' ? [creativeConcept!.title] : shot || shotType === 'styled' ? [] : [preset.name]),
       ...(shotType === 'creative' || refSet ? [] : [usePhoto ? 'ฉาก: ' + sceneImg!.name : setDef.name + (colorable(setDef) && color.id !== 'set' ? ` (${color.name})` : '')]),
       ...(shotType === 'creative' || shot ? [] : [propsLabel, ...(isMulti ? [] : [angle.name]), framing.name]),
-    ].join(' · ') + ` — ${choice.label}${choice.id.startsWith('openai:') ? ` (${quality})` : ''}`;
+    ].join(' · '); // no AI vendor/model name in what users see (Go list item 12)
     const setCaption = (i: number, name: string) => `ชุดภาพ ${i + 1}/${shotCount} ${name} · ${caption}`;
     setBusy(set ? `AI กำลังสร้างรูปแรกของชุด (1/${shotCount})...` : 'AI กำลังสร้างรูป... (ประมาณ 20–90 วินาที)');
     try {
@@ -976,7 +976,7 @@ export default function Packshot() {
         {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
-          <Section title="คุณภาพ (OpenAI)" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+          <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
             <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
           </Section>
         )}

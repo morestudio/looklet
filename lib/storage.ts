@@ -79,6 +79,7 @@ export type Stored = {
   productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
   editedFrom?: string;
   refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
+  recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
 };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
