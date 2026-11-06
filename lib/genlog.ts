@@ -34,7 +34,7 @@ export type GenerateLog = {
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
   harmonizePrompt?: string[]; // รอบสอง: ส่งรูปที่ได้จากรอบแรกรูปเดียว + พรอมต์นี้
-  roomPrompt?: string[]; // ห้องของฉัน ขั้น 1: ส่งรูปห้อง (Image 1) + รูปท่าที่ตัดแล้ว (Image 2) + พรอมต์นี้ -> ฉากใหม่ (ส่งต่อเป็นรูปฉากของพรอมต์หลัก)
+  roomPrompt?: string[]; // รูปท่า + ฉากที่เลือก ขั้น 1: ส่งรูปฉาก (Image 1) + รูปท่าที่ตัดแล้ว (Image 2) + พรอมต์นี้ -> ฉากใหม่ (ส่งต่อเป็นรูปฉากของพรอมต์หลัก)
 };
 
 // หน้าสินค้า (app/api/packshot): product = รูปสินค้า | element = ฉาก / ช็อตต้นแบบ / พร็อพ | set = ชุดภาพสินค้า | style = สไตล์ แสง กล้อง ระยะ

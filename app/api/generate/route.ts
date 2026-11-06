@@ -56,10 +56,10 @@ export const POST = post(async (req) => {
   const recipe = storableRecipe(req.recipe); // steps 1–8 choices (lib/recipe.ts), stored with the image
   if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
   const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
-  // ห้องของฉัน (POSE_MODES 'shot-room'): ขั้น 1 ถ่ายรูปห้องของผู้ใช้ใหม่ตามรูปท่า -> ขั้น 2 ลอกทั้งช็อตลงฉากใหม่ (เรียก AI สร้างรูป 2 ครั้ง)
+  // ลอกทั้งช็อตลงฉากที่เลือก (POSE_MODES 'shot-room'): ขั้น 1 ถ่ายรูปฉากที่ผู้ใช้เลือกใหม่ตามรูปท่า -> ขั้น 2 ลอกทั้งช็อตลงฉากใหม่ (เรียก AI สร้างรูป 2 ครั้ง)
   // โหมดอื่นไม่ผ่านโค้ดส่วนนี้ (ลอกทั้งช็อต + ฉาก ต้องเหมือนเดิม — ผู้ใช้ขอ)
   const shotRoom = Boolean(req.pose) && poseMode === 'shot-room' && !setRef;
-  if (shotRoom && !req.scene_image) return json(400, { error: 'ห้องของฉัน: ยังไม่มีรูปห้อง เลือกรูปห้องในขั้นฉากหลังก่อน' });
+  if (shotRoom && !req.scene_image) return json(400, { error: 'ยังไม่มีรูปฉาก เลือกฉากในขั้นฉากหลังก่อน' });
   // รูปท่าตัดเป็นสัดส่วนของรูปสุดท้ายก่อน (ตัดกลางภาพ ไม่ใช้ AI): "จัดกรอบเหมือนรูปท่า" = รูปที่จะได้จริง (ทดสอบ 6 พ.ย. ขนาดคนใกล้รูปท่าขึ้น)
   const poseData: string | null = shotRoom ? (await cropTo({ data: req.pose, mime: 'image/jpeg' }, aspect)).data : req.pose;
 
@@ -120,7 +120,7 @@ export const POST = post(async (req) => {
   const [refLight, skinLight, sceneLight, plan, director] = await Promise.all([
     lightFromRef ? describeLighting({ data: poseData!, mime: 'image/jpeg' }) : null,
     lightFromRef ? describeSkinLight({ data: poseData!, mime: 'image/jpeg' }) : null,
-    // ห้องของฉัน: อ่านแสงจากฉากใหม่หลังขั้น 1 แทนรูปห้องเดิม
+    // ฉากที่เลือก + รูปท่า: อ่านแสงจากฉากใหม่หลังขั้น 1 แทนรูปฉากเดิม
     !planningOnly && !setRef && req.scene_image && !shotScene && !shotRoom ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
     posePreset && !directorInput ? planPose({
       location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
@@ -147,7 +147,7 @@ export const POST = post(async (req) => {
   // ใช้ภาพที่ไหน (lib/aspects.ts): OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> 4:5 / 9:16 ทำ 2:3 แล้วตัดกลางภาพ (cropTo) บอก AI ว่าขอบไหนจะโดนตัด
   const crop = String(req.model).startsWith('openai:') && !AI_ASPECTS.includes(aspect)
     ? cropLine(aspect, director ? false : setRef ? setShot!.full_body !== false : req.full_body ?? true) : null;
-  // ห้องของฉัน: สร้างพรอมต์หลักใหม่หลังขั้น 1 (แสงของฉากใหม่) · โหมดอื่นสร้างครั้งเดียวเหมือนเดิม
+  // ฉากที่เลือก + รูปท่า: สร้างพรอมต์หลักใหม่หลังขั้น 1 (แสงของฉากใหม่) · โหมดอื่นสร้างครั้งเดียวเหมือนเดิม
   const makePrompt = (lightOfScene: string | null) => setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
@@ -187,7 +187,7 @@ export const POST = post(async (req) => {
     crop,
   });
   let prompt = makePrompt(sceneLight);
-  // ห้องของฉัน ขั้น 1: รูปห้อง (Image 1) + รูปท่าที่ตัดแล้ว (Image 2) -> ฉากใหม่ไม่มีคน · บอกขอบที่จะโดนตัดแบบเดียวกับรูปหลัก
+  // ขั้น 1: รูปฉากที่เลือก (Image 1) + รูปท่าที่ตัดแล้ว (Image 2) -> ฉากใหม่ไม่มีคน · บอกขอบที่จะโดนตัดแบบเดียวกับรูปหลัก
   const roomPrompt = shotRoom ? buildRoomPrompt({
     refLight,
     crop: String(req.model).startsWith('openai:') && !AI_ASPECTS.includes(aspect) ? roomCropLine(aspect) : null,
@@ -230,7 +230,7 @@ export const POST = post(async (req) => {
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
   if (skinLight) style.skinLight = skinLight; // แสงบนผิวที่ AI อ่านจากรูปต้นแบบ
   if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
-  if (shotRoom) style.roomScene = 'ขั้น 1 ถ่ายรูปห้อง (รูปฉาก) ใหม่ตามรูปท่าก่อน แล้วส่งฉากใหม่แทนรูปห้องในพรอมต์หลัก';
+  if (shotRoom) style.roomScene = 'ขั้น 1 ถ่ายรูปฉากที่เลือกใหม่ตามรูปท่าก่อน แล้วส่งฉากใหม่แทนรูปฉากเดิมในพรอมต์หลัก';
   if (!isDirector && text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
@@ -268,7 +268,7 @@ export const POST = post(async (req) => {
   let tokens = 0; // โทเคนที่ AI คิดจริง รวมทุกครั้งที่เรียก (ปรับแสงซ้ำ = 2 ครั้ง) -> โควตาลูกค้า
   try {
     if (roomPrompt) {
-      // ห้องของฉัน ขั้น 1 -> ฉากใหม่แทนรูปห้องเดิม (รูปเดิมยังอยู่ใน log ที่ Image เดียวกัน) แล้วอ่านแสงของฉากใหม่ สร้างพรอมต์หลักใหม่
+      // ขั้น 1 -> ฉากใหม่แทนรูปฉากเดิม (รูปเดิมยังอยู่ใน log ที่ Image เดียวกัน) แล้วอ่านแสงของฉากใหม่ สร้างพรอมต์หลักใหม่
       const sceneAt = inputs.findIndex((x) => x.role === 'ฉาก'), poseAt = inputs.findIndex((x) => x.role === 'ท่าโพสต์');
       const room = await generateImage(req.model, [images[sceneAt], images[poseAt]], roomPrompt, opt);
       calls++;

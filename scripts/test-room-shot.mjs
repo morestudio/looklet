@@ -1,5 +1,5 @@
-// ห้องของฉัน (POSE_MODES 'shot-room'): route สร้างฉากใหม่ก่อน (ขั้น 1) แล้วลอกทั้งช็อตลงฉากนั้น (ขั้น 2)
-// และ ลอกทั้งช็อต + ฉาก ต้องทำงานเหมือนเดิม: เรียก AI ครั้งเดียว รูปท่าไม่ถูกตัด ไม่มีคำสั่งของห้องของฉัน
+// รูปท่า + ฉากที่เลือก (POSE_MODES 'shot-room'): route สร้างฉากใหม่ก่อน (ขั้น 1) แล้วลอกทั้งช็อตลงฉากนั้น (ขั้น 2)
+// และ ลอกทั้งช็อต + ฉาก (ไม่เลือกฉาก) ต้องทำงานเหมือนเดิม: เรียก AI ครั้งเดียว รูปท่าไม่ถูกตัด ไม่มีคำสั่งของฉากที่เลือก
 // AI / รูป / ที่เก็บ / โควตา เป็นของปลอมทั้งหมด ไม่เสียเงิน: node scripts/test-room-shot.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -37,24 +37,24 @@ const body = (poseMode, extra = {}) => ({
   light_from_ref: true, face_from_ref: true, aspect: '4:5', ...extra,
 });
 
-test('ห้องของฉัน: ขั้น 1 ถ่ายห้องใหม่ตามรูปท่าที่ตัดเป็น 4:5 แล้วขั้น 2 ใช้ฉากใหม่แทนรูปห้อง', async () => {
+test('ฉากที่เลือก: ขั้น 1 ถ่ายฉากใหม่ตามรูปท่าที่ตัดเป็น 4:5 แล้วขั้น 2 ใช้ฉากใหม่แทนรูปฉากเดิม', async () => {
   const { POST, calls, lights, usage } = setup();
   const out = await POST(body('shot-room'));
   assert.equal(out.status, 200);
   assert.equal(calls.length, 2);
-  // ขั้น 1: Image 1 = รูปห้อง, Image 2 = รูปท่าที่ตัดเป็นสัดส่วนสุดท้ายแล้ว
+  // ขั้น 1: Image 1 = รูปฉาก, Image 2 = รูปท่าที่ตัดเป็นสัดส่วนสุดท้ายแล้ว
   assert.deepEqual(calls[0].images, ['room', 'pose-cropped4:5']);
   assert.match(calls[0].prompt, /^Create one photograph of the room in image 1, taken exactly the way image 2 was taken/);
   assert.match(calls[0].prompt, /There is no person in this photo\./);
   assert.match(calls[0].prompt, /relight the whole room with exactly the light of image 2: light of pose-cropped4:5/);
   assert.match(calls[0].prompt, /trimmed to make a 4:5 frame, so keep everything important away/);
-  // ขั้น 2: ลำดับเดิม นางแบบ ชุด รูปท่า(ตัดแล้ว) ฉาก — ฉาก = ฉากใหม่จากขั้น 1 (ตัด 4:5 + ย่อ) ไม่ใช่รูปห้องเดิม
+  // ขั้น 2: ลำดับเดิม นางแบบ ชุด รูปท่า(ตัดแล้ว) ฉาก — ฉาก = ฉากใหม่จากขั้น 1 (ตัด 4:5 + ย่อ) ไม่ใช่รูปฉากเดิม
   assert.deepEqual(calls[1].images, ['model', 'outfit', 'pose-cropped4:5', 'rendered-1-cropped4:5-small']);
   assert.match(calls[1].prompt, /Image 4 already has this framing, so keep it as it is; she takes the place of the person in image 3 at her real size\./);
   assert.match(calls[1].prompt, /Image 4 was already photographed with the camera, framing and light of image 3/);
   assert.match(calls[1].prompt, /her size comes only from her real height and the camera distance of image 4\./);
   assert.match(calls[1].prompt, /The light in image 4: light of rendered-1-cropped4:5-small/); // แสงอ่านจากฉากใหม่
-  assert.doesNotMatch(calls[1].prompt, /light of room/); // ไม่อ่านแสงจากรูปห้องเดิม
+  assert.doesNotMatch(calls[1].prompt, /light of room/); // ไม่อ่านแสงจากรูปฉากเดิม
   assert(!lights.includes('room'));
   // โควตา/ log: 2 ครั้ง โทเคนรวม · log มีพรอมต์ขั้น 1 และพรอมต์หลักที่ใช้จริง
   assert.equal(usage[0].calls, 2);
@@ -63,14 +63,14 @@ test('ห้องของฉัน: ขั้น 1 ถ่ายห้องใ
   assert(usage[0].log.prompt.some((s) => s.includes('Image 4 already has this framing')));
 });
 
-test('ห้องของฉัน: ไม่มีรูปห้อง -> 400 ก่อนเรียก AI', async () => {
+test('ฉากที่เลือก: ไม่มีรูปฉาก -> 400 ก่อนเรียก AI', async () => {
   const { POST, calls } = setup();
   const out = await POST(body('shot-room', { scene_image: null }));
   assert.equal(out.status, 400);
   assert.equal(calls.length, 0);
 });
 
-test('ลอกทั้งช็อต + ฉาก เหมือนเดิม: AI ครั้งเดียว รูปท่าไม่ถูกตัด ไม่ใช้รูปห้อง ไม่มีคำสั่งของห้องของฉัน', async () => {
+test('ลอกทั้งช็อต + ฉาก เหมือนเดิม: AI ครั้งเดียว รูปท่าไม่ถูกตัด ไม่มีคำสั่งของฉากที่เลือก', async () => {
   const { POST, calls, usage } = setup();
   const out = await POST(body('shot-scene'));
   assert.equal(out.status, 200);

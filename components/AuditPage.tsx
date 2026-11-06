@@ -205,8 +205,8 @@ function AuditDetail({ row, onClose }: { row: Row; onClose: () => void }) {
               </figure>)}</div>
             </section>}
             {log.roomPrompt && <section className="audit-section">
-              <h3>พรอมต์ขั้น 1 (ห้องของฉัน: ถ่ายห้องใหม่ตามรูปท่า)</h3>
-              <p className="muted-text">ส่ง Image 1 = รูปห้อง (รูปฉากด้านบน) · Image 2 = รูปท่า ตัดเป็นสัดส่วนของรูปสุดท้ายแล้ว · ฉากที่ได้ส่งต่อแทนรูปห้องในพรอมต์หลักด้านล่าง</p>
+              <h3>พรอมต์ขั้น 1 (ถ่ายฉากที่เลือกใหม่ตามรูปท่า)</h3>
+              <p className="muted-text">ส่ง Image 1 = รูปฉากที่เลือก (รูปฉากด้านบน) · Image 2 = รูปท่า ตัดเป็นสัดส่วนของรูปสุดท้ายแล้ว · ฉากที่ได้ส่งต่อแทนรูปฉากในพรอมต์หลักด้านล่าง</p>
               <ol className="audit-prompt">{log.roomPrompt.map((s, n) => <li key={n}>{s}</li>)}</ol>
             </section>}
             <section className="audit-section">
