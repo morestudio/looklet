@@ -311,6 +311,7 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
+  const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
@@ -525,7 +526,6 @@ export default function Packshot() {
   }
 
   async function deleteUpload(key: Key, item: Item) {
-    if (!confirm(`ลบ "${item.name}"? (ย้ายไปถังขยะ)`)) return;
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
@@ -771,7 +771,7 @@ export default function Packshot() {
         {!q && special}
         {visible(key).map((item) => (
           <Card key={idOf(item)} item={item} active={idOf(item) === pick[key]} onClick={() => select(key, idOf(item))}
-            onDelete={() => void deleteUpload(key, item)}
+            onDelete={() => setDeletingUpload({ key, item })}
  />
         ))}
         {saving.filter((x) => x.key === key).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
@@ -1107,6 +1107,9 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingUpload(null)}
+        onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
       {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${deletingProduct.photos.length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
         cancel="ยกเลิก" confirm="ลบ" onCancel={() => setDeletingProduct(null)}
         onConfirm={() => { setDeletingProduct(null); void deleteProduct(deletingProduct); }} />}

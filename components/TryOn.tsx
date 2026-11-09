@@ -241,6 +241,7 @@ export default function TryOn() {
   const [analyzing, setAnalyzing] = useState<string[]>([]);
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
+  const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด) — เปิดมาแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม (29 ต.ค. ผู้ใช้ขอ)
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
@@ -455,7 +456,6 @@ export default function TryOn() {
   }
 
   async function deleteUpload(key: Key, item: Item) {
-    if (!confirm(`ลบ "${item.name}"? (ย้ายไปถังขยะ)`)) return;
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
@@ -928,7 +928,7 @@ export default function TryOn() {
   const showSpecial = filter === 'all' && !q; // การ์ด "ชุดเดิม" / "ไม่ใส่" / "AI เลือกท่าให้" โชว์เฉพาะตอนไม่ได้กรอง
   const uploadedCard = (key: Key, item: Item, active: boolean, onClick: () => void, zoom = false) => (
     <Card key={idOf(item)} item={item} active={active} onClick={onClick} zoom={zoom}
-      onDelete={item.uploaded ? () => void deleteUpload(key, item) : undefined} />
+      onDelete={item.uploaded ? () => setDeletingUpload({ key, item }) : undefined} />
   );
   const accTypeFilters = [
     { id: 'all', name: 'ทั้งหมด' },
@@ -995,7 +995,7 @@ export default function TryOn() {
     panel = picker('accessory', 'accessories', <>
       {visible('accessory').filter((a) => !isShoes(a)).map((a) => (
         <Card key={idOf(a)} item={a} active={pick.accessory.includes(idOf(a))} onClick={() => toggleAccessory(idOf(a))}
-          onDelete={a.uploaded ? () => void deleteUpload('accessory', a) : undefined}
+          onDelete={a.uploaded ? () => setDeletingUpload({ key: 'accessory', item: a }) : undefined}
           footer={a.uploaded && (
             <button className="acc-type" title="แก้ชื่อ/ประเภท" onClick={() => setDialog({ mode: 'edit', item: a })}>
               {accessoryType(a).name} ✎
@@ -1382,6 +1382,9 @@ export default function TryOn() {
         cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
         onCancel={() => { setConfirmStart(false); if (shownRecipe) loadShown(); }}
         onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
+      {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingUpload(null)}
+        onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);
