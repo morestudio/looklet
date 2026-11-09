@@ -822,7 +822,7 @@ export default function TryOn() {
   const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
   if (cleanKey === null && aiModels !== null) setCleanKey(liveKey); // quality is set when models load
   const shownSrc = shown?.src ?? null;
-  const syncing = shownSrc !== syncedSrc;
+  const syncing = cleanKey !== null && shownSrc !== syncedSrc; // clicked before models loaded -> loads right after, so default quality can't overwrite it
   if (syncing) {
     setSyncedSrc(shownSrc);
     if (shownRecipe) {
@@ -830,7 +830,10 @@ export default function TryOn() {
       loadShown();
       setViewKey(recipeKey(shownRecipe.recipe));
     } else {
-      if (draft) { applyRecipe(draft.recipe, draft.chosen); setBase(draft.base); setDraft(null); }
+      if (draft) {
+        // deleted while viewing -> same checks as a past image (missing upload = empty, model = first)
+        applyRecipe(readRecipe(draft.recipe, lists).recipe, draft.chosen); setBase(draft.base); setDraft(null);
+      }
       setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
     }
   } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
@@ -1380,7 +1383,7 @@ export default function TryOn() {
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
       {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
         cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
-        onCancel={() => { setConfirmStart(false); if (shownRecipe) loadShown(); }}
+        onCancel={() => { setConfirmStart(false); if (shownRecipe) { loadShown(); setViewKey(recipeKey(shownRecipe.recipe)); } }} // key from today's lists, else it reopens
         onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
