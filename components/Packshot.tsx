@@ -307,6 +307,7 @@ export default function Packshot() {
   const [status, setStatus] = useState('');
   const [canvasStatus, setCanvasStatus] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false); // generate() running: spinner tile in History (Go list item 10)
   const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
@@ -620,6 +621,7 @@ export default function Packshot() {
       ...(shotType === 'creative' || shot ? [] : [propsLabel, ...(isMulti ? [] : [angle.name]), framing.name]),
     ].join(' · '); // no AI vendor/model name in what users see (Go list item 12)
     const setCaption = (i: number, name: string) => `ชุดภาพ ${i + 1}/${shotCount} ${name} · ${caption}`;
+    setGenerating(true);
     setBusy(set ? `AI กำลังสร้างรูปแรกของชุด (1/${shotCount})...` : 'AI กำลังสร้างรูป... (ประมาณ 20–90 วินาที)');
     try {
       const productImg = await jpegBase64(product.src!);
@@ -678,6 +680,7 @@ export default function Packshot() {
     } finally {
       setBusy(null);
       setPendingSet(null);
+      setGenerating(false);
     }
   }
 
@@ -751,7 +754,7 @@ export default function Packshot() {
   // ปุ่มสร้างรูปท้ายขั้นตั้งค่า (+ เหตุผลที่ยังกดไม่ได้) — ปุ่มสร้างรูปมุมขวาบนใช้ได้ทุกขั้น
   const generateLabel = isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูป';
   const genButtons = <>
-    <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้าง...' : generateLabel}</button>
+    <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้างรูป…' : generateLabel}</button>
     {isMulti && <p className="muted-text">{selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป</p>}
     {!creativeReady && <p className="note">เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป</p>}
     {!scaleReady && <p className="note">กรอกขนาดจริงให้ครบในขั้นประเภทภาพ</p>}
@@ -1075,7 +1078,7 @@ export default function Packshot() {
           {panel}
           </div>
           {nextStep >= 0 && <div className="sticky-bar">
-            <button className={'btn ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
+            <button className={'btn ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
           </div>}
         </aside>
 
@@ -1099,8 +1102,12 @@ export default function Packshot() {
           </div>
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
+            {/* new-tile as on the model page: spinner until the first image arrives (a set then shows its own pending slots) */}
+            {generating && !pendingSet && <button type="button" className="new-tile active" disabled aria-busy="true">
+              <div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span>
+            </button>}
             {historyItems}
-            {!results.length && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; มุมขวาบน</p>}
+            {!results.length && !generating && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; มุมขวาบน</p>}
           </div>
         </section>
 
