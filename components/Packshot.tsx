@@ -103,11 +103,11 @@ const text = (v: unknown) => (typeof v === 'string' ? v : '');
 const creativeScopeOf = (group: ProductGroup | undefined, idea: string, facts: string, inspirationSrc: string | undefined) =>
   JSON.stringify([group?.id, group?.main?.src, group?.photos.map((p) => p.src), idea, facts, inspirationSrc]);
 // stored recipe -> valid Recipe; an id no longer in the lists (deleted product/upload) -> null, its step listed in missing
-function readRecipe(raw: Partial<Recipe>, lists: Record<Key, ProductPhoto[]>): { recipe: Recipe; missing: StepKey[] } {
+function readRecipe(raw: Partial<Recipe>, lists: Record<Key, ProductPhoto[]>, groups = productGroups(lists.product)): { recipe: Recipe; missing: StepKey[] } {
   const r = raw as Record<string, unknown>;
   const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
   const missing = new Set<StepKey>();
-  const ids = (key: Key) => (key === 'product' ? productGroups(lists.product).map((g) => g.id) : lists[key].map(idOf));
+  const ids = (key: Key) => (key === 'product' ? groups.map((g) => g.id) : lists[key].map(idOf));
   const ref = (key: Key, id: unknown, step: StepKey) => {
     if (id === null || id === undefined) return null;
     if (typeof id === 'string' && ids(key).includes(id)) return id;
@@ -616,10 +616,11 @@ export default function Packshot() {
   }
 
   // own product = every photo in it (incl. removed ones), same flow as deleteUpload
+  const productFiles = (g: ProductGroup) => lists.product.filter((p) => (p.productGroup || p.src) === g.id);
   async function deleteProduct(g: ProductGroup) {
-    if (groupBusy || busy !== null) return;
+    if (groupBusy || busy !== null) return setStatus('ลบสินค้าไม่ได้ตอนนี้ — รอให้สร้างรูปหรือเก็บรูปเสร็จก่อน');
     // root last: it holds the group's name/type, so a partial failure keeps a smaller product instead of orphans
-    const files = lists.product.filter((p) => (p.productGroup || p.src) === g.id).sort((a, b) => Number(a.src === g.id) - Number(b.src === g.id));
+    const files = productFiles(g).sort((a, b) => Number(a.src === g.id) - Number(b.src === g.id));
     const deleted = new Set<string>();
     setGroupBusy(true);
     try {
@@ -839,7 +840,7 @@ export default function Packshot() {
   const liveKey = recipeKey(recipe);
   useEffect(() => { liveKeyRef.current = liveKey; });
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
+  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists, groups) : null;
   const loadShown = () => {
     const r = shownRecipe!.recipe;
     // the image's own idea becomes the only one listed, bound to the restored product and inputs
@@ -850,7 +851,7 @@ export default function Packshot() {
   const startFromShown = () => { setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
   if (cleanKey === null && aiModels !== null && libReady) setCleanKey(liveKey); // quality is set when models load, product when the library loads
   const shownSrc = shown?.src ?? null;
-  const syncing = shownSrc !== syncedSrc;
+  const syncing = cleanKey !== null && shownSrc !== syncedSrc; // clicked before page setup finished -> loads right after it
   if (syncing) {
     setSyncedSrc(shownSrc);
     if (shownRecipe) {
@@ -859,7 +860,7 @@ export default function Packshot() {
       setViewKey(recipeKey(shownRecipe.recipe));
     } else {
       if (draft) {
-        const back = readRecipe(draft.recipe, lists).recipe; // deleted while viewing -> null, as for a past image
+        const back = readRecipe(draft.recipe, lists, groups).recipe; // deleted while viewing -> null, as for a past image
         if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
         applyRecipe(back, draft.chosen, draft.concepts);
         setDraft(null);
@@ -1248,7 +1249,7 @@ export default function Packshot() {
             {/* "รูปใหม่" = the setup in progress (product photo on the stage); first tile, always there, as on the model page */}
             <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
               aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
-              {generating
+              {generating && !pendingSet
                 ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
                 : <><span className="new-plus" aria-hidden="true">+</span><span>รูปใหม่</span></>}
             </button>
@@ -1267,7 +1268,7 @@ export default function Packshot() {
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
-      {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${deletingProduct.photos.length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
+      {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${productFiles(deletingProduct).length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
         cancel="ยกเลิก" confirm="ลบ" onCancel={() => setDeletingProduct(null)}
         onConfirm={() => { setDeletingProduct(null); void deleteProduct(deletingProduct); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}

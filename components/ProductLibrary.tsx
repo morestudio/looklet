@@ -65,8 +65,8 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
         {g.main?.src ? img(g.main.src, g.name) : <span className="product-empty">ยังไม่มีรูป</span>}
         <b>{g.name}</b><small>{isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}{g.photos.length} รูป</small>
       </button>;
-        // own uploads get × like the model page's Card; samples aren't in storage
-        return isSampleGroup(g) ? card : <div className="deletable" key={g.id}>{card}<DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} /></div>;
+        // own uploads get × like the model page's Card; samples aren't in storage · no × while busy (generating / saving)
+        return isSampleGroup(g) || busy ? card : <div className="deletable" key={g.id}>{card}<DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} /></div>;
       })}
     </div>
 
