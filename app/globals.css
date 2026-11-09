@@ -219,11 +219,11 @@ button, select, input, textarea { font-family: inherit; }
 .card.pending { cursor: default; }
 .card.pending .pic { position: relative; }
 .card.pending .pic img { opacity: .45; }
-.card.pending span, .card.loading span { color: var(--mute); }
+.card.pending span, .card.loading span, .product-group-card.loading :is(b, small) { color: var(--mute); }
 /* .card.loading: img not loaded yet */
-.card.loading .pic img { opacity: 0; }
+.card.loading .pic img, .product-group-card.loading img, .current-product-photos .loading img { opacity: 0; }
 /* active + loading: tick to corner (same as .tile.text) so it doesn't cover spinner */
-.card.active.loading .pic::after { inset: 6px 6px auto auto; width: 22px; height: 22px; border-radius: var(--r-full); background: var(--primary); font-size: 12px; }
+.card.active.loading .pic::after, .product-group-card.active.loading:not(.product-add)::after { inset: 6px 6px auto auto; width: 22px; height: 22px; border-radius: var(--r-full); background: var(--primary); font-size: 12px; }
 .pending-spin { position: absolute; inset: 0; display: grid; place-items: center; }
 .pending-spin .spinner { width: 24px; height: 24px; border: 3px solid rgba(0, 0, 0, .12); border-top-color: var(--ink-soft); }
 .acc-type { margin: var(--space-4) 0 0 var(--space-2); padding: var(--space-2) var(--space-8); border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); font-size: var(--text-2xs); font-weight: 500; cursor: pointer; }
@@ -570,6 +570,7 @@ dialog.shot-choice-dialog { width: min(1060px, calc(100vw - 32px)); max-width: n
 /* สินค้าที่เลือก: รูปมืดลง ติ๊กอยู่กลางรูป (รูปสูง 120px) */
 .product-group-card.active:not(.product-add)::after { content: "✓"; position: absolute; top: 0; left: 0; right: 0; height: 120px; display: grid; place-items: center; background: var(--tick-overlay); color: var(--on-primary); font-size: 16px; font-weight: 500; line-height: 1; pointer-events: none; }
 .product-group-card img { display: block; width: 100%; height: 120px; object-fit: contain; background: #fff; } /* พื้นขาวล้วน ให้กลืนกับพื้นขาวของรูปสินค้า */
+.product-group-card .pending-spin { bottom: auto; height: 120px; } /* spinner over the photo, not the whole card */
 .product-group-card b, .product-group-card small { display: block; padding: 0 var(--space-10); margin-top: var(--space-8); overflow-wrap: break-word; }
 .product-group-card b { font-size: var(--text-sm); }
 .product-group-card small { margin-top: var(--space-2); font-size: var(--text-2xs); color: var(--mute); }

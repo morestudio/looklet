@@ -19,6 +19,15 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
   const [removed, setRemoved] = useState<{ group: string; src: string } | null>(null); // รูปที่เพิ่งนำออก ไว้กด "เอากลับ"
   const sample = selected && isSampleGroup(selected); // สินค้าตัวอย่าง (lib/product-groups.ts PRODUCT_SAMPLES): ใช้ได้ แต่แก้ชื่อ/รูปไม่ได้
   const [over, setOver] = useState(false); // กำลังลากไฟล์อยู่เหนือกล่องเพิ่มสินค้า
+  // Go list item 13: spinner until each photo loads, same as Card in ui.tsx · onError counts as loaded
+  const [loaded, setLoaded] = useState<Set<string>>(() => new Set());
+  const done = (src: string) => setLoaded((s) => (s.has(src) ? s : new Set(s).add(src)));
+  const loading = (src?: string) => Boolean(src) && !loaded.has(src!);
+  const img = (src: string, alt: string) => <>
+    {/* cached img can complete before hydration attaches onLoad */}
+    <img src={src} alt={alt} onLoad={() => done(src)} onError={() => done(src)} ref={(el) => { if (el?.complete) done(src); }} />
+    {loading(src) && <div className="pending-spin"><div className="spinner" /></div>}
+  </>;
   const pick = (append: boolean) => (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
@@ -50,8 +59,8 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       {analyzing.map((src) => <PendingCard key={src} src={src} />)}
       {saving.map(({ url }) => <PendingCard key={url} src={url} label="กำลังเก็บรูป..." />)}
       {[...groups].reverse().map((g) => <button type="button" key={g.id} aria-pressed={selected?.id === g.id} disabled={busy}
-        onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '')}>
-        {g.main?.src ? <img src={g.main.src} alt={g.name} /> : <span className="product-empty">ยังไม่มีรูป</span>}
+        onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '') + (loading(g.main?.src) ? ' loading' : '')}>
+        {g.main?.src ? img(g.main.src, g.name) : <span className="product-empty">ยังไม่มีรูป</span>}
         <b>{g.name}</b><small>{isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}{g.photos.length} รูป</small>
       </button>)}
     </div>
@@ -69,8 +78,8 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
           <button type="button" className="btn btn-tertiary" onClick={() => setEditing(null)}>ยกเลิก</button></span>
       </form>}
       <p className="muted-text">{selected.photos.length} รูป</p>
-      <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src}>
-        <img src={p.src} alt={`${selected.name} รูปที่ ${i + 1}`} />
+      <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src} className={loading(p.src) ? 'loading' : undefined}>
+        {img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
         {p.src === selected.main?.src && <span className="current-product-main">รูปหลัก</span>}
         {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
         {!sample && selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}
