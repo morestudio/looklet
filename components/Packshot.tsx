@@ -1067,7 +1067,8 @@ export default function Packshot() {
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
-            <button className="btn btn-secondary tool" disabled={empty} onClick={save}><IconDownload /> ดาวน์โหลด</button>
+            {/* Go list item 9: download only a generated image, never the user's own product photo */}
+            <button className="btn btn-secondary tool" disabled={!shown} onClick={save}><IconDownload /> ดาวน์โหลด</button>
             {shown && <button className="btn btn-secondary tool" disabled={busy !== null || planning}
               onClick={() => setLocalEdit(shown)}><IconRetouch /> แก้เฉพาะจุด</button>}
             {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
