@@ -751,10 +751,11 @@ export default function Packshot() {
 
   const canGenerate = busy === null && !planning && creativeReady && !groupBusy && !saving.some((s) => s.key === 'product') && Boolean(aiModels?.length) && Boolean(product) && scaleReady && detailReady;
 
-  // ปุ่มสร้างรูปท้ายขั้นตั้งค่า (+ เหตุผลที่ยังกดไม่ได้) — ปุ่มสร้างรูปมุมขวาบนใช้ได้ทุกขั้น
-  const generateLabel = isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูป';
+  // generate lives in the sticky bar on every step (Go list item 5, as on the model page) · ตั้งค่า step keeps why it's disabled
+  const genLabel = busy !== null ? 'กำลังสร้างรูป…' : isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูปทันที';
+  const genWhy = !creativeReady ? 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป' : !scaleReady ? 'กรอกขนาดจริงให้ครบในขั้นประเภทภาพ'
+    : !detailReady ? 'ระบุฟีเจอร์ในขั้นประเภทภาพ' : undefined; // tooltip on the bar button
   const genButtons = <>
-    <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={() => void generate()}>{busy !== null ? 'กำลังสร้างรูป…' : generateLabel}</button>
     {isMulti && <p className="muted-text">{selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป</p>}
     {!creativeReady && <p className="note">เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป</p>}
     {!scaleReady && <p className="note">กรอกขนาดจริงให้ครบในขั้นประเภทภาพ</p>}
@@ -1077,16 +1078,19 @@ export default function Packshot() {
           </div>
           {panel}
           </div>
-          {nextStep >= 0 && <div className="sticky-bar">
-            <button className={'btn ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
-          </div>}
+          {/* ตั้งค่า is the last step -> generate only */}
+          <div className="sticky-bar">
+            {nextStep >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
+              onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>}
+            <button className="btn btn-primary" disabled={!canGenerate} title={genWhy} onClick={() => void generate()}>{genLabel}</button>
+          </div>
         </aside>
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '')} ref={frameRef}>
             <figure className="zoomable" title="กดเพื่อดูเต็มจอและซูม" onClick={() => void openViewer()}>
               <canvas ref={canvasRef} hidden={empty} />
-              {empty && <p className="muted-text">อัปโหลดรูปสินค้าในขั้นที่ 1 แล้วกด &quot;สร้างรูป&quot;</p>}
+              {empty && <p className="muted-text">อัปโหลดรูปสินค้าในขั้นที่ 1 แล้วกด &quot;สร้างรูปทันที&quot;</p>}
             </figure>
             {canvasStatus && <div className="frame-hint" role="status">{canvasStatus}</div>}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
@@ -1107,7 +1111,7 @@ export default function Packshot() {
               <div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span>
             </button>}
             {historyItems}
-            {!results.length && !generating && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูป&quot; มุมขวาบน</p>}
+            {!results.length && !generating && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูปทันที&quot;</p>}
           </div>
         </section>
 
