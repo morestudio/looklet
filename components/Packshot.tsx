@@ -8,7 +8,7 @@ import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
 import CreativeShot from './CreativeShot';
-import { type CreativeConcept } from '@/lib/creative';
+import { readCreativeConcept, type CreativeConcept } from '@/lib/creative';
 import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
@@ -16,7 +16,7 @@ import {
 } from './icons';
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
-import { defaultTurn, turnFill, type Turn } from '@/lib/turntable';
+import { defaultTurn, readTurn, turnFill, type Turn } from '@/lib/turntable';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
@@ -27,7 +27,7 @@ import {
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
-  PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
+  PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS, PRODUCT_ANGLES, BACKDROP_COLORS, PROP_STYLES,
   NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
   HAND_MODES, HAND_POSES, handPoses, resolveHandPose, CUSTOM_ANGLE, customAngleShot, turntableAngle,
 } from '@/lib/packshot';
@@ -49,8 +49,8 @@ const SHOT_TYPE_ORDER = [
 ];
 type Plan = { name: string; th: string }; // พร็อพที่ AI คิดให้
 type SetTag = { id: string; index: number }; // ชุดภาพสินค้า (เหมือน SetTag ใน lib/storage.ts)
-type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan };
-type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan };
+type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe> };
+type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe> };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
@@ -83,6 +83,67 @@ function stepUsed(key: StepKey, type: ShotType) {
   if (key === 'angle') return type !== 'multi';
   if (key === 'framing') return type === 'styled' || type === 'scale';
   return true;
+}
+
+// ---------- recipe: every step's choices saved with each generated image (meta.recipe, lib/recipe.ts), as on the model page ----------
+type Size = { width: string; height: string; depth: string };
+type Recipe = {
+  pick: Record<Key, string | null>; shotType: ShotType; idea: string; facts: string; concept: CreativeConcept | null;
+  detailTarget: string; feature: string; scaleRef: string; handPose: string; dimensions: Size; referenceSize: Omit<Size, 'height'>; extraAngles: string[];
+  scene: string; color: string; props: string; propText: string; angle: string; turn: Turn | null; framing: string; refMode: RefMode;
+  aspect: string; quality: string; extra: string;
+};
+// fixed field order: equal recipes -> equal keys
+const recipeKey = (r: Recipe) => JSON.stringify([r.pick.product, r.pick.ref, r.pick.scene, r.pick.prop, r.shotType, r.idea, r.facts, r.concept?.id ?? null,
+  r.detailTarget, r.feature, r.scaleRef, r.handPose, r.dimensions.width, r.dimensions.height, r.dimensions.depth, r.referenceSize.width, r.referenceSize.depth,
+  r.extraAngles, r.scene, r.color, r.props, r.propText, r.angle, r.turn?.yaw ?? null, r.turn?.elev ?? null, r.framing, r.refMode, r.aspect, r.quality, r.extra]);
+const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
+const text = (v: unknown) => (typeof v === 'string' ? v : '');
+// creative ideas are bound to the product's photos + the inputs they were planned from (changed inputs = ideas no longer valid)
+const creativeScopeOf = (group: ProductGroup | undefined, idea: string, facts: string, inspirationSrc: string | undefined) =>
+  JSON.stringify([group?.id, group?.main?.src, group?.photos.map((p) => p.src), idea, facts, inspirationSrc]);
+// stored recipe -> valid Recipe; an id no longer in the lists (deleted product/upload) -> null, its step listed in missing
+function readRecipe(raw: Partial<Recipe>, lists: Record<Key, ProductPhoto[]>): { recipe: Recipe; missing: StepKey[] } {
+  const r = raw as Record<string, unknown>;
+  const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
+  const missing = new Set<StepKey>();
+  const ids = (key: Key) => (key === 'product' ? productGroups(lists.product).map((g) => g.id) : lists[key].map(idOf));
+  const ref = (key: Key, id: unknown, step: StepKey) => {
+    if (id === null || id === undefined) return null;
+    if (typeof id === 'string' && ids(key).includes(id)) return id;
+    missing.add(step);
+    return null;
+  };
+  const size = (v: unknown) => {
+    const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+    return { width: text(o.width), height: text(o.height), depth: text(o.depth) };
+  };
+  const concept = r.concept ? readCreativeConcept(r.concept) : null;
+  if (r.concept && !concept) missing.add('creative');
+  const recipe: Recipe = {
+    pick: { product: ref('product', p.product, 'product'), ref: ref('ref', p.ref, 'creative'), scene: ref('scene', p.scene, 'set'), prop: ref('prop', p.prop, 'props') },
+    shotType: oneOf<ShotType>(r.shotType, SHOT_TYPES.map((t) => t.id), 'clean'),
+    idea: text(r.idea), facts: text(r.facts), concept,
+    detailTarget: oneOf(r.detailTarget, DETAIL_TARGETS.map((x) => x.id), 'texture'),
+    feature: text(r.feature),
+    scaleRef: oneOf(r.scaleRef, SCALE_REFERENCES.map((x) => x.id), 'hand'),
+    handPose: oneOf(r.handPose, HAND_POSES.map((x) => x.id), 'hold'),
+    dimensions: size(r.dimensions),
+    referenceSize: (({ width, depth }) => ({ width, depth }))(size(r.referenceSize)),
+    extraAngles: (Array.isArray(r.extraAngles) ? r.extraAngles : []).filter((id) => PRODUCT_SET_SHOTS.some((x) => x.id === id)) as string[],
+    scene: oneOf(r.scene, [PRESET, ...SETS.map((x) => x.id)], PRESET),
+    color: oneOf(r.color, BACKDROP_COLORS.map((x) => x.id), 'white'),
+    props: oneOf(r.props, [NO_PROPS, ...PROP_STYLES.map((x) => x.id)], NO_PROPS),
+    propText: text(r.propText),
+    angle: oneOf(r.angle, [PRESET, CUSTOM_ANGLE, ...PRODUCT_ANGLES.map((x) => x.id)], PRESET),
+    turn: r.turn ? readTurn(r.turn) : null,
+    framing: oneOf(r.framing, [PRESET, ...PRODUCT_FRAMINGS.map((x) => x.id)], PRESET),
+    refMode: oneOf<RefMode>(r.refMode, REF_MODES.map((m) => m.id), 'shot'),
+    aspect: oneOf<string>(r.aspect, PRODUCT_ASPECTS.map((a) => a.id), '1:1'),
+    quality: typeof r.quality === 'string' ? r.quality : 'high',
+    extra: text(r.extra),
+  };
+  return { recipe, missing: [...missing] };
 }
 
 // สัดส่วน "อัตโนมัติ": 4:5 (ฟีด IG) · ลอกทั้งช็อต = สัดส่วนที่ใกล้รูปต้นแบบที่สุด
@@ -312,12 +373,20 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
+  // past image loads its settings (Go list item 3): draft = setup in progress set aside while a past image's recipe fills the panel
+  const [draft, setDraft] = useState<{ recipe: Recipe; chosen: StepKey[]; concepts: typeof conceptState } | null>(null);
+  const [viewKey, setViewKey] = useState<string | null>(null); // panel recipe key when the shown image was opened; differs -> user changed a choice
+  const [syncedSrc, setSyncedSrc] = useState<string | null>(null); // shown image the panel was last synced to
+  const [cleanKey, setCleanKey] = useState<string | null>(null); // draft key at page open (after models + library load) / last generate; differs = unsaved picks
+  const [confirmStart, setConfirmStart] = useState(false); // "เริ่มจากรูปนี้?" dialog
+  const [libReady, setLibReady] = useState(false); // library loaded (product is preselected then)
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
   const productUploadRef = useRef(false);
   const frameRef = useRef<HTMLDivElement>(null);
+  const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
 
@@ -336,7 +405,7 @@ export default function Packshot() {
   // ท่าที่เลือกไว้ไม่เข้ากับสินค้าที่เปลี่ยนมา (เช่น หิ้วหูกระเป๋า -> รองเท้า) = ท่าแรกที่ใช้ได้ ตรงกับที่ API ทำ
   const handPose = resolveHandPose(product?.type, handPoseId);
   const inspiration = shotType === 'creative' ? find(lists.ref, pick.ref) : undefined; // ภาพแรงบันดาลใจ (ไม่บังคับ)
-  const creativeScope = JSON.stringify([selectedGroup?.id, selectedGroup?.main?.src, selectedGroup?.photos.map((p) => p.src), creativeIdea, creativeFacts, inspiration?.src]);
+  const creativeScope = creativeScopeOf(selectedGroup, creativeIdea, creativeFacts, inspiration?.src);
   const concepts = conceptState?.scope === creativeScope ? conceptState.concepts : [];
   const creativeConcept = concepts.find((c) => c.id === conceptId);
   const creativeReady = shotType !== 'creative' || Boolean(creativeConcept);
@@ -384,7 +453,7 @@ export default function Packshot() {
       .then((lib) => {
         if (!lib || cancelled) return;
         setResults(lib.results.filter((r) => r.page === 'product')
-          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan })));
+          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe })));
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): ProductPhoto => ({ ...u, name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         // สินค้าตัวอย่างอยู่ก่อน (เก่าสุด) รายการแสดงใหม่สุดก่อน -> สินค้าของผู้ใช้ขึ้นก่อน ตัวอย่างต่อท้าย · ยังไม่มีสินค้าเลย = เลือกตัวอย่างไว้ให้
@@ -392,7 +461,8 @@ export default function Packshot() {
         setLists(next);
         setPick((p) => (p.product || !next.product.length ? p : { ...p, product: productGroups(next.product).at(-1)?.id ?? null })); // เลือกสินค้าล่าสุดไว้ให้
       })
-      .catch((err) => console.error('โหลดคลังรูปไม่สำเร็จ', err));
+      .catch((err) => console.error('โหลดคลังรูปไม่สำเร็จ', err))
+      .finally(() => { if (!cancelled) setLibReady(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -423,10 +493,8 @@ export default function Packshot() {
 
   function select(key: Key, id: string | null) {
     setPick((p) => ({ ...p, [key]: id }));
-    if (key === 'product') {
-      setCurrent(null);
-      if (id !== pick.product) setDimensions({ width: '', height: '', depth: '' });
-    } // เปลี่ยนสินค้า -> โชว์รูปสินค้าชิ้นใหม่
+    // stage switches to the new product via the recipe change check (below useChosenSteps), as on the model page
+    if (key === 'product' && id !== pick.product) setDimensions({ width: '', height: '', depth: '' });
     if (key === 'prop' && id) setPropsId(NO_PROPS); // พร็อพของฉัน กับ ตัวเลือกพร็อพ เลือกได้อย่างเดียว
   }
 
@@ -456,6 +524,17 @@ export default function Packshot() {
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, ...groupMeta, productView: 'unspecified', uploaded: true }] }));
     if (!targetGroupId) select(key, src);
     return src;
+  }
+
+  // panel <- recipe (steps = touched steps for useChosenSteps) · concepts: the idea list to show in ไอเดียภาพ
+  function applyRecipe(r: Recipe, steps: StepKey[], concepts: typeof conceptState) {
+    setPick(r.pick); setShotType(r.shotType); setCreativeIdea(r.idea); setCreativeFacts(r.facts); setConceptState(concepts); setConceptId(r.concept?.id ?? null);
+    setDetailTarget(r.detailTarget); setFeature(r.feature); setScaleRef(r.scaleRef); setHandPoseId(r.handPose);
+    setDimensions(r.dimensions); setReferenceSize(r.referenceSize); setExtraAngles(r.extraAngles);
+    setSceneId(r.scene); setColorId(r.color); setPropsId(r.props); setPropText(r.propText); setAngleId(r.angle); setTurn(r.turn); setFramingId(r.framing); setRefMode(r.refMode);
+    setAspect(r.aspect); setQuality(r.quality); setExtra(r.extra);
+    setChosen(new Set(steps));
+    if (!stepUsed(STEPS[step].key, r.shotType)) setStep(STEPS.findIndex((s) => s.key === 'shot')); // rail greys that step out
   }
 
   // แก้สินค้า (เปลี่ยนชื่อ / นำรูปออก / เอากลับ) ผ่าน /api/product-groups แล้วใส่ metadata ที่ server แก้ลงรายการในหน้า
@@ -648,14 +727,25 @@ export default function Packshot() {
           product: { ...refOf(product, productImg), type: productType(product.type).name }, ref: refOf(ref, refImg), set_image: refOf(sceneImg, sceneB), prop_image: refOf(propImg, propB),
           supports: supporting.map((i) => ({ name: i.name, src: i.src })), // รูปสินค้าเพิ่มเติมที่ส่งไป -> log / หน้าตรวจงาน
         },
+        recipe, // stored with the image (lib/recipe.ts)
+      };
+      // finished image: open it, unless the user changed choices while waiting (opening it would load its recipe over them)
+      const showMade = () => {
+        setCleanKey(liveKey);
+        if (liveKeyRef.current !== liveKey) {
+          setCurrent((c) => (c === null ? c : c + 1)); // list grew at the front: keep the same image on the stage
+          setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
+          return;
+        }
+        setCurrent(0);
       };
       const shootId = set ? newSetId() : null;
       const tag = (i: number) => (shootId ? { id: shootId, index: i } : undefined);
       const firstCaption = set ? setCaption(0, 'Front') : caption;
       const out = await api<{ src: string; stylePlan: Plan | null }>('/api/packshot', { ...body, caption: firstCaption, set: tag(0) });
-      setResults((r) => [{ src: out.src, caption: firstCaption, set: tag(0), stylePlan: out.stylePlan ?? undefined }, ...r]);
-      setCurrent(0);
+      setResults((r) => [{ src: out.src, caption: firstCaption, set: tag(0), stylePlan: out.stylePlan ?? undefined, recipe }, ...r]);
       if (out.stylePlan) setStatus(`${shotType === 'creative' ? 'ไอเดีย' : 'พร็อพที่ AI คิดให้'} (${out.stylePlan.name}): ${out.stylePlan.th}`);
+      showMade();
       frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       if (shootId) {
         // มุมที่เหลือ: ส่งรูปแรกเป็นต้นแบบ ไม่ส่งช็อตต้นแบบ/รูปฉาก — เสร็จรูปไหนขึ้นประวัติรูปนั้นเลย พังบางรูปยังเก็บรูปที่ได้
@@ -667,7 +757,7 @@ export default function Packshot() {
           refs: { ...body.refs, ref: null, set_image: null, set_ref: { name: firstCaption, src: out.src, w: hero.w, h: hero.h } },
           caption: setCaption(j + 1, s.name), set: tag(j + 1),
         }).then(({ src }) => {
-          setResults((r) => [{ src, caption: setCaption(j + 1, s.name), set: tag(j + 1) }, ...r]);
+          setResults((r) => [{ src, caption: setCaption(j + 1, s.name), set: tag(j + 1), recipe }, ...r]);
           setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
         }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
         const failed = rest.filter((x) => x.status === 'rejected');
@@ -738,7 +828,51 @@ export default function Packshot() {
   }
 
   const cur = STEPS[step];
-  const { chosen, mark } = useChosenSteps(cur.key);
+  const { chosen, mark, setChosen } = useChosenSteps(cur.key);
+
+  // ---------- recipe sync, as on the model page (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
+  const recipe: Recipe = {
+    pick, shotType, idea: creativeIdea, facts: creativeFacts, concept: shotType === 'creative' ? creativeConcept ?? null : null, // idea only when used
+    detailTarget, feature, scaleRef, handPose: handPoseId, dimensions, referenceSize, extraAngles,
+    scene: sceneId, color: colorId, props: propsId, propText, angle: angleId, turn, framing: framingId, refMode, aspect, quality, extra,
+  };
+  const liveKey = recipeKey(recipe);
+  useEffect(() => { liveKeyRef.current = liveKey; });
+  const allSteps = STEPS.map((s) => s.key);
+  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
+  const loadShown = () => {
+    const r = shownRecipe!.recipe;
+    // the image's own idea becomes the only one listed, bound to the restored product and inputs
+    const inspirationSrc = r.shotType === 'creative' ? find(lists.ref, r.pick.ref)?.src : undefined;
+    const concepts = r.concept ? { scope: creativeScopeOf(groups.find((g) => g.id === r.pick.product), r.idea, r.facts, inspirationSrc), concepts: [r.concept] } : null;
+    applyRecipe(r, allSteps.filter((k) => !shownRecipe!.missing.includes(k)), concepts);
+  };
+  const startFromShown = () => { setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
+  if (cleanKey === null && aiModels !== null && libReady) setCleanKey(liveKey); // quality is set when models load, product when the library loads
+  const shownSrc = shown?.src ?? null;
+  const syncing = shownSrc !== syncedSrc;
+  if (syncing) {
+    setSyncedSrc(shownSrc);
+    if (shownRecipe) {
+      if (!draft) setDraft({ recipe, chosen: [...chosen], concepts: conceptState });
+      loadShown();
+      setViewKey(recipeKey(shownRecipe.recipe));
+    } else {
+      if (draft) {
+        const back = readRecipe(draft.recipe, lists).recipe; // deleted while viewing -> null, as for a past image
+        if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
+        applyRecipe(back, draft.chosen, draft.concepts);
+        setDraft(null);
+      }
+      setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
+    }
+  } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
+    // a choice changed while viewing: no recipe -> back to the (changed) draft; recipe -> new draft from it, confirm first if unsaved picks
+    if (!shownRecipe) { setViewKey(null); setSyncedSrc(null); setCurrent(null); }
+    else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
+    else startFromShown();
+  }
+  const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
   // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปพื้นหินขอบหมึก) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
   const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
     : cur.key === 'shot' ? scaleReady && detailReady : true);
@@ -753,7 +887,7 @@ export default function Packshot() {
 
   // generate lives in the sticky bar on every step (Go list item 5, as on the model page) · ตั้งค่า step keeps why it's disabled
   const genLabel = busy !== null ? 'กำลังสร้างรูป…' : isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูปทันที';
-  const genWhy = !creativeReady ? 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป' : !scaleReady ? 'กรอกขนาดจริงให้ครบในขั้นประเภทภาพ'
+  const genWhy = !product ? 'เลือกสินค้าในขั้นสินค้าก่อน' : !creativeReady ? 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป' : !scaleReady ? 'กรอกขนาดจริงให้ครบในขั้นประเภทภาพ'
     : !detailReady ? 'ระบุฟีเจอร์ในขั้นประเภทภาพ' : undefined; // tooltip on the bar button
   const genButtons = <>
     {isMulti && <p className="muted-text">{selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป</p>}
@@ -1076,6 +1210,11 @@ export default function Packshot() {
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
           </div>
+          {shownRecipe && <p className="note">
+            <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูปทันที จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
+            {missingNames.length > 0 && <>ถูกลบไปแล้ว: {missingNames.join(', ')} ·{' '}</>}
+            <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
+          </p>}
           {panel}
           </div>
           {/* ตั้งค่า is the last step -> generate only */}
@@ -1106,10 +1245,13 @@ export default function Packshot() {
           </div>
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
-            {/* new-tile as on the model page: spinner until the first image arrives (a set then shows its own pending slots) */}
-            {generating && !pendingSet && <button type="button" className="new-tile active" disabled aria-busy="true">
-              <div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span>
-            </button>}
+            {/* "รูปใหม่" = the setup in progress (product photo on the stage); first tile, always there, as on the model page */}
+            <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
+              aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
+              {generating
+                ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
+                : <><span className="new-plus" aria-hidden="true">+</span><span>รูปใหม่</span></>}
+            </button>
             {historyItems}
             {!results.length && !generating && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูปทันที&quot;</p>}
           </div>
@@ -1118,6 +1260,10 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
+        onCancel={() => { setConfirmStart(false); if (shownRecipe) { loadShown(); setViewKey(recipeKey(shownRecipe.recipe)); } }} // key from today's lists, else it reopens
+        onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}

@@ -1,4 +1,4 @@
-// recipe: choices of steps 1–8 saved in meta.recipe of each generated image (shape owned by components/TryOn.tsx)
+// recipe: every step's choices saved in meta.recipe of each generated image (shape owned by each page: components/TryOn.tsx, components/Packshot.tsx)
 // server stores it as-is after this check; the page validates every field when loading it back
 
 const MAX_RECIPE_CHARS = 8000;

@@ -331,7 +331,6 @@ button, select, input, textarea { font-family: inherit; }
 .history button.new-tile { align-self: flex-start; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); aspect-ratio: 2 / 3; padding: var(--space-4); border: 1px dashed var(--control-edge); background: transparent; color: var(--ink); font-size: var(--text-xs); line-height: 1.35; text-align: center; }
 .history button.new-tile.active { border: 1.5px solid var(--ink); }
 .history button.new-tile.active::after { content: none; }
-.history button.new-tile:disabled { cursor: default; } /* product page: spinner tile while generating */
 .history button.new-tile small { color: var(--accent-text); font-size: var(--text-xs); }
 .history button.new-tile .spinner { width: 18px; height: 18px; border-width: 2px; border-color: rgba(0, 0, 0, .12); border-top-color: var(--ink-soft); }
 .new-plus { font-size: 18px; line-height: 1; }
