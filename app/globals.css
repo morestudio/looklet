@@ -564,7 +564,7 @@ dialog.shot-choice-dialog { width: min(1060px, calc(100vw - 32px)); max-width: n
 .current-product-add input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .product-list-title { margin: 0 0 var(--space-8); }
 .product-group-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); margin-bottom: var(--space-24); padding: 2px; }
-.product-group-card { position: relative; padding: 0 0 var(--space-12); overflow: hidden; border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas); color: var(--ink-soft); cursor: pointer; text-align: left; }
+.product-group-card { position: relative; width: 100%; padding: 0 0 var(--space-12); overflow: hidden; border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas); color: var(--ink-soft); cursor: pointer; text-align: left; }
 .product-group-card.active { border-color: var(--primary-soft); background: var(--primary-soft); }
 .product-group-card.active small { color: var(--body); }
 /* สินค้าที่เลือก: รูปมืดลง ติ๊กอยู่กลางรูป (รูปสูง 120px) */

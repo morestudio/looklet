@@ -17,7 +17,7 @@ import {
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
 import { defaultTurn, turnFill, type Turn } from '@/lib/turntable';
-import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
@@ -311,6 +311,7 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
   const productUploadRef = useRef(false);
@@ -532,6 +533,27 @@ export default function Packshot() {
     }
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
     setPick((p) => (p[key] === idOf(item) ? { ...p, [key]: null } : p));
+  }
+
+  // own product = every photo in it (incl. removed ones), same flow as deleteUpload
+  async function deleteProduct(g: ProductGroup) {
+    if (groupBusy || busy !== null) return;
+    // root last: it holds the group's name/type, so a partial failure keeps a smaller product instead of orphans
+    const files = lists.product.filter((p) => (p.productGroup || p.src) === g.id).sort((a, b) => Number(a.src === g.id) - Number(b.src === g.id));
+    const deleted = new Set<string>();
+    setGroupBusy(true);
+    try {
+      for (const p of files) {
+        if (!p.src!.startsWith('blob:')) await api('/api/delete', { src: p.src });
+        deleted.add(p.src!);
+      }
+    } catch (err) {
+      setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
+    } finally { setGroupBusy(false); }
+    const left = lists.product.filter((p) => !deleted.has(p.src!));
+    setLists((l) => ({ ...l, product: l.product.filter((p) => !deleted.has(p.src!)) }));
+    // selected one deleted -> newest remaining (as on page load)
+    if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
   async function deleteResult(i: number) {
@@ -781,7 +803,7 @@ export default function Packshot() {
       <ProductLibrary groups={groups} selected={selectedGroup} busy={groupBusy || busy !== null}
         analyzing={analyzing} saving={saving.filter((s) => s.key === 'product')}
         onSelect={(id) => select('product', id)} onUpload={onProductFiles}
-        onRename={renameGroup} onRemovePhoto={removePhoto} onRestorePhoto={restorePhoto} />
+        onRename={renameGroup} onRemovePhoto={removePhoto} onRestorePhoto={restorePhoto} onDelete={setDeletingProduct} />
     </>;
   } else if (cur.key === 'creative') {
     panel = <CreativeShot idea={creativeIdea} onIdea={setCreativeIdea}
@@ -1085,6 +1107,9 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${deletingProduct.photos.length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
+        cancel="ยกเลิก" confirm="ลบ" onCancel={() => setDeletingProduct(null)}
+        onConfirm={() => { setDeletingProduct(null); void deleteProduct(deletingProduct); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);
