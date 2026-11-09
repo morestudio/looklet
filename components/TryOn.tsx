@@ -1139,14 +1139,13 @@ export default function TryOn() {
           <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
         </label>
       </details>
-      {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป) · set button hidden until SET_SHOOT (Go list item 11) */}
-      <div className={'gen-row' + (SET_SHOOT ? '' : ' single')}>
-        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{genLabel}</button>
-        {SET_SHOOT && <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
-          title={SET_SHOOT ? `${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า` : 'ยังไม่เปิดให้ใช้'}>
-          ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOOT ? `ค่า AI ${SET_SHOTS.length} เท่า` : 'เร็วๆ นี้'}</small>
-        </button>}
-      </div>
+      {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
+      {SET_SHOOT && <div className="gen-row single">
+        <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+          title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
+          ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
+        </button>
+      </div>}
     </>;
   } else if (cur.key === 'settings') {
     // การ์ดมีภาพวาด (StyleView): ฉาก ไฟ เงา โทนสีของแต่ละสไตล์ ให้เห็นความต่างโดยไม่ต้องจินตนาการ (29 ต.ค.)
@@ -1291,7 +1290,8 @@ export default function TryOn() {
           ))}
         </nav>
 
-        <aside className="panel" onClickCapture={mark} onInputCapture={mark} inert={editing}>
+        <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark} inert={editing}>
+          <div className="panel-body">
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
@@ -1302,9 +1302,7 @@ export default function TryOn() {
             <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
           </p>}
           {panel}
-          {nextStep >= 0 && (
-            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
-          )}
+          </div>
           <div className="sticky-bar">
             {barNext >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
               onClick={() => goStep(barNext)}>ถัดไป: {STEPS[barNext].label} →</button>}

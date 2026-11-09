@@ -1044,15 +1044,17 @@ export default function Packshot() {
           ))}
         </nav>
 
-        <aside className="panel" onClickCapture={mark} onInputCapture={mark}>
+        <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark}>
+          <div className="panel-body">
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
           </div>
           {panel}
-          {nextStep >= 0 && (
-            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
-          )}
+          </div>
+          {nextStep >= 0 && <div className="sticky-bar">
+            <button className={'btn ' + (stepReady ? 'btn-ready' : 'btn-secondary')} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
+          </div>}
         </aside>
 
         <section className="stage">
