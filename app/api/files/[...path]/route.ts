@@ -3,7 +3,7 @@ import { get } from '@/lib/route';
 import { readImage } from '@/lib/storage';
 
 // ?w=400 = รูปย่อ JPEG (หน้าตรวจงานโชว์ทีละหลายสิบรูป รูปเต็ม 1–6 MB ต่อรูป) · รับแค่ขนาดที่กำหนด ให้ browser จำซ้ำได้
-const THUMB_WIDTHS = [400];
+const THUMB_WIDTHS = [400, 800]; // 800: gallery cards at 2x DPR
 
 // เปิดรูปที่เก็บไว้ (results/ และ images/uploads/) — ชื่อไฟล์ไม่ซ้ำ เปลี่ยนไม่ได้ ให้ browser จำไว้ได้นาน
 // readImage เปิดได้เฉพาะรูปที่บัญชีนี้เห็นได้ (ลูกค้าเปิดรูปของคนอื่นไม่ได้แม้รู้ชื่อไฟล์) · Cache-Control private: CDN ไม่แชร์ข้ามคน

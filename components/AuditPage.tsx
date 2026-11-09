@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { SignOutButton } from './AuthForm';
 import { IconCopy } from './icons';
-import { AdminTabs, PageSwitch } from './ui';
+import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
 type Row = {
   id: number; created: string; who: string; customer: boolean; page: string; action: string; model: string | null; quality: string | null;
@@ -122,7 +122,7 @@ export default function AuditPage() {
       <div className="brand">SnapAds <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{message}</div>
-      <div className="top-actions"><SignOutButton /></div>
+      <div className="top-actions"><GalleryLink /><SignOutButton /></div>
     </header>
     <main className="admin-main">
       <AdminTabs current="audit" />

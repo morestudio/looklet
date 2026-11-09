@@ -17,13 +17,11 @@ import {
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
 import { defaultTurn, turnFill, type Turn } from '@/lib/turntable';
-import { AddCard, Card, ChipGroup, DeleteButton, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
-import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage,
-} from '@/lib/browser';
+import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
@@ -311,6 +309,7 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
+  const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
   const productUploadRef = useRef(false);
@@ -534,8 +533,10 @@ export default function Packshot() {
     setPick((p) => (p[key] === idOf(item) ? { ...p, [key]: null } : p));
   }
 
-  async function deleteResult(i: number) {
-    if (!confirm('ลบรูปที่สร้างนี้? (ย้ายไปถังขยะ)')) return;
+  // by src, not index: results can grow at the front while the dialog is open
+  async function deleteResult(src: string) {
+    const i = results.findIndex((r) => r.src === src);
+    if (i < 0) return;
     try {
       await api('/api/delete', { src: results[i].src });
     } catch (err) {
@@ -991,7 +992,7 @@ export default function Packshot() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={results[i].src} alt={results[i].caption} />
       </button>
-      <DeleteButton onClick={() => void deleteResult(i)} />
+      <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
@@ -1026,6 +1027,7 @@ export default function Packshot() {
         </div>
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
+          <GalleryLink />
           <TokenUsage />
           <SignOutButton />
         </div>
@@ -1082,6 +1084,9 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingSrc(null)}
+        onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);

@@ -160,7 +160,8 @@ export function useMe() {
   return me;
 }
 
-export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' }) {
+// 'gallery' -> no active tab
+export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' | 'gallery' }) {
   const me = useMe();
   const tab = (id: 'model' | 'product' | 'admin', href: string, label: string) => (
     <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
@@ -168,6 +169,13 @@ export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin'
   return <nav className="page-switch" aria-label="เลือกหน้า">
     {tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}
     {me?.role === 'superadmin' && tab('admin', '/admin', 'แอดมิน')}
+  </nav>;
+}
+
+// PageSwitch markup, single tab -> /gallery
+export function GalleryLink({ active = false }: { active?: boolean }) {
+  return <nav className="page-switch" aria-label="แกลลอรี่">
+    <Link href="/gallery" className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>แกลลอรี่</Link>
   </nav>;
 }
 

@@ -20,14 +20,11 @@ import {
   IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { SKIN_MODEL } from '@/lib/skin';
-import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
-  saveImageFile, toWebImage, uploadImage,
-} from '@/lib/browser';
+import { api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
   POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
@@ -241,6 +238,7 @@ export default function TryOn() {
   const [analyzing, setAnalyzing] = useState<string[]>([]);
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
+  const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด) — เปิดมาแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม (29 ต.ค. ผู้ใช้ขอ)
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
@@ -472,8 +470,10 @@ export default function TryOn() {
     });
   }
 
-  async function deleteResult(i: number) {
-    if (!confirm('ลบรูปที่สร้างนี้? (ย้ายไปถังขยะ)')) return;
+  // by src, not index: results can grow at the front while the dialog is open
+  async function deleteResult(src: string) {
+    const i = results.findIndex((r) => r.src === src);
+    if (i < 0) return;
     try {
       await api('/api/delete', { src: results[i].src });
     } catch (err) {
@@ -1239,7 +1239,7 @@ export default function TryOn() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={results[i].src} alt={results[i].caption} />
       </button>
-      <DeleteButton onClick={() => void deleteResult(i)} />
+      <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
@@ -1273,6 +1273,7 @@ export default function TryOn() {
         </div>
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นสไตล์ถ่ายภาพ) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
+          <GalleryLink />
           <TokenUsage />
           <SignOutButton />
         </div>
@@ -1384,6 +1385,9 @@ export default function TryOn() {
         cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
         onCancel={() => { setConfirmStart(false); if (shownRecipe) loadShown(); }}
         onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
+      {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingSrc(null)}
+        onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);
