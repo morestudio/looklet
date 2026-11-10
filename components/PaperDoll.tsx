@@ -1,6 +1,7 @@
 'use client';
 // Paper doll: stage before the first image. Croquis + one card per pick, placed by body row.
 import type { ReactNode } from 'react';
+import { thumbSrc } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
 
 // item.src -> photo; item without src -> its name as text; keep -> "keep as is" text; neither -> dashed "+"
@@ -18,7 +19,7 @@ function DollCard({ slot, bare = false }: { slot: DollSlot; bare?: boolean }) {
     <button type="button" className={'doll-card' + (empty ? ' empty' : '') + (bare ? ' bare' : '') + (slot.changed ? ' changed' : '')} onClick={slot.onClick}
       title={empty ? `เลือก${label}` : `${label}: ${text}`} aria-label={empty ? `เลือก${label}` : `${label}: ${text}`}>
       <span className={'doll-pic' + (slot.fit === 'contain' ? ' contain' : '')}>
-        {item?.src ? <img src={item.src} alt="" /> : <span className="doll-text">{empty ? '+' : text}</span>}
+        {item?.src ? <img src={thumbSrc(item.src)} alt="" /> : <span className="doll-text">{empty ? '+' : text}</span>}
       </span>
       {!bare && <b>{label}</b>}
     </button>

@@ -76,6 +76,8 @@ const supabaseMock = {
   sbMeta: async (key) => db.images.find((x) => x.path === key)?.meta ?? null,
   sbUpdateMeta: async (key, meta, allowed) => { const r = db.images.find((x) => x.path === key); if (!r || !allowed(r.meta)) return false; r.meta = { ...r.meta, ...meta }; return true; },
   sbDelete: async (key) => { db.images = db.images.filter((x) => x.path !== key); return true; },
+  THUMB_WIDTHS: [400, 512], GRID_THUMB: 512, sbSaveThumb: async () => {},
+  sbReadThumb: async (key, _w, allowed) => { const r = db.images.find((x) => x.path === key); return r && allowed(r.meta) ? Buffer.from('thumb') : null; },
 };
 let caller; // บัญชีที่ "เข้าสู่ระบบ" อยู่ใน request ถัดไป (undefined = ยังไม่เข้า)
 const mocks = {
@@ -157,6 +159,10 @@ const parts = (src) => src.slice('/api/files/'.length).split('/');
 assert(await withAccount(alice, () => storage.readImage(parts(aliceSrc))));
 assert.equal(await withAccount(bob, () => storage.readImage(parts(aliceSrc))), null); // รู้ชื่อไฟล์ก็เปิดไม่ได้
 assert.equal(await withAccount(alice, () => storage.readImage(parts(teamSrc))), null);
+// รูปย่อ (/api/files?w=) สิทธิ์เดียวกับรูปเต็ม
+assert(await withAccount(alice, () => storage.readThumb(parts(aliceSrc), 512)));
+assert.equal(await withAccount(bob, () => storage.readThumb(parts(aliceSrc), 512)), null);
+assert.equal(await withAccount(alice, () => storage.readThumb(parts(teamSrc), 512)), null);
 assert.equal(await withAccount(bob, () => storage.deleteImage(aliceSrc)), false);
 assert(db.images.some((x) => x.meta.caption === 'alice'));
 const upload = await withAccount(alice, () => storage.saveImage({ area: 'uploads', kind: 'products' }, 'AA==', 'image/png', { name: 'bag' }));

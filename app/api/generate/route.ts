@@ -6,9 +6,9 @@ import { me } from '@/lib/account';
 import { ACCESSORY_TYPES, GPT25_SIZES, isGpt25, MAX_ACCESSORIES, MAX_WEAR, pickHeadGazes, pickMoment, POSE_AUTO, POSE_MODES, POSE_PRESETS, type PoseMode } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
-import { buildPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement, wearCount, type Wear } from '@/lib/prompts';
+import { buildPrompt, buildRoomPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement, roomCropLine, wearCount, type Wear } from '@/lib/prompts';
 import { json, post } from '@/lib/route';
-import { cropTo, servable } from '@/lib/images';
+import { cropTo, inputJpeg, servable } from '@/lib/images';
 import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
 import { ESTIMATED_TOKENS, quotaBlock, recordUsage } from '@/lib/usage';
@@ -55,6 +55,13 @@ export const POST = post(async (req) => {
   const finish = req.finish === 'phone' || req.finish === 'film' ? req.finish : null; // ลุคที่เหมาะกับรูปนี้ (lib/film.ts) เก็บกับรูป
   const recipe = storableRecipe(req.recipe); // steps 1–8 choices (lib/recipe.ts), stored with the image
   if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
+  const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
+  // ลอกทั้งช็อตลงฉากที่เลือก (POSE_MODES 'shot-room'): ขั้น 1 ถ่ายรูปฉากที่ผู้ใช้เลือกใหม่ตามรูปท่า -> ขั้น 2 ลอกทั้งช็อตลงฉากใหม่ (เรียก AI สร้างรูป 2 ครั้ง)
+  // โหมดอื่นไม่ผ่านโค้ดส่วนนี้ (ลอกทั้งช็อต + ฉาก ต้องเหมือนเดิม — ผู้ใช้ขอ)
+  const shotRoom = Boolean(req.pose) && poseMode === 'shot-room' && !setRef;
+  if (shotRoom && !req.scene_image) return json(400, { error: 'ยังไม่มีรูปฉาก เลือกฉากในขั้นฉากหลังก่อน' });
+  // รูปท่าตัดเป็นสัดส่วนของรูปสุดท้ายก่อน (ตัดกลางภาพ ไม่ใช้ AI): "จัดกรอบเหมือนรูปท่า" = รูปที่จะได้จริง (ทดสอบ 6 พ.ย. ขนาดคนใกล้รูปท่าขึ้น)
+  const poseData: string | null = shotRoom ? (await cropTo({ data: req.pose, mime: 'image/jpeg' }, aspect)).data : req.pose;
 
   // รูปที่ส่งให้ AI: นางแบบ (ต้องมี) + ชุด + ของเสริม + ท่าโพสต์ + ฉาก (ถ้าเลือก) — ลำดับต้องตรงกับ buildPrompt
   // ทำรายการเดียวใช้ทั้งส่ง AI และทำ log ลำดับใน log จะตรงกับที่ AI เห็นเสมอ
@@ -68,7 +75,7 @@ export const POST = post(async (req) => {
     { role: 'ท่อนล่าง', data: req.bottom, ref: toRef(refs.bottom) },
     { role: 'รองเท้า', data: req.shoes, ref: toRef(refs.shoes) },
     ...accessories.map((a, i) => ({ role: 'ของเสริม', data: a.data, ref: toRef(accRefs[i]) })),
-    { role: 'ท่าโพสต์', data: setRef ? null : req.pose, ref: toRef(refs.pose) },
+    { role: 'ท่าโพสต์', data: setRef ? null : poseData, ref: toRef(refs.pose) },
     { role: 'ฉาก', data: setRef || shotScene ? null : req.scene_image, ref: toRef(refs.scene) },
   ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string' && x.data.length > 0);
   const images: Img[] = inputs.map((x) => ({ data: x.data, mime: 'image/jpeg' }));
@@ -82,7 +89,6 @@ export const POST = post(async (req) => {
   const sceneText0 = text(req.scene_text);
   const isDirector = posePreset === POSE_AUTO.id;
   const chosenPlacement = isDirector ? null : (['left', 'center', 'right'] as const).find((p) => p === req.placement) ?? null;
-  const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
   const directorInput: DirectorInput | null = posePreset === POSE_AUTO.id ? {
     person: { data: req.person, mime: 'image/jpeg' },
     location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : null,
@@ -112,9 +118,10 @@ export const POST = post(async (req) => {
   // ลอกทั้งช็อต + แสงจากรูปต้นแบบ: อ่านแสงทั้งภาพ + แสงบนผิว (ไฮไลต์/ความฉ่ำ) จากรูปท่า พร้อมกัน — โมเดลอ่านรูปตัวเล็ก ไม่ถึงสตางค์
   const lightFromRef = !planningOnly && !setRef && req.pose && poseMode !== 'pose' && !look && req.light_from_ref;
   const [refLight, skinLight, sceneLight, plan, director] = await Promise.all([
-    lightFromRef ? describeLighting({ data: req.pose, mime: 'image/jpeg' }) : null,
-    lightFromRef ? describeSkinLight({ data: req.pose, mime: 'image/jpeg' }) : null,
-    !planningOnly && !setRef && req.scene_image && !shotScene ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
+    lightFromRef ? describeLighting({ data: poseData!, mime: 'image/jpeg' }) : null,
+    lightFromRef ? describeSkinLight({ data: poseData!, mime: 'image/jpeg' }) : null,
+    // ฉากที่เลือก + รูปท่า: อ่านแสงจากฉากใหม่หลังขั้น 1 แทนรูปฉากเดิม
+    !planningOnly && !setRef && req.scene_image && !shotScene && !shotRoom ? describeLighting({ data: req.scene_image, mime: 'image/jpeg' }) : null,
     posePreset && !directorInput ? planPose({
       location: req.scene_image ? { data: req.scene_image, mime: 'image/jpeg' } : sceneText0 ? null : { data: req.person, mime: 'image/jpeg' },
       locationIsModelPhoto: !req.scene_image && !sceneText0,
@@ -140,7 +147,8 @@ export const POST = post(async (req) => {
   // ใช้ภาพที่ไหน (lib/aspects.ts): OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> 4:5 / 9:16 ทำ 2:3 แล้วตัดกลางภาพ (cropTo) บอก AI ว่าขอบไหนจะโดนตัด
   const crop = String(req.model).startsWith('openai:') && !AI_ASPECTS.includes(aspect)
     ? cropLine(aspect, director ? false : setRef ? setShot!.full_body !== false : req.full_body ?? true) : null;
-  const prompt = setRef ? buildSetPrompt({
+  // ฉากที่เลือก + รูปท่า: สร้างพรอมต์หลักใหม่หลังขั้น 1 (แสงของฉากใหม่) · โหมดอื่นสร้างครั้งเดียวเหมือนเดิม
+  const makePrompt = (lightOfScene: string | null) => setRef ? buildSetPrompt({
     framing: text(setShot!.framing)!,
     angle: text(setShot!.angle)!,
     fullBody: setShot!.full_body !== false,
@@ -171,13 +179,19 @@ export const POST = post(async (req) => {
     faceFromRef: Boolean(req.face_from_ref),
     refLight,
     skinLight,
-    sceneLight,
+    sceneLight: lightOfScene,
     // ระยะ/มุมกล้องที่เลือกเอง (ไม่ใช่ตามสไตล์) -> lib/prompts.ts สั่งย้ำให้ชนะรูปท่า/รูปฉาก
     camera: directedShot ? { framing: directedShot.framing, angle: directedShot.cameraAngle }
       : text(req.camera_framing) || text(req.camera_angle) ? { framing: text(req.camera_framing), angle: text(req.camera_angle) } : null,
     placement, // ข้างที่วางคนในภาพ สุ่มต่อรูป (ไม่สั่ง = AI วางกลางภาพเสมอ)
     crop,
   });
+  let prompt = makePrompt(sceneLight);
+  // ขั้น 1: รูปฉากที่เลือก (Image 1) + รูปท่าที่ตัดแล้ว (Image 2) -> ฉากใหม่ไม่มีคน · บอกขอบที่จะโดนตัดแบบเดียวกับรูปหลัก
+  const roomPrompt = shotRoom ? buildRoomPrompt({
+    refLight,
+    crop: String(req.model).startsWith('openai:') && !AI_ASPECTS.includes(aspect) ? roomCropLine(aspect) : null,
+  }) : null;
   // GPT Image 2.5: ค่าเริ่มต้นรูปใหญ่ 1664×2496 (หน้า/ผิวละเอียดขึ้น) · ขนาดตามแนวของสัดส่วนที่เลือก
   const baseSize = aspectBaseSize(aspect);
   const size = isGpt25(String(req.model)) ? GPT25_SIZES[baseSize] : baseSize;
@@ -216,6 +230,7 @@ export const POST = post(async (req) => {
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
   if (skinLight) style.skinLight = skinLight; // แสงบนผิวที่ AI อ่านจากรูปต้นแบบ
   if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
+  if (shotRoom) style.roomScene = 'ขั้น 1 ถ่ายรูปฉากที่เลือกใหม่ตามรูปท่าก่อน แล้วส่งฉากใหม่แทนรูปฉากเดิมในพรอมต์หลัก';
   if (!isDirector && text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
@@ -244,6 +259,7 @@ export const POST = post(async (req) => {
     style,
     prompt: sentences(prompt),
     ...(harmonizeText ? { harmonizePrompt: sentences(harmonizeText) } : {}),
+    ...(roomPrompt ? { roomPrompt: sentences(roomPrompt) } : {}),
   };
   const t0 = Date.now();
   const duration = () => `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`;
@@ -251,6 +267,18 @@ export const POST = post(async (req) => {
   let calls = 0;
   let tokens = 0; // โทเคนที่ AI คิดจริง รวมทุกครั้งที่เรียก (ปรับแสงซ้ำ = 2 ครั้ง) -> โควตาลูกค้า
   try {
+    if (roomPrompt) {
+      // ขั้น 1 -> ฉากใหม่แทนรูปฉากเดิม (รูปเดิมยังอยู่ใน log ที่ Image เดียวกัน) แล้วอ่านแสงของฉากใหม่ สร้างพรอมต์หลักใหม่
+      const sceneAt = inputs.findIndex((x) => x.role === 'ฉาก'), poseAt = inputs.findIndex((x) => x.role === 'ท่าโพสต์');
+      const room = await generateImage(req.model, [images[sceneAt], images[poseAt]], roomPrompt, opt);
+      calls++;
+      tokens += room.tokens;
+      images[sceneAt] = await inputJpeg(await cropTo(room, aspect));
+      const roomLight = await describeLighting(images[sceneAt]);
+      prompt = makePrompt(roomLight);
+      logBase.prompt = sentences(prompt);
+      if (roomLight) style.sceneLight = roomLight;
+    }
     const first = await generateImage(req.model, images, prompt, opt);
     calls++;
     tokens += first.tokens;

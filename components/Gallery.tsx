@@ -5,14 +5,13 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
-import { api } from '@/lib/browser';
+import { api, thumbSrc } from '@/lib/browser';
 import { ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, TokenUsage } from './ui';
 
 type Result = { src: string; created: number; caption?: string; page?: 'product' };
 type Filter = 'all' | 'model' | 'product';
 const FILTERS: { id: Filter; label: string }[] = [{ id: 'all', label: 'ทั้งหมด' }, { id: 'model', label: 'นางแบบ' }, { id: 'product', label: 'สินค้า' }];
 const pageOf = (r: Result): Exclude<Filter, 'all'> => (r.page === 'product' ? 'product' : 'model');
-const thumb = (src: string) => (src.startsWith('/api/files/') ? `${src}?w=800` : src); // ?w=800 -> 800px JPEG, ~300px card at 2x
 const when = (sec: number) => new Date(sec * 1000).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 
 export default function Gallery() {
@@ -70,7 +69,7 @@ export default function Gallery() {
             {shown.map((r) => (
               <div className="deletable" key={r.src}>
                 <button type="button" className="gallery-card" title={r.caption} onClick={() => setOpen(r)}>
-                  <span className="gallery-thumb"><img src={thumb(r.src)} alt={r.caption ?? 'รูปที่สร้าง'} loading="lazy" /></span>
+                  <span className="gallery-thumb"><img src={thumbSrc(r.src)} alt={r.caption ?? 'รูปที่สร้าง'} loading="lazy" /></span>
                   <span className="gallery-info"><b>{pageOf(r) === 'product' ? 'สินค้า' : 'นางแบบ'}</b>{when(r.created)}</span>
                 </button>
                 <DeleteButton onClick={() => setDeleting(r)} />

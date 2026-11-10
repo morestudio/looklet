@@ -26,7 +26,10 @@ import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanv
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
 import { SKIN_MODEL } from '@/lib/skin';
-import { api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
+import {
+  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
+  saveImageFile, thumbSrc, toWebImage, uploadImage,
+} from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
   POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25, qualitiesFor,
@@ -55,6 +58,8 @@ const MOOD_PICKER = false;
 // id = ใช้แบบนั้นเสมอ ไม่มีปุ่ม แสงจากรูปท่า ('ref') · ขั้นที่ไม่ใช้เป็นสีเทา (unusedWhy) ทั้งสองแบบ
 // 29 ต.ค. 'pose' (ซ่อนลอกทั้งช็อต) · 3 พ.ย. null (เปิดคืน) · 5 พ.ย. 'shot-scene' (ผู้ใช้ขอ: เลือกแค่รูปท่า แล้วลอกทั้งช็อต + ฉากให้อัตโนมัติ)
 const FIXED_POSE_MODE: PoseMode | null = 'shot-scene';
+// เลือกรูปท่าแล้ว (FIXED_POSE_MODE 'shot-scene'): ขั้นฉากหลังยังเลือกได้ (6 พ.ย. ผู้ใช้ขอ) — ไม่เลือกฉาก = ฉากจากรูปท่า (ทำงานเหมือนเดิมทุกอย่าง)
+// เลือกฉาก (รูปถ่าย) = 'shot-room': server ถ่ายฉากนั้นใหม่ให้มุมกล้อง/ระยะ/แสงเหมือนรูปท่าก่อน แล้วลอกทั้งช็อตลงฉากนั้น (สร้าง 2 รูป)
 
 // ท่าสำเร็จรูปในขั้นท่าโพสต์ (ท่าเดิม + POSE_PRESETS + AI จัดท่าและมุมกล้อง) — ซ่อนไว้ 5 พ.ย. (ผู้ใช้ขอ): ขั้นนี้เลือกแค่รูปท่าโพสต์
 // ไม่เลือกรูป = ท่าเดิม (การ์ด "ท่าเดิม" ในรายการรูปแบบ ชุดเดิม/ฉากเดิม) · ค่าท่าสำเร็จรูปที่ค้างอยู่ถูกข้าม · โค้ด UI/API/planner ยังอยู่ครบ เปิดใหม่ = true
@@ -154,7 +159,6 @@ export default function TryOn() {
   const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
   const [aiModel, setAiModel] = useState('');
-  const poseMode = FIXED_POSE_MODE ?? poseModeChoice;
   const [shotChoice, setShotChoice] = useState<{
     proposal: ShotProposal; references: { src: string; name: string }[]; choose: (ids: string[]) => void;
   } | null>(null);
@@ -189,9 +193,13 @@ export default function TryOn() {
   const isDirector = posePreset?.id === POSE_AUTO.id;
   const pose = posePreset ? undefined : find(lists.pose, pick.pose);
   const scene = find(lists.scene, pick.scene);
+  // เลือกรูปท่า + เลือกฉาก (รูปถ่าย) ในขั้นฉากหลัง = ลอกทั้งช็อตลงฉากที่เลือก ('shot-room') · ไม่เลือกฉาก = ลอกทั้งช็อต + ฉาก เหมือนเดิม
+  const poseMode: PoseMode = FIXED_POSE_MODE === 'shot-scene' && scene?.src ? 'shot-room' : FIXED_POSE_MODE ?? poseModeChoice;
   // ลอกทั้งช็อตจากรูปท่า: มุมกล้อง/ระยะ/การมอง/แสงเอาจากรูป (ไม่ใช้สไตล์ถ่ายภาพกับการมอง), + ฉาก = ไม่ใช้ฉากที่เลือก
   const shot = Boolean(pose) && poseMode !== 'pose';
   const shotScene = Boolean(pose) && poseMode === 'shot-scene';
+  const shotRoom = Boolean(pose) && poseMode === 'shot-room'; // ลอกทั้งช็อตลงฉากที่เลือก
+  const sceneWithPose = Boolean(pose) && FIXED_POSE_MODE === 'shot-scene'; // มีรูปท่า: การ์ด "ไม่เลือกฉาก" = ฉากจากรูปท่า
   const shotPresetLight = shot && lightSource === 'preset'; // ลอกทั้งช็อตแต่ใช้แสง/โทนสีของสไตล์ถ่ายภาพ
   const mood = FACE_MOODS.find((m) => m.id === (isDirector ? 'auto' : faceMood)) ?? FACE_MOODS[0];
   const moodName = mood.id !== 'auto' ? mood.name : pose ? 'สีหน้าตามรูปท่า' : null; // null = ตามรูปนางแบบ ไม่ต้องบอก
@@ -459,9 +467,10 @@ export default function TryOn() {
     setGenerating(true);
     setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
-        : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
-          : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
-            : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
+      : shotRoom ? 'AI กำลังถ่ายฉากที่คุณเลือกใหม่ตามรูปท่า แล้วใส่นางแบบ... (ประมาณ 1–2 นาที)'
+      : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
+        : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
+          : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
     try {
       // ย่อรูปทุกรูปก่อน (ได้ขนาดจริงที่ส่งไว้ทำ log ด้วย)
       const person = await jpegBase64(model.src!);
@@ -487,7 +496,7 @@ export default function TryOn() {
           .map((r) => r.posePlan!.director!.candidates.find((c) => c.id === r.posePlan!.director!.selectedId)!.interaction.slice(0, 400)) : [],
         pose_mode: poseMode,
         scene_image: sceneImg?.data ?? null,
-        scene_text: shotScene ? null : scene?.prompt ?? null,
+        scene_text: shotScene || shotRoom ? null : scene?.prompt ?? null,
         refs: {
           person: ref(model, person), outfit: ref(outfit, outfitImg),
           top: ref(top, topImg), bottom: ref(bottom, bottomImg), shoes: ref(shoes, shoesImg),
@@ -782,7 +791,7 @@ export default function TryOn() {
   // ขั้นที่ไม่ใช้ (แบบหน้าสินค้า): ลอกทั้งช็อต = มุมมองตามรูปต้นแบบ · ลอกทั้งช็อต + ฉาก = ฉากด้วย
   // แสงจากรูปต้นแบบ = สไตล์ถ่ายภาพไม่ใช้ · เมนูเป็นสีเทา กดไม่ได้ (บอกเหตุผลตอนชี้) "ถัดไป" ข้ามไป
   const unusedWhy: Partial<Record<StepKey, string>> = {
-    ...(shotScene ? { scene: 'ใช้ฉากจากรูปท่าโพสต์' } : {}),
+    ...(shotScene && !FIXED_POSE_MODE ? { scene: 'ใช้ฉากจากรูปท่าโพสต์' } : {}),
     ...(shot && !shotPresetLight ? { settings: 'ใช้แสงและโทนสีจากรูปท่าโพสต์' } : {}),
     ...(shot ? { view: 'ระยะ มุมกล้อง และตำแหน่งตามรูปท่าโพสต์' } : {}),
   };
@@ -818,8 +827,8 @@ export default function TryOn() {
     [wearSlot('shoes', shoes)],
   ];
   const dollScene: DollSlot = {
-    id: 'scene', label: 'ฉากหลัง', item: shotScene ? { name: unusedWhy.scene! } : scene, keep: keepIf('scene', 'ฉากเดิม'), changed: changed?.scene,
-    onClick: shotScene ? toStep('pose') : toStep('scene'),
+    id: 'scene', label: 'ฉากหลัง', item: shotScene ? { name: 'ฉากจากรูปท่า' } : scene, keep: keepIf('scene', 'ฉากเดิม'), changed: changed?.scene,
+    onClick: shotScene && !FIXED_POSE_MODE ? toStep('pose') : toStep('scene'),
   };
   const dollChips: DollChip[] = [
     { id: 'style', label: 'สไตล์', value: shot && !shotPresetLight ? 'ตามรูปท่าโพสต์' : preset.name, changed: changed?.style, onClick: toStep(shot && !shotPresetLight ? 'pose' : 'settings') },
@@ -882,7 +891,7 @@ export default function TryOn() {
           const item = worn[slot];
           const goTab: WearSlot = slot !== 'shoes' && outfit ? 'set' : slot;
           return <button key={slot} type="button" className={'wear-slot' + (outfitTab === goTab ? ' active' : '')} onClick={() => { setOutfitTab(goTab); setQuery(''); }}>
-            <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={item.src} alt="" />}</span>
+            <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={thumbSrc(item.src)} alt="" />}</span>
             <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
             <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
           </button>;
@@ -957,7 +966,9 @@ export default function TryOn() {
           <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => update({ poseMode: v as PoseMode })} />
           <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
         </> : fixedMode.id === 'shot-scene'
-          ? <p className="muted-text">AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ</p>
+          ? <p className="muted-text">{shotRoom
+            ? 'AI ลอกท่า มุมกล้อง ระยะ การมอง แสง และโทนสีจากรูปท่า แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือกลงในฉากที่เลือกไว้ในขั้นฉากหลัง · ไม่เลือกรูป = ท่าเดิมของนางแบบ'
+            : 'AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ · อยากใช้ฉากของคุณเอง เลือกได้ในขั้นฉากหลัง'}</p>
           : <p className="muted-text">{fixedMode.hint}</p>}
         {shot && !fixedMode && <>
           <p className="sub">แสง</p>
@@ -972,9 +983,10 @@ export default function TryOn() {
     </>;
   } else if (cur.key === 'scene') {
     panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
-      special: <Card item={{ name: 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
-      note: shotScene && 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้',
-      muted: shotScene,
+      special: <Card item={{ name: sceneWithPose ? 'ฉากจากรูปท่า' : 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
+      note: shotScene && !FIXED_POSE_MODE ? 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้'
+        : sceneWithPose && 'มีรูปท่าโพสต์อยู่: ไม่เลือก = ใช้ฉากจากรูปท่า · เลือกฉาก = AI ถ่ายฉากนี้ใหม่ให้มุมกล้องและแสงเหมือนรูปท่าก่อน แล้วใส่นางแบบ (สร้าง 2 รูป ใช้โทเคนประมาณ 1.6 เท่า รอนานขึ้น) · ได้ผลดีเมื่อรูปฉากถ่ายจากมุมใกล้เคียงรูปท่า และมีที่แบบเดียวกัน (เตียง เก้าอี้ โซฟา)',
+      muted: shotScene && !FIXED_POSE_MODE,
     });
   } else if (cur.key === 'view') {
     // 3 ส่วน การ์ดมีภาพวาดเหมือนขั้นมุมกล้อง/ระยะของหน้าสินค้า · "ตามสไตล์" วาดระยะ/มุมที่สไตล์ที่เลือกใช้
@@ -1146,7 +1158,7 @@ export default function TryOn() {
   const thumb = (i: number, label?: string) => (
     <div className="deletable" key={results[i].src}>
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
-        <img src={results[i].src} alt={results[i].caption} />
+        <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
       <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
       {label && <span className="set-label">{label}</span>}

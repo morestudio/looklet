@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react';
 import { authEnabled } from '@/lib/auth';
-import { USAGE_EVENT } from '@/lib/browser';
+import { thumbSrc, USAGE_EVENT } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
 
 // แถบเลื่อน (input range): Chrome/Safari ระบายส่วนที่เลือกเป็นสีหมึกไม่ได้เอง ต้องบอกเปอร์เซ็นต์ผ่าน --fill (globals.css)
@@ -25,7 +25,7 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
         // รูปนางแบบเต็มตัว ซูมให้เห็นหน้า
         <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}>
           {/* cached img can complete before hydration attaches onLoad */}
-          <img src={item.src} alt={item.name} onLoad={done} onError={done}
+          <img src={thumbSrc(item.src)} alt={item.name} loading="lazy" decoding="async" onLoad={done} onError={done}
             ref={(img) => { if (img?.complete && loadedSrc !== item.src) done(); }} />
           {loading && <div className="pending-spin"><div className="spinner" /></div>}
         </div>
@@ -43,7 +43,7 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
 export function PendingCard({ src, label = 'AI กำลังดูว่าเป็นอะไร...' }: { src: string; label?: string }) {
   return (
     <div className="card pending">
-      <div className="pic"><img src={src} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
+      <div className="pic"><img src={thumbSrc(src)} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
       <span>{label}</span>
     </div>
   );

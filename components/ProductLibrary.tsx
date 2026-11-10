@@ -3,6 +3,7 @@
 // ปรับ 27 ต.ค. ผู้ใช้สับสน: สินค้าที่เลือก (ใหม่สุด) อยู่ท้ายกล่องเลื่อนเล็กๆ มองไม่เห็น, คำว่า "กลุ่ม", ปุ่มอัปโหลด 2 ปุ่มคล้ายกัน, ชื่อไฟล์แก้ไม่ได้
 import { useState, type ChangeEvent } from 'react';
 import { isSampleGroup, type ProductGroup } from '@/lib/product-groups';
+import { thumbSrc } from '@/lib/browser';
 import { DeleteButton, PendingCard } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
@@ -26,7 +27,7 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
   const loading = (src?: string) => Boolean(src) && !loaded.has(src!);
   const img = (src: string, alt: string) => <>
     {/* cached img can complete before hydration attaches onLoad */}
-    <img src={src} alt={alt} onLoad={() => done(src)} onError={() => done(src)} ref={(el) => { if (el?.complete) done(src); }} />
+    <img src={thumbSrc(src)} alt={alt} loading="lazy" decoding="async" onLoad={() => done(src)} onError={() => done(src)} ref={(el) => { if (el?.complete) done(src); }} />
     {loading(src) && <div className="pending-spin"><div className="spinner" /></div>}
   </>;
   const pick = (append: boolean) => (e: ChangeEvent<HTMLInputElement>) => {

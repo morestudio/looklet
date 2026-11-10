@@ -10,7 +10,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { me, ownerMeta, visibleTo } from './account';
-import { sbDelete, sbList, sbMeta, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
+import { thumbJpeg } from './images';
+import { GRID_THUMB, sbDelete, sbList, sbMeta, sbRead, sbReadThumb, sbSave, sbSaveThumb, sbUpdateMeta, supabaseEnabled, THUMB_WIDTHS } from './storage-supabase';
+
+export { THUMB_WIDTHS };
 import type { StoredPosePlan } from './photo-director';
 
 const ROOT = process.cwd();
@@ -60,7 +63,10 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
   const name = stamp();
   const file = `${name}.${EXT[mime] ?? 'png'}`;
   if (supabaseEnabled) {
-    await sbSave(keyOf(where, file), where.area, where.area === 'uploads' ? where.kind : null, Buffer.from(dataB64, 'base64'), mime, meta);
+    const key = keyOf(where, file), data = Buffer.from(dataB64, 'base64');
+    await sbSave(key, where.area, where.area === 'uploads' ? where.kind : null, data, mime, meta);
+    // รูปย่อสำหรับตาราง/ประวัติรูปทำตอนเก็บเลย (มีรูปอยู่ในมือแล้ว ไม่ต้องดึงจาก Supabase) · ทำไม่ได้ = เปิดครั้งแรกค่อยทำ รูปที่เก็บแล้วห้ามพัง
+    await thumbJpeg(data, GRID_THUMB).then((t) => sbSaveThumb(key, GRID_THUMB, t)).catch(() => {});
     return urlOf(where, file);
   }
   const folder = folderOf(where);
@@ -124,6 +130,19 @@ export async function readImage(parts: string[]) {
   const auditor = me()?.role === 'superadmin';
   const data = supabaseEnabled ? await sbRead(f.key, (meta) => auditor || visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
+}
+
+// รูปย่อ (/api/files?w=, ตาราง/ประวัติรูป) สิทธิ์เหมือน readImage · Supabase = อ่านรูปย่อที่เก็บไว้ ไม่ดึงรูปเต็ม (ยังไม่มีค่อยทำครั้งเดียว)
+// เก็บในเครื่อง = ย่อสดทุกครั้ง (ไม่มีค่าโหลด)
+export async function readThumb(parts: string[], width: number) {
+  const f = resolveFile(parts);
+  if (!f) return null;
+  const auditor = me()?.role === 'superadmin';
+  const make = (full: Buffer) => thumbJpeg(full, width);
+  const data = supabaseEnabled
+    ? await sbReadThumb(f.key, width, (meta) => auditor || visibleTo(meta), make)
+    : await fs.readFile(f.full).then(make).catch(() => null);
+  return data && { data, type: 'image/jpeg' };
 }
 
 // แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ ที่มี .json อยู่แล้ว

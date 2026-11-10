@@ -23,7 +23,9 @@ import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
 import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
-import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
+import {
+  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, thumbSrc, toWebImage, uploadImage,
+} from '@/lib/browser';
 import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
@@ -1024,7 +1026,7 @@ export default function Packshot() {
   const thumb = (i: number, label?: string) => (
     <div className="deletable" key={results[i].src}>
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
-        <img src={results[i].src} alt={results[i].caption} />
+        <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
       <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
