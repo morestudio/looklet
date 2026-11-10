@@ -42,7 +42,7 @@ export function readRecipe(raw: Partial<Recipe>, lists: Record<PickKey, Item[]>,
   const accessory = (Array.isArray(p.accessory) ? p.accessory : []).filter((id) => has('accessory', id) || void missing.add('accessory')) as string[];
   const recipe: Recipe = {
     pick: {
-      model: has('model', p.model) ? p.model as string : START.pick.model, // required: deleted -> first model (as deleteUpload)
+      model: ref('model', p.model, 'model') ?? START.pick.model, // required: deleted -> first model (as deleteUpload), listed in missing
       outfit: ref('outfit', p.outfit, 'outfit'), accessory,
       pose: typeof p.pose === 'string' && p.pose.startsWith(PRESET_POSE) ? p.pose : ref('pose', p.pose, 'pose'),
       scene: ref('scene', p.scene, 'scene'), top: ref('outfit', p.top, 'outfit'), bottom: ref('outfit', p.bottom, 'outfit'), shoes: ref('accessory', p.shoes, 'outfit'),

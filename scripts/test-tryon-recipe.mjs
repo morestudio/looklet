@@ -85,7 +85,7 @@ const stored = (r) => JSON.parse(JSON.stringify(r)); // as saved to meta.recipe 
   const empty = { model: MODELS, outfit: [], accessory: [], pose: [], scene: [] };
   const { recipe, missing } = readRecipe(stored(full), empty, MODEL);
   assert.deepEqual(recipe.pick, { model: idOf(MODELS[0]), outfit: null, accessory: [], pose: null, scene: null, top: null, bottom: null, shoes: null });
-  assert.deepEqual([...missing].sort(), ['accessory', 'outfit', 'pose', 'scene']);
+  assert.deepEqual([...missing].sort(), ['accessory', 'model', 'outfit', 'pose', 'scene']);
   assert.equal(readRecipe({ pick: { pose: 'preset:sit' } }, empty, MODEL).recipe.pick.pose, 'preset:sit');
   // one of two accessories deleted: the other stays
   const one = readRecipe(stored(full), { ...lists, accessory: [lists.accessory[1], lists.accessory[2]] }, MODEL);

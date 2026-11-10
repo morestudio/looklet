@@ -752,6 +752,7 @@ export default function TryOn() {
     revalidate: (r) => readRecipe(r, lists, aiModel).recipe, // missing upload = empty, model = first
   });
   const liveKey = sync.liveKey;
+  const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
   // "ล้าง" in the paper doll label = the "รูปใหม่" tile on a freshly opened page: page-open picks, no past-image base, same step
   const startOver = () => {
     sync.reset(sync.pageStart ?? recipe);
@@ -1222,6 +1223,7 @@ export default function TryOn() {
           </div>
           {shownRecipe && <p className="note">
             <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูปทันที จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
+            {missingNames.length > 0 && <>ถูกลบไปแล้ว: {missingNames.join(', ')} ·{' '}</>}
             <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
           </p>}
           {panel}
