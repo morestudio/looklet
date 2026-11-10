@@ -677,14 +677,22 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 /* ⓘ bottom-right over the info strip, same chip as .del */
 .gallery-info-btn { position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-full); background: transparent; color: var(--mute); cursor: pointer; }
 .gallery-info-btn:hover, .gallery-info-btn[aria-pressed="true"] { background: var(--surface-card); color: var(--ink); }
-/* info panel = TryOn's แต่งรูป panel (.workspace.editing + .edit-panel): grid only in the stage column, panel slides in from the right */
+/* info panel = TryOn's แต่งรูป panel (.workspace.editing + .edit-panel): pushes in from the right, the grid narrows */
 .gallery-workspace { grid-template-columns: 0px 0px minmax(0, 1fr) 0px; }
 .gallery-workspace > .gallery-main { grid-area: stage; min-height: 0; max-width: none; margin: 0; overflow-y: auto; }
+/* column count follows the screen, not the grid, so opening the panel shrinks the cards instead of moving images to other rows
+   (same counts as the old auto-fill minmax(260px)) */
+.gallery-workspace .gallery-grid { --gallery-cols: 1; grid-template-columns: repeat(var(--gallery-cols), minmax(0, 1fr)); }
+@media (min-width: 568px) { .gallery-workspace .gallery-grid { --gallery-cols: 2; } }
+@media (min-width: 844px) { .gallery-workspace .gallery-grid { --gallery-cols: 3; } }
+@media (min-width: 1120px) { .gallery-workspace .gallery-grid { --gallery-cols: 4; } }
+@media (min-width: 1396px) { .gallery-workspace .gallery-grid { --gallery-cols: 5; } }
+@media (min-width: 1672px) { .gallery-workspace .gallery-grid { --gallery-cols: 6; } }
 .gallery-panel-img { display: block; width: 100%; padding: 0; border: 0; border-radius: var(--r-thumb); background: #fff; cursor: zoom-in; }
 .gallery-panel-img img { display: block; width: 100%; max-height: 360px; object-fit: contain; }
 .edit-panel .audit-section, .edit-panel .audit-raw { margin-top: var(--space-20); }
 @media (max-width: 860px) { /* phone: full screen over the grid */
-  .gallery-workspace.editing > .edit-panel { position: fixed; inset: 0; z-index: 20; overflow-y: auto; border-top: 0; }
+  .gallery-workspace.editing > .edit-panel { position: fixed; inset: 0; z-index: 20; overflow-y: auto; overscroll-behavior: contain; border-top: 0; } /* contain: scrolling past the panel's end must not scroll the grid behind */
 }
 .gallery-empty { padding: 48px var(--space-16); color: var(--mute); font-size: var(--text-sm); text-align: center; }
 .gallery-empty a { color: var(--ink); }
