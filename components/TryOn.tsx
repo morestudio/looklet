@@ -23,6 +23,7 @@ import {
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
+import { recipeKey } from '@/lib/recipe';
 import { SKIN_MODEL } from '@/lib/skin';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import {
@@ -103,9 +104,6 @@ const START: Recipe = {
   preset: PRESETS[0].id, framing: 'auto', angle: 'auto', placement: 'auto', poseMode: 'pose', light: 'ref', mood: 'auto',
   aspect: DEFAULT_ASPECT, quality: 'medium', extra: '', harmonize: false, gaze: '', props: [], background: 'explore', goal: 'lifestyle', autoRepair: true,
 };
-// fixed field order: equal recipes -> equal keys
-const recipeKey = (r: Recipe) => JSON.stringify([r.pick.model, r.pick.outfit, r.pick.accessory, r.pick.pose, r.pick.scene, r.pick.top, r.pick.bottom, r.pick.shoes,
-r.preset, r.framing, r.angle, r.placement, r.poseMode, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
 const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
 // stored recipe -> valid Recipe; an id no longer in the lists (deleted upload) -> null, its step listed in missing (doll shows "+")
 function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe: Recipe; missing: StepKey[] } {

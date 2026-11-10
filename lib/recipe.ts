@@ -3,6 +3,12 @@
 
 const MAX_RECIPE_CHARS = 8000;
 
+// keys sorted at every level: equal recipes -> equal keys, whatever the field order or which fields exist
+export function recipeKey(recipe: unknown): string {
+  return JSON.stringify(recipe, (_key, v: unknown) => (v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
+}
+
 // plain object only, JSON size capped; anything else -> null (not stored)
 export function storableRecipe(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;

@@ -21,6 +21,7 @@ import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, Pag
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
+import { recipeKey } from '@/lib/recipe';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
@@ -91,10 +92,6 @@ type Recipe = {
   scene: string; color: string; props: string; propText: string; angle: string; turn: Turn | null; framing: string; refMode: RefMode;
   aspect: string; quality: string; extra: string;
 };
-// fixed field order: equal recipes -> equal keys
-const recipeKey = (r: Recipe) => JSON.stringify([r.pick.product, r.pick.ref, r.pick.scene, r.pick.prop, r.shotType, r.idea, r.facts, r.concept?.id ?? null,
-  r.detailTarget, r.feature, r.scaleRef, r.handPose, r.dimensions.width, r.dimensions.height, r.dimensions.depth, r.referenceSize.width, r.referenceSize.depth,
-  r.extraAngles, r.scene, r.color, r.props, r.propText, r.angle, r.turn?.yaw ?? null, r.turn?.elev ?? null, r.framing, r.refMode, r.aspect, r.quality, r.extra]);
 const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
 const text = (v: unknown) => (typeof v === 'string' ? v : '');
 // creative ideas are bound to the product's photos + the inputs they were planned from (changed inputs = ideas no longer valid)
