@@ -1122,7 +1122,7 @@ export default function TryOn() {
       </Section>
       <Section title="สั่งเพิ่มเติม">
         {isDirector && <p className="muted-text">AI จัดท่าและองค์ประกอบให้ทั้งหมด เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์หากต้องการสั่งเอง</p>}
-        <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} onChange={(e) => setExtra(e.target.value)} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
+        <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} maxLength={1000} onChange={(e) => setExtra(e.target.value)} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
       </Section>
       <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>

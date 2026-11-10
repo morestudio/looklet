@@ -1004,7 +1004,7 @@ export default function Packshot() {
         </button>)}</div>
       </Section>
       <Section title="สั่งเพิ่มเติม">
-        <textarea className="text-input" value={extra} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
+        <textarea className="text-input" value={extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
       </Section>
       <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ</small></summary>

@@ -20,7 +20,7 @@ function load(file) {
   return loaded.exports;
 }
 const { readRecipe, START, shotTypeDefaults } = load('lib/packshot-recipe.ts');
-const { recipeKey } = load('lib/recipe.ts');
+const { recipeKey, storableRecipe } = load('lib/recipe.ts');
 const { DEFAULT_AI_MODEL: MODEL } = load('lib/catalog.ts');
 
 const BAG = '/api/files/uploads/products/bag.jpg';
@@ -120,4 +120,15 @@ assert.equal(readRecipe({}, lists, MODEL).recipe.shotType, 'clean');
 assert.equal(recipeKey({ a: 1, b: { c: 2, d: 3 } }), recipeKey({ b: { d: 3, c: 2 }, a: 1 }));
 assert.notEqual(recipeKey(full), recipeKey({ ...full, extra: 'อื่น' }));
 
-console.log('Packshot recipe checks passed: round trip, shot types, old recipes, bad values, deleted uploads, key order.');
+// 8. longest recipe the page can make is still stored (text boxes at their maxLength, idea at readCreativeConcept's limits)
+{
+  const fill = (n) => 'ก'.repeat(n);
+  const longest = {
+    ...full, idea: fill(1200), facts: fill(1200), feature: fill(200), propText: fill(200), extra: fill(1000),
+    concept: { id: fill(80), title: fill(100), summary: fill(500), scene: fill(500), props: fill(500), lighting: fill(500), composition: fill(500), prompt: fill(3000), palette: Array(5).fill('#ffffff') },
+    pick: Object.fromEntries(Object.keys(full.pick).map((k) => [k, '/api/files/uploads/product-scenes/' + fill(120) + '.jpg'])),
+  };
+  assert.ok(storableRecipe(longest), `longest recipe (${JSON.stringify(longest).length} chars) must fit MAX_RECIPE_CHARS`);
+}
+
+console.log('Packshot recipe checks passed: round trip, shot types, old recipes, bad values, deleted uploads, key order, longest recipe stored.');

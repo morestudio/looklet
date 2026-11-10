@@ -1,7 +1,8 @@
 // recipe: every step's choices saved in meta.recipe of each generated image (shape owned by each page: components/TryOn.tsx, components/Packshot.tsx)
 // server stores it as-is after this check; the page validates every field when loading it back
 
-const MAX_RECIPE_CHARS = 8000;
+// above the longest recipe the pages can make (Creative with every text box full ≈ 10.8k, scripts/test-packshot-recipe.mjs)
+const MAX_RECIPE_CHARS = 20000;
 
 // keys sorted at every level: equal recipes -> equal keys, whatever the field order or which fields exist
 export function recipeKey(recipe: unknown): string {
