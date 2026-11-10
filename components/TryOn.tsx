@@ -24,24 +24,20 @@ import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, Pag
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { recipeKey } from '@/lib/recipe';
+import { DEFAULT_ASPECT, PRESET_POSE, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
 import { SKIN_MODEL } from '@/lib/skin';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
-  POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
+  POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25, qualitiesFor,
   MAX_WEAR, WEAR_TABS, wearPart, type WearSlot,
   presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode, type Preset,
 } from '@/lib/catalog';
 
-type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
 const KIND = { model: 'models', outfit: 'outfits', accessory: 'accessories', pose: 'poses', scene: 'scenes' } as const;
 const CATALOG: Record<Key, Item[]> = { model: MODELS, outfit: OUTFITS, accessory: ACCESSORIES, pose: POSES, scene: SCENES };
 
-// อ้างถึงรายการด้วย id (ไม่ใช้ตำแหน่ง ลบ/เพิ่มแล้วไม่ต้องไล่แก้): รูป = src, ฉากแบบคำบรรยาย = ชื่อ
-const idOf = (item: Item) => item.src ?? item.name;
 const find = (list: Item[], id: string | null) => (id === null ? undefined : list.find((i) => idOf(i) === id));
-// ท่าสำเร็จรูป (ไม่มีรูปท่า ให้ AI ตัววางแผนคิดท่าจากฉาก) — id = "preset:<id ใน POSE_PRESETS หรือ auto>" ไม่ชนกับรูป (src ขึ้นต้นด้วย /)
-const PRESET_POSE = 'preset:';
 const POSE_CHOICES = [POSE_AUTO, ...POSE_PRESETS];
 // ของเสริมรูปเก่าที่ไม่มีประเภท -> ถือเป็น "อื่นๆ"
 const accessoryType = (a: Item) => ACCESSORY_TYPES.find((t) => t.id === a.type) ?? ACCESSORY_TYPES.find((t) => t.id === 'other')!;
@@ -74,9 +70,6 @@ const presetAngle = (p: Preset) => {
   return /ต่ำ/.test(label) ? 'low' : /ก้ม/.test(label) ? 'high' : /เฉียง/.test(label) ? 'side' : /สายตา/.test(label) ? 'eye' : 'chest';
 };
 
-// ใช้ภาพที่ไหน: ค่าเริ่มต้น IG · Facebook ฟีด 4:5 (ผู้ใช้ขอ 29 ต.ค. ลูกค้าส่วนใหญ่ลง IG) — AI ทำ 2:3 แล้ว server ตัดบนล่าง
-const DEFAULT_ASPECT = '4:5';
-
 const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
 const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'หน้าเรียว'], ['acne', 'ลบสิว/จุดด่าง'], ['smooth', 'หน้าเนียน'], ['white', 'ผิวขาว']];
@@ -93,58 +86,6 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = StoredPosePlan;
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-// ---------- recipe: steps 1–8 choices saved with each generated image (meta.recipe, lib/recipe.ts) ----------
-type Pick = { model: string; outfit: string | null; accessory: string[]; pose: string | null; scene: string | null; top: string | null; bottom: string | null; shoes: string | null };
-type Recipe = {
-  pick: Pick; preset: string; framing: string; angle: string; placement: string; poseMode: PoseMode; light: LightSource; mood: string;
-  aspect: string; quality: string; extra: string; harmonize: boolean; gaze: string; props: string[]; background: BackgroundMode; goal: PhotoGoal; autoRepair: boolean;
-};
-const START: Recipe = {
-  pick: { model: idOf(MODELS[0]), outfit: null, accessory: [], pose: null, scene: null, top: null, bottom: null, shoes: null },
-  preset: PRESETS[0].id, framing: 'auto', angle: 'auto', placement: 'auto', poseMode: 'pose', light: 'ref', mood: 'auto',
-  aspect: DEFAULT_ASPECT, quality: 'medium', extra: '', harmonize: false, gaze: '', props: [], background: 'explore', goal: 'lifestyle', autoRepair: true,
-};
-const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
-// stored recipe -> valid Recipe; an id no longer in the lists (deleted upload) -> null, its step listed in missing (doll shows "+")
-function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe: Recipe; missing: StepKey[] } {
-  const r = raw as Record<string, unknown>;
-  const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
-  const missing = new Set<StepKey>();
-  const has = (key: Key, id: unknown) => typeof id === 'string' && lists[key].some((i) => idOf(i) === id);
-  const ref = (key: Key, id: unknown, step: StepKey) => {
-    if (id === null || id === undefined) return null;
-    if (has(key, id)) return id as string;
-    missing.add(step);
-    return null;
-  };
-  const accessory = (Array.isArray(p.accessory) ? p.accessory : []).filter((id) => has('accessory', id) || void missing.add('accessory')) as string[];
-  const recipe: Recipe = {
-    pick: {
-      model: has('model', p.model) ? p.model as string : START.pick.model, // required: deleted -> first model (as deleteUpload)
-      outfit: ref('outfit', p.outfit, 'outfit'), accessory,
-      pose: typeof p.pose === 'string' && p.pose.startsWith(PRESET_POSE) ? p.pose : ref('pose', p.pose, 'pose'),
-      scene: ref('scene', p.scene, 'scene'), top: ref('outfit', p.top, 'outfit'), bottom: ref('outfit', p.bottom, 'outfit'), shoes: ref('accessory', p.shoes, 'outfit'),
-    },
-    preset: oneOf(r.preset, PRESETS.map((x) => x.id), START.preset),
-    framing: oneOf(r.framing, ['auto', ...FRAMINGS.map((x) => x.id)], 'auto'),
-    angle: oneOf(r.angle, ['auto', ...ANGLES.map((x) => x.id)], 'auto'),
-    placement: oneOf(r.placement, ['auto', ...PLACEMENTS.map((x) => x.id)], 'auto'),
-    poseMode: oneOf<PoseMode>(r.poseMode, POSE_MODES.map((m) => m.id), START.poseMode),
-    light: oneOf<LightSource>(r.light, LIGHT_SOURCES.map((l) => l.id), START.light),
-    mood: oneOf(r.mood, FACE_MOODS.map((m) => m.id), 'auto'),
-    aspect: oneOf<string>(r.aspect, PLATFORM_ASPECTS.map((a) => a.id), DEFAULT_ASPECT),
-    quality: typeof r.quality === 'string' ? r.quality : START.quality,
-    extra: typeof r.extra === 'string' ? r.extra : '',
-    harmonize: r.harmonize === true,
-    gaze: oneOf(r.gaze, ['', ...GAZES.map((g) => g.id)], ''),
-    props: (Array.isArray(r.props) ? r.props : []).filter((id) => PROPS.some((x) => x.id === id)) as string[],
-    background: oneOf<BackgroundMode>(r.background, ['explore', 'keep'], 'explore'),
-    goal: oneOf<PhotoGoal>(r.goal, ['lifestyle', 'outfit', 'editorial'], 'lifestyle'),
-    autoRepair: r.autoRepair !== false,
-  };
-  return { recipe, missing: [...missing] };
-}
-
 type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; recipe?: Partial<Recipe> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
@@ -154,7 +95,6 @@ type Stored = { src: string; name?: string; caption?: string; type?: string; set
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
-type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'settings' | 'view' | 'output';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
   { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
@@ -818,7 +758,7 @@ export default function TryOn() {
   }, [editing]);
   useEffect(() => { liveKeyRef.current = liveKey; });
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
+  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists, aiModel) : null;
   const loadShown = () => applyRecipe(shownRecipe!.recipe, allSteps.filter((k) => !shownRecipe!.missing.includes(k)));
   const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
   if (cleanKey === null && aiModels !== null) { setCleanKey(liveKey); setFresh(recipe); } // quality is set when models load
@@ -841,7 +781,7 @@ export default function TryOn() {
     } else {
       if (draft) {
         // deleted while viewing -> same checks as a past image (missing upload = empty, model = first)
-        applyRecipe(readRecipe(draft.recipe, lists).recipe, draft.chosen); setBase(draft.base); setDraft(null);
+        applyRecipe(readRecipe(draft.recipe, lists, aiModel).recipe, draft.chosen); setBase(draft.base); setDraft(null);
       }
       setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
     }
@@ -1130,7 +1070,7 @@ export default function TryOn() {
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
           <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
+            <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={setQuality} />
           </Section>
         )}
         <Section title="การมอง" note={isDirector ? 'AI เลือกให้ หน้าและสายตาหลากหลาย' : shot ? 'ใช้จากรูปต้นแบบ' : 'อัตโนมัติ = สุ่มมุมหน้าและสายตาต่อรูป'}>
