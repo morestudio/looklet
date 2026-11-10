@@ -20,7 +20,7 @@ function load(file) {
   return loaded.exports;
 }
 const { readRecipe, START, shotTypeDefaults } = load('lib/packshot-recipe.ts');
-const { recipeKey, storableRecipe } = load('lib/recipe.ts');
+const { recipeKey, storableRecipe, RECIPE_VERSION } = load('lib/recipe.ts');
 const { DEFAULT_AI_MODEL: MODEL } = load('lib/catalog.ts');
 
 const BAG = '/api/files/uploads/products/bag.jpg';
@@ -131,4 +131,12 @@ assert.notEqual(recipeKey(full), recipeKey({ ...full, extra: 'อื่น' }));
   assert.ok(storableRecipe(longest), `longest recipe (${JSON.stringify(longest).length} chars) must fit MAX_RECIPE_CHARS`);
 }
 
-console.log('Packshot recipe checks passed: round trip, shot types, old recipes, bad values, deleted uploads, key order, longest recipe stored.');
+// 9. stored recipes carry their format version; a passed-on stored recipe keeps its own; readRecipe drops it
+{
+  assert.equal(storableRecipe(full).v, RECIPE_VERSION);
+  assert.equal(storableRecipe({ ...full, v: 7 }).v, 7);
+  assert.equal(storableRecipe([1]), null);
+  assert.equal(recipeKey(readRecipe(storableRecipe(stored(full)), lists, MODEL).recipe), recipeKey(readRecipe(stored(full), lists, MODEL).recipe));
+}
+
+console.log('Packshot recipe checks passed: round trip, shot types, old recipes, bad values, deleted uploads, key order, longest recipe stored, format version.');
