@@ -2,10 +2,10 @@ import { availableModels, generateImage } from '@/lib/ai';
 import { defaultQuality, GPT25_SIZES, isGpt25 } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog } from '@/lib/genlog';
 import { LOCAL_EDIT_PROMPT, supportsMaskedEdit } from '@/lib/local-edit';
-import { blendLocalEdit, editCanvas, finishRoughEdit, fromEditCanvas, highlightAreas, maskToEditCanvas, prepareLocalEdit, roughEditGuide, toEditCanvas } from '@/lib/local-edit-images';
+import { blendLocalEdit, editCanvas, finishRoughEdit, fromEditCanvas, guidePreview, highlightAreas, maskToEditCanvas, prepareLocalEdit, roughEditGuide, toEditCanvas } from '@/lib/local-edit-images';
 import { json, post } from '@/lib/route';
 import { storableRecipe } from '@/lib/recipe';
-import { listImages, readImage, saveImage } from '@/lib/storage';
+import { listImages, readImage, saveGuide, saveImage } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
 
 export const maxDuration = 300;
@@ -39,11 +39,15 @@ export const POST = post(async (req) => {
   const size = isGpt25(req.model) ? GPT25_SIZES[baseSize] : baseSize;
   const areas = highlighted ? highlightAreas(source) : []; // ระบายกี่ที่ อยู่ตรงไหน (2 ที่ขึ้นไป = บอก AI เป็นคำด้วย)
   const prompt = LOCAL_EDIT_PROMPT(instruction, product, mode, highlighted, areas);
+  // ภาพไฮไลต์สีแดง (Image 2): ทำครั้งเดียว ใช้ส่งให้ AI และเก็บย่อไว้ให้หน้าตรวจงาน (เก็บไม่ได้ = ไม่เป็นไร การแก้ต้องไปต่อ)
+  const guide = highlighted ? await roughEditGuide(source) : null;
+  const guideSrc = guide ? await guidePreview(guide).then(saveGuide).catch((e) => { console.error('เก็บภาพไฮไลต์ไม่สำเร็จ', e); return null; }) : null;
   const caption = `แก้เฉพาะจุด · ${instruction}`.slice(0, 300);
   const t0 = Date.now();
   const log: Omit<GenerateLog, 'status' | 'duration'> = {
     time: localTime(), ai: { model: req.model, params: { size, quality: defaultQuality(req.model), mask: mode === 'precise' ? 'PNG alpha' : highlighted ? 'visual highlight reference (no clipping mask)' : 'none (instruction only)', output: 'lossless PNG' } },
-    model: { image: highlighted ? 2 : 1, file: req.src, sent: `${source.width}×${source.height}` },
+    model: { image: 1, file: req.src, sent: `${source.width}×${source.height}` }, // รูปเดิมเป็น Image 1 เสมอ (เดิมเขียน 2 ตอนระบาย = ผิด)
+    ...(guide ? { guide: { image: 2, ...(guideSrc ? { file: guideSrc } : {}), sent: `${source.width}×${source.height} · ไฮไลต์สีแดง` } } : {}),
     element: { outfit: mode === 'precise' ? 'เปลี่ยนเฉพาะพื้นที่เลือก' : highlighted ? 'แก้วัตถุที่ไฮไลต์ชี้ไว้' : 'แก้ตามคำสั่งที่พิมพ์ (ไม่ได้ระบาย)', accessories: [], scene: 'รักษาส่วนนอกพื้นที่เลือก' },
     pose: { mode: 'ท่าเดิม' }, style: { operation: 'local-edit', mode, editedFrom: req.src, selectedPixels: String(source.selectedPixels), ...(areas.length ? { areas } : {}), bounds: JSON.stringify(source.bounds), feather: String(feather) }, prompt: sentences(prompt),
   };
@@ -52,7 +56,7 @@ export const POST = post(async (req) => {
   try {
     // ส่งในสัดส่วนเดียวกับขนาดที่ขอ (เติมขอบ) แล้วตัดกลับ — ห้ามยืดผลลัพธ์ ไม่งั้นสินค้าแบน/อ้วนขึ้น (lib/local-edit-images.ts editCanvas)
     const canvas = editCanvas(source.width, source.height, size);
-    const images = await Promise.all((highlighted ? [source.image, await roughEditGuide(source)] : [source.image]).map((img) => toEditCanvas(img, canvas)));
+    const images = await Promise.all((guide ? [source.image, guide] : [source.image]).map((img) => toEditCanvas(img, canvas)));
     const output = await generateImage(req.model, images, prompt, { size, quality: defaultQuality(req.model), aspect: source.width < source.height ? '2:3' : source.width > source.height ? '3:2' : '1:1', ...(mode === 'precise' ? { mask: await maskToEditCanvas(source.mask!, canvas) } : {}) });
     tokens = output.tokens;
     const edited = await fromEditCanvas(output, canvas);

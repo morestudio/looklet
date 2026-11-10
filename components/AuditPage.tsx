@@ -22,7 +22,7 @@ const ACTIONS: Record<string, string> = { generate: 'สร้างรูป (�
 const ROLES: Record<string, string> = {
   model: 'นางแบบ', 'element.outfit': 'ชุด', 'element.top': 'เสื้อ', 'element.bottom': 'ท่อนล่าง', 'element.shoes': 'รองเท้า', 'element.accessories': 'ของเสริม', 'element.scene': 'ฉาก', pose: 'ท่าโพสต์', set: 'รูปแรกของชุด',
   product: 'สินค้า', supports: 'สินค้า มุมอื่น', 'element.set': 'ฉาก', 'element.reference': 'ช็อตต้นแบบ', 'element.props.image': 'พร็อพของฉัน',
-  angleGuide: 'ไกด์มุม (ตั้งมุมเอง)',
+  angleGuide: 'ไกด์มุม (ตั้งมุมเอง)', guide: 'ไฮไลต์ที่ระบาย (สีแดง)',
 };
 const IMAGE_KEYS = new Set(['image', 'name', 'type', 'file', 'sent']); // ฟิลด์ของรูปที่ส่ง (LogImage)
 const isImage = (o: Record<string, unknown>) => typeof o.image === 'number' && typeof o.sent === 'string';

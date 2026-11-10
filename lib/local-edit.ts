@@ -6,15 +6,23 @@ export const MAX_EDIT_PIXELS = 16_000_000;
 // highlighted = ผู้ใช้ระบายชี้จุด (rough) · ไม่ระบาย = แก้จากคำสั่งที่พิมพ์อย่างเดียว (28 ต.ค. ผู้ใช้อยากแค่พิมพ์แล้วแก้ได้)
 // areas = ตำแหน่งของแต่ละก้อนที่ระบาย (highlightAreas ใน local-edit-images.ts) — ระบาย 2 ที่ขึ้นไปเท่านั้นที่บอก AI เป็นคำ:
 // 9 พ.ย. ผู้ใช้ระบายหิน 3 ก้อน "เอาหินออก" แต่แผ่นหินก้อนซ้ายยังอยู่ (AI วาดก้อนนั้นเหมือนเดิม) ผู้ใช้: ระบายแล้วต้องเปลี่ยน
-// ระบายที่เดียว = พรอมต์เดิมทุกตัวอักษร
+// ระบายที่เดียว = ไม่มีบรรทัดนี้
 const areasLine = (areas: string[]) => areas.length < 2 ? ''
   : `The red paint covers ${areas.length} separate areas of the photo: ${areas.map((a) => `one ${a}`).join(', ')}. `
   + 'The user painted every one of them on purpose: apply the requested change in every painted area, to each object the paint points to. '
   + 'Never leave a painted object unchanged, even if it looks like a base, a stand, a prop, or part of the floor or background. '
   + 'Do not apply the change to objects that have no paint on them, even if they look similar. ';
+// คำสั่งของผู้ใช้อยู่บรรทัดแรก (ผู้ใช้ขอ 10 พ.ย. เดิมอยู่ท้ายสุด — AI ให้ความสำคัญกับต้นพรอมต์มากกว่า) ตัด . ท้ายข้อความออกก่อนปิดประโยค
+// ระบายแบบไฮไลต์คร่าว ๆ ต่อท้ายข้อความผู้ใช้ด้วย "ในส่วนที่ไฮไลท์" (ผู้ใช้กำหนดคำเอง 10 พ.ย. ตัวอย่าง "เพิ่มหมา bulldog" -> "เพิ่มหมา bulldog ในส่วนที่ไฮไลท์")
+// ไม่ได้ระบาย / แบบละเอียด (mask) = ข้อความผู้ใช้อย่างเดียว
+const requestLine = (instruction: string, highlighted: boolean) => {
+  const text = instruction.trim().replace(/[\s.。]+$/u, '');
+  return `Requested local change: ${highlighted ? `${text} ในส่วนที่ไฮไลท์` : text}. `;
+};
 export const LOCAL_EDIT_PROMPT = (instruction: string, product = false, mode: LocalEditMode = 'precise', highlighted = true, areas: string[] = []) =>
-  (mode === 'rough' && !highlighted
-    ? 'Image 1 is the original photograph and the sole source of appearance and detail. Find the object or area that the requested change below refers to and apply the change to that whole object, including its connected parts, handles and straps; leave everything else exactly as it is. If removing an object, reconstruct the revealed background and its affected contact shadows naturally. '
+  requestLine(instruction, mode === 'rough' && highlighted)
+  + (mode === 'rough' && !highlighted
+    ? 'Image 1 is the original photograph and the sole source of appearance and detail. Find the object or area that the requested change above refers to and apply the change to that whole object, including its connected parts, handles and straps; leave everything else exactly as it is. If removing an object, reconstruct the revealed background and its affected contact shadows naturally. '
     : mode === 'rough'
     ? 'Image 1 is the clean original photograph and the sole source of appearance and detail. Image 2 is the same photograph with translucent red user highlights, provided ONLY to point to the target object or location. The highlights are approximate pointers, NOT edit boundaries, NOT the desired color, and NOT content to reproduce. '
     + areasLine(areas)
@@ -25,5 +33,4 @@ export const LOCAL_EDIT_PROMPT = (instruction: string, product = false, mode: Lo
     : 'Keep the same person, identity, face, pose, body proportions, clothing, accessories, background, camera perspective, lighting and photographic texture except for the specific requested change. ')
   + 'For a color-only change, change only the color of the indicated object: preserve its exact silhouette, dimensions, construction, seams, stitching, pattern, logo, hardware and material texture; do not replace it with a different design. Preserve overlapping hands and other foreground objects. '
   + 'Keep the full image framing and dimensions aligned with the source. Do not move, crop, zoom, relight or restyle the whole photograph. '
-  + 'Make the edited area blend naturally into the surrounding original image. Do not add new text or watermarks. '
-  + `Requested local change: ${instruction}`;
+  + 'Make the edited area blend naturally into the surrounding original image. Do not add new text or watermarks.';

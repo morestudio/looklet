@@ -34,6 +34,7 @@ export type GenerateLog = {
   style: Record<string, string | string[] | boolean>;
   prompt: string[];
   harmonizePrompt?: string[]; // รอบสอง: ส่งรูปที่ได้จากรอบแรกรูปเดียว + พรอมต์นี้
+  guide?: LogImage; // แก้เฉพาะจุดแบบระบาย: ภาพไฮไลต์สีแดงที่ส่งเป็น Image 2 (เก็บไว้ที่ guides/ เปิดได้เฉพาะ superadmin)
   roomPrompt?: string[]; // รูปท่า + ฉากที่เลือก ขั้น 1: ส่งรูปฉาก (Image 1) + รูปท่าที่ตัดแล้ว (Image 2) + พรอมต์นี้ -> ฉากใหม่ (ส่งต่อเป็นรูปฉากของพรอมต์หลัก)
 };
 

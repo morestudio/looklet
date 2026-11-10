@@ -160,6 +160,11 @@ export async function roughEditGuide(source: PreparedLocalEdit): Promise<Img> {
   return { data: png.toString('base64'), mime: 'image/png' };
 }
 
+// ภาพไฮไลต์ที่เก็บไว้ให้หน้าตรวจงาน (saveGuide): ย่อด้านยาวไม่เกิน 1024 JPEG ~100–200 KB — ส่งให้ AI ยังเป็น PNG ขนาดเต็มเหมือนเดิม
+export async function guidePreview(guide: Img): Promise<Buffer> {
+  return sharp(Buffer.from(guide.data, 'base64')).resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#fff' }).jpeg({ quality: 82 }).toBuffer();
+}
+
 export async function finishRoughEdit(source: PreparedLocalEdit, edited: Img): Promise<Img> {
   const png = await sharp(Buffer.from(edited.data, 'base64'), { limitInputPixels: MAX_EDIT_PIXELS })
     .rotate().resize(source.width, source.height, { fit: 'fill' }).png({ compressionLevel: 9 }).toBuffer();

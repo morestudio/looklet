@@ -7,7 +7,7 @@ import ts from 'typescript';
 import sharp from 'sharp';
 const require = createRequire(import.meta.url);
 const cache = new Map();
-const saved = [], calls = [], logs = [], usages = [];
+const saved = [], calls = [], logs = [], usages = [], guides = [];
 let sourceMeta, imageRead, editedOutput, rejectFidelity = false, echo = false; // echo = AI ที่ไม่แก้อะไร ส่งรูปแรกที่ได้รับกลับ
 const providerFetch = async (_url, options) => {
   const form = options.body;
@@ -27,7 +27,8 @@ function load(file) {
     if (id === '@/lib/route') return { post: (fn) => fn, get: (fn) => fn, json: (status, body) => ({ status, body }), signedIn: async () => null };
     if (id === '@/lib/usage') return { quotaBlock: async () => null, recordUsage: async (entry) => usages.push(entry) };
     if (id === '@/lib/storage') return { THUMB_WIDTHS: [400, 512], readThumb: async () => null, readImage: async () => imageRead, listImages: async () => sourceMeta ? [sourceMeta] : [],
-      saveImage: async (where, data, mime, meta) => { saved.push({ where, data, mime, meta }); return '/api/files/results/new.png'; } };
+      saveImage: async (where, data, mime, meta) => { saved.push({ where, data, mime, meta }); return '/api/files/results/new.png'; },
+      saveGuide: async (jpeg) => { guides.push(jpeg); return `/api/files/guides/g${guides.length}.jpg`; } };
     if (id === '@/lib/genlog') return { localTime: () => 'test', sentences: (s) => [s], writeGenerateLog: async (log) => logs.push(log) };
     if (id.startsWith('@/')) return load(id.slice(2) + '.ts');
     if (id.startsWith('.')) return load(path.posix.normalize(path.posix.join(path.posix.dirname(file), id)) + '.ts');
@@ -168,6 +169,16 @@ for (const call of calls.slice(beforeRough)) {
 const roughRaw = await sharp(Buffer.from(saved.at(-1).data, 'base64')).ensureAlpha().raw().toBuffer();
 assert.notDeepEqual(roughRaw.subarray(4, 8), original.subarray(4, 8), 'Edits outside the rough brush must not be clipped away');
 assert.equal(logs.at(-1).style.mode, 'rough');
+// ภาพไฮไลต์สีแดง (Image 2) เก็บไว้ให้หน้าตรวจงาน + log: รูปเดิม = Image 1, ไฮไลต์ = Image 2 (เดิมเขียนรูปเดิมเป็น 2 = ผิด)
+assert.equal(logs.at(-1).model.image, 1);
+assert.deepEqual(logs.at(-1).guide, { image: 2, file: `/api/files/guides/g${guides.length}.jpg`, sent: `${width}×${height} · ไฮไลต์สีแดง` });
+const guideJpeg = await sharp(guides.at(-1)).raw().toBuffer({ resolveWithObject: true });
+assert.equal(guideJpeg.info.width, width, 'Small photos are saved at their own size');
+assert(guideJpeg.data[(12 * width + 16) * 3] > 150, 'The saved guide shows the red highlight');
+// คำสั่งของผู้ใช้อยู่บรรทัดแรก + "ในส่วนที่ไฮไลท์" (ผู้ใช้ขอ 10 พ.ย.) และไม่ซ้ำท้ายพรอมต์
+assert(calls.at(-1).prompt.startsWith(`Requested local change: ${base.instruction} ในส่วนที่ไฮไลท์. Image 1 is the clean original photograph`));
+assert.equal(calls.at(-1).prompt.split('Requested local change').length, 2);
+assert.match(calls.at(-1).prompt, /Do not add new text or watermarks\.$/);
 // ระบายที่เดียว = พรอมต์เดิม ไม่มีบรรทัดนับที่ (เทียบทั้งพรอมต์กับแบบไม่ส่ง areas)
 assert.doesNotMatch(calls.at(-1).prompt, /separate areas/);
 assert.equal(calls.at(-1).prompt, LOCAL_EDIT_PROMPT(base.instruction, true, 'rough', true));
@@ -206,10 +217,13 @@ for (const mask of [undefined, null, (await png(Buffer.alloc(original.length, 25
     assert.equal(call.mask, null);
     assert.equal(call.image.length, 1, 'Instruction-only edits send just the clean photo');
     assert.deepEqual(inner(await rawOf(call.image[0])), prepared.original);
-    assert.match(call.prompt, /Find the object or area that the requested change below refers to/);
+    assert.match(call.prompt, /Find the object or area that the requested change above refers to/);
+    assert(call.prompt.startsWith('Requested local change: เอาพร็อพออก. Image 1 is the original photograph'), 'No highlight phrase without painting');
     assert.doesNotMatch(call.prompt, /red user highlights|Image 2/);
   }
   assert.equal(logs.at(-1).element.outfit, 'แก้ตามคำสั่งที่พิมพ์ (ไม่ได้ระบาย)');
+  assert.equal(logs.at(-1).guide, undefined);
+  assert.equal(logs.at(-1).model.image, 1);
 }
 // แบบละเอียด (API เก่า) ยังต้องระบาย: ไม่มีพื้นที่ = ไม่เรียก AI
 const callsBeforePrecise = calls.length;
@@ -221,7 +235,10 @@ assert.equal(calls.length, callsBeforePrecise, 'Precise edits without a selectio
 echo = true;
 rejectFidelity = false;
 for (const [mode, mask] of [['precise', base.mask], ['rough', base.mask], ['rough', null]]) {
+  const guidesBefore = guides.length;
   assert.equal((await POST({ ...base, mode, mask })).status, 200);
+  assert.equal(guides.length - guidesBefore, mode === 'rough' && mask ? 1 : 0, 'Only painted rough edits save a red highlight image');
+  if (mode === 'precise') assert(calls.at(-1).prompt.startsWith(`Requested local change: ${base.instruction}. Edit only the area indicated by the transparent region`));
   const raw = await sharp(Buffer.from(saved.at(-1).data, 'base64')).ensureAlpha().raw().toBuffer();
   assert.deepEqual(raw, prepared.original, `${mode}${mask ? '' : ' (text only)'}: geometry and pixels unchanged when the AI changes nothing`);
 }
