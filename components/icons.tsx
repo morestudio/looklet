@@ -51,4 +51,5 @@ export const IconEraser = () => (
   <Svg size={20}><path d="M14.6 4.4a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10 19H6.2l-2.4-2.4a2 2 0 0 1 0-2.8z" /><path d="m9 10 5 5" /><path d="M10 19h10" /></Svg>
 );
 export const IconSignOut = () => <Svg size={18}><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3" /><path d="m16 17 5-5-5-5M21 12H9" /></Svg>;
-export const IconLeaf = () => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;
+export const IconInfo = () => <Svg size={16}><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></Svg>;
+export const IconLeaf =() => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;
