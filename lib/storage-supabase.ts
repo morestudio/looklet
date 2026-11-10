@@ -69,6 +69,16 @@ export async function sbDelete(key: string) {
   return true;
 }
 
+// ไฟล์ที่ไม่มีแถวในตาราง images (ไม่ขึ้นในคลังของใคร) เช่นภาพไฮไลต์สีแดงของแก้เฉพาะจุด (guides/) — สิทธิ์เปิดเช็กใน lib/storage.ts
+export async function sbPutObject(key: string, data: Buffer, mime: string) {
+  const { error } = await sb().storage.from(BUCKET).upload(key, data, { contentType: mime, upsert: false });
+  if (error) throw new Error('เก็บไฟล์ลง Supabase ไม่สำเร็จ: ' + error.message);
+}
+export async function sbGetObject(key: string) {
+  const { data, error } = await sb().storage.from(BUCKET).download(key);
+  return error || !data ? null : Buffer.from(await data.arrayBuffer());
+}
+
 // ---------- รูปย่อ (ตาราง/ประวัติรูปในหน้าเว็บ, /api/files?w=) ----------
 // 10 พ.ย.: Supabase แจ้งเกินโควตาแผนฟรี Cached Egress 7.1/5 GB (รอบ 16 ต.ค.–16 พ.ย.) จำกัดการใช้งานตั้งแต่ 30 พ.ย. ถ้ายังเกิน
 // สาเหตุ: หน้าเว็บโหลดรูปเต็ม (ผลลัพธ์เฉลี่ย 1.7 MB, PNG แก้เฉพาะจุด ~3.6 MB) ทุกรูปในประวัติ/คลังทันทีที่เปิดหน้า บัญชีทีม 1 ครั้ง ~250 MB

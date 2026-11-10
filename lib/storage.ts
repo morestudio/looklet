@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { me, ownerMeta, visibleTo } from './account';
 import { thumbJpeg } from './images';
-import { GRID_THUMB, sbDelete, sbList, sbMeta, sbRead, sbReadThumb, sbSave, sbSaveThumb, sbUpdateMeta, supabaseEnabled, THUMB_WIDTHS } from './storage-supabase';
+import { GRID_THUMB, sbDelete, sbGetObject, sbList, sbMeta, sbPutObject, sbRead, sbReadThumb, sbSave, sbSaveThumb, sbUpdateMeta, supabaseEnabled, THUMB_WIDTHS } from './storage-supabase';
 
 export { THUMB_WIDTHS };
 import type { StoredPosePlan } from './photo-director';
@@ -19,6 +19,8 @@ import type { StoredPosePlan } from './photo-director';
 const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
 const UPLOADS_DIR = path.join(ROOT, 'images', 'uploads');
+// ภาพไฮไลต์สีแดงที่ส่งให้ AI ตอนแก้เฉพาะจุด (saveGuide) — เก็บในเครื่องไว้ใน logs/ (gitignore อยู่แล้ว)
+const GUIDES_DIR = path.join(ROOT, 'logs', 'guides');
 
 // หน้าสินค้าใช้คลังแยก: products = รูปสินค้า, product-refs = ช็อตต้นแบบ, product-scenes = รูปฉาก, product-props = พร็อพของฉัน (ไม่ปนกับฉากของหน้านางแบบ)
 // Supabase เก็บ kind เป็นข้อความ เพิ่มประเภทใหม่ได้โดยไม่ต้องแก้ตาราง
@@ -116,6 +118,7 @@ function resolveFile(parts: string[]) {
   let folder: string, file: string | undefined;
   if (parts[0] === 'results' && parts.length === 2) [folder, file] = [RESULTS_DIR, parts[1]];
   else if (parts[0] === 'uploads' && parts.length === 3 && isKind(parts[1])) [folder, file] = [path.join(UPLOADS_DIR, parts[1]), parts[2]];
+  else if (parts[0] === 'guides' && parts.length === 2) [folder, file] = [GUIDES_DIR, parts[1]];
   else return null;
   if (!file || file.startsWith('.') || /[\\/]/.test(file)) return null;
   const type = MIME[path.extname(file).slice(1).toLowerCase()];
@@ -128,7 +131,25 @@ export async function readImage(parts: string[]) {
   const f = resolveFile(parts);
   if (!f) return null;
   const auditor = me()?.role === 'superadmin';
+  if (f.key.startsWith('guides/')) return auditor ? readGuide(f) : null;
   const data = supabaseEnabled ? await sbRead(f.key, (meta) => auditor || visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
+  return data && { data, type: f.type };
+}
+
+// ---------- ภาพไฮไลต์สีแดงของแก้เฉพาะจุด (Image 2 ที่ส่งให้ AI) ----------
+// เดิมสร้างแล้วทิ้ง หน้าตรวจงานจึงไม่เห็นว่าระบายตรงไหน (ผู้ใช้ 10 พ.ย.: "ไม่เห็นสีแดง แปลว่าไม่ได้ส่งหรือเปล่า") -> เก็บ JPEG ย่อไว้
+// guides/<วันเวลา-สุ่ม>.jpg ไม่มีแถวในตาราง images (ไม่ขึ้นในคลัง) เปิดได้เฉพาะ superadmin (หน้าตรวจงาน) ลบผ่าน deleteImage ไม่ได้
+export async function saveGuide(jpeg: Buffer) {
+  const file = `${stamp()}.jpg`;
+  if (supabaseEnabled) await sbPutObject(`guides/${file}`, jpeg, 'image/jpeg');
+  else {
+    await fs.mkdir(GUIDES_DIR, { recursive: true });
+    await fs.writeFile(path.join(GUIDES_DIR, file), jpeg);
+  }
+  return `${URL_PREFIX}guides/${file}`;
+}
+async function readGuide(f: { full: string; key: string; type: string }) {
+  const data = supabaseEnabled ? await sbGetObject(f.key) : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
 }
 
@@ -138,6 +159,7 @@ export async function readThumb(parts: string[], width: number) {
   const f = resolveFile(parts);
   if (!f) return null;
   const auditor = me()?.role === 'superadmin';
+  if (f.key.startsWith('guides/')) return auditor ? readGuide(f) : null; // เก็บเป็นรูปย่ออยู่แล้ว (≤1024px)
   const make = (full: Buffer) => thumbJpeg(full, width);
   const data = supabaseEnabled
     ? await sbReadThumb(f.key, width, (meta) => auditor || visibleTo(meta), make)
@@ -162,7 +184,7 @@ export async function updateMeta(src: string, meta: Record<string, string>) {
 export async function deleteImage(src: string) {
   if (!src.startsWith(URL_PREFIX)) return false;
   const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
-  if (!f) return false;
+  if (!f || f.key.startsWith('guides/')) return false;
   if (supabaseEnabled) return visibleTo(await sbMeta(f.key)) && sbDelete(f.key);
   const trash = path.join(os.homedir(), '.Trash');
   const hasTrash = await fs.stat(trash).then((s) => s.isDirectory(), () => false);
