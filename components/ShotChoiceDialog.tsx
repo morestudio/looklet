@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { thumbSrc } from '@/lib/browser';
 import type { ShotProposal } from '@/lib/photo-director';
 
 export function ShotChoiceDialog({ proposal, references, onChoose }: {
@@ -15,7 +16,7 @@ export function ShotChoiceDialog({ proposal, references, onChoose }: {
     onCancel={(e) => { e.preventDefault(); onChoose([]); }} onClose={() => onChoose([])}>
     <h2 id="shot-choice-title">เลือกไอเดียภาพ</h2>
     <p className="muted-text">เลือกได้ 1–3 ไอเดีย AI จะจัดท่าและมุมกล้องตามไอเดียที่เลือก · ยังไม่ได้สร้างรูป</p>
-    <div className="shot-choice-refs">{references.map((r, i) => <figure key={i}><img src={r.src} alt={r.name} /><figcaption>{r.name}</figcaption></figure>)}</div>
+    <div className="shot-choice-refs">{references.map((r, i) => <figure key={i}><img src={thumbSrc(r.src)} alt={r.name} /><figcaption>{r.name}</figcaption></figure>)}</div>
     <div className="shot-choice-grid">{proposal.plan.candidates.map((shot) => <article key={shot.id} className={'shot-choice-card' + (selected.includes(shot.id) ? ' selected' : '')}>
       <label>
         <input type="checkbox" checked={selected.includes(shot.id)} disabled={!shot.feasible}

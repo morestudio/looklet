@@ -2,7 +2,7 @@ import { availableModels, generateImage } from '@/lib/ai';
 import { defaultQuality, GPT25_SIZES, isGpt25 } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog } from '@/lib/genlog';
 import { LOCAL_EDIT_PROMPT, supportsMaskedEdit } from '@/lib/local-edit';
-import { blendLocalEdit, editCanvas, finishRoughEdit, fromEditCanvas, maskToEditCanvas, prepareLocalEdit, roughEditGuide, toEditCanvas } from '@/lib/local-edit-images';
+import { blendLocalEdit, editCanvas, finishRoughEdit, fromEditCanvas, highlightAreas, maskToEditCanvas, prepareLocalEdit, roughEditGuide, toEditCanvas } from '@/lib/local-edit-images';
 import { json, post } from '@/lib/route';
 import { storableRecipe } from '@/lib/recipe';
 import { listImages, readImage, saveImage } from '@/lib/storage';
@@ -37,14 +37,15 @@ export const POST = post(async (req) => {
   const highlighted = mode === 'rough' && source.selectedPixels > 0; // ระบายว่าง = แก้จากคำสั่งอย่างเดียว
   const baseSize = source.width === source.height ? '1024x1024' : source.width < source.height ? '1024x1536' : '1536x1024';
   const size = isGpt25(req.model) ? GPT25_SIZES[baseSize] : baseSize;
-  const prompt = LOCAL_EDIT_PROMPT(instruction, product, mode, highlighted);
+  const areas = highlighted ? highlightAreas(source) : []; // ระบายกี่ที่ อยู่ตรงไหน (2 ที่ขึ้นไป = บอก AI เป็นคำด้วย)
+  const prompt = LOCAL_EDIT_PROMPT(instruction, product, mode, highlighted, areas);
   const caption = `แก้เฉพาะจุด · ${instruction}`.slice(0, 300);
   const t0 = Date.now();
   const log: Omit<GenerateLog, 'status' | 'duration'> = {
     time: localTime(), ai: { model: req.model, params: { size, quality: defaultQuality(req.model), mask: mode === 'precise' ? 'PNG alpha' : highlighted ? 'visual highlight reference (no clipping mask)' : 'none (instruction only)', output: 'lossless PNG' } },
     model: { image: highlighted ? 2 : 1, file: req.src, sent: `${source.width}×${source.height}` },
     element: { outfit: mode === 'precise' ? 'เปลี่ยนเฉพาะพื้นที่เลือก' : highlighted ? 'แก้วัตถุที่ไฮไลต์ชี้ไว้' : 'แก้ตามคำสั่งที่พิมพ์ (ไม่ได้ระบาย)', accessories: [], scene: 'รักษาส่วนนอกพื้นที่เลือก' },
-    pose: { mode: 'ท่าเดิม' }, style: { operation: 'local-edit', mode, editedFrom: req.src, selectedPixels: String(source.selectedPixels), bounds: JSON.stringify(source.bounds), feather: String(feather) }, prompt: sentences(prompt),
+    pose: { mode: 'ท่าเดิม' }, style: { operation: 'local-edit', mode, editedFrom: req.src, selectedPixels: String(source.selectedPixels), ...(areas.length ? { areas } : {}), bounds: JSON.stringify(source.bounds), feather: String(feather) }, prompt: sentences(prompt),
   };
   const usage = { page: product ? 'product' : 'model', action: 'local-edit', model: req.model, quality: defaultQuality(req.model) } as const;
   let tokens = 0; // โทเคนที่ AI คิดจริง -> โควตาลูกค้า

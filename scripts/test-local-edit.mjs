@@ -26,7 +26,7 @@ function load(file) {
     if (id === 'server-only') return {};
     if (id === '@/lib/route') return { post: (fn) => fn, get: (fn) => fn, json: (status, body) => ({ status, body }), signedIn: async () => null };
     if (id === '@/lib/usage') return { quotaBlock: async () => null, recordUsage: async (entry) => usages.push(entry) };
-    if (id === '@/lib/storage') return { readImage: async () => imageRead, listImages: async () => sourceMeta ? [sourceMeta] : [],
+    if (id === '@/lib/storage') return { THUMB_WIDTHS: [400, 512], readThumb: async () => null, readImage: async () => imageRead, listImages: async () => sourceMeta ? [sourceMeta] : [],
       saveImage: async (where, data, mime, meta) => { saved.push({ where, data, mime, meta }); return '/api/files/results/new.png'; } };
     if (id === '@/lib/genlog') return { localTime: () => 'test', sentences: (s) => [s], writeGenerateLog: async (log) => logs.push(log) };
     if (id.startsWith('@/')) return load(id.slice(2) + '.ts');
@@ -35,14 +35,14 @@ function load(file) {
   }, loaded, loaded.exports, { env: { OPENAI_API_KEY: 'fake-test-key' } }, providerFetch);
   cache.set(file, loaded.exports); return loaded.exports;
 }
-const { prepareLocalEdit, blendLocalEdit, roughEditGuide, editCanvas } = load('lib/local-edit-images.ts');
+const { prepareLocalEdit, blendLocalEdit, roughEditGuide, editCanvas, highlightAreas } = load('lib/local-edit-images.ts');
 // สัดส่วนที่ส่งให้ AI: เติมขอบ ไม่ยืด (รูปสินค้า 4:5 -> 2:3 เติมบนล่าง 208px) · สัดส่วนตรงอยู่แล้ว = ไม่เติม
 assert.deepEqual(editCanvas(1664, 2080, '1664x2496'), { width: 1664, height: 2496, left: 0, top: 208, source: { width: 1664, height: 2080 } });
 assert.deepEqual(editCanvas(1664, 2496, '1664x2496'), { width: 1664, height: 2496, left: 0, top: 0, source: { width: 1664, height: 2496 } });
 assert.deepEqual(editCanvas(2048, 1365, '2496x1664'), { width: 2048, height: 1365, left: 0, top: 0, source: { width: 2048, height: 1365 } });
 assert.deepEqual(editCanvas(1000, 1000, '1536x1024'), { width: 1500, height: 1000, left: 250, top: 0, source: { width: 1000, height: 1000 } });
 const { generateImage } = load('lib/ai.ts');
-const { supportsMaskedEdit } = load('lib/local-edit.ts');
+const { supportsMaskedEdit, LOCAL_EDIT_PROMPT } = load('lib/local-edit.ts');
 assert(supportsMaskedEdit('openai:gpt-image-2.5-sunburst'));
 assert(!supportsMaskedEdit('gemini:gemini-3.1-flash-image'));
 const width = 64, height = 48;
@@ -168,6 +168,35 @@ for (const call of calls.slice(beforeRough)) {
 const roughRaw = await sharp(Buffer.from(saved.at(-1).data, 'base64')).ensureAlpha().raw().toBuffer();
 assert.notDeepEqual(roughRaw.subarray(4, 8), original.subarray(4, 8), 'Edits outside the rough brush must not be clipped away');
 assert.equal(logs.at(-1).style.mode, 'rough');
+// ระบายที่เดียว = พรอมต์เดิม ไม่มีบรรทัดนับที่ (เทียบทั้งพรอมต์กับแบบไม่ส่ง areas)
+assert.doesNotMatch(calls.at(-1).prompt, /separate areas/);
+assert.equal(calls.at(-1).prompt, LOCAL_EDIT_PROMPT(base.instruction, true, 'rough', true));
+assert.deepEqual(logs.at(-1).style.areas, ['in the center']); // log เก็บตำแหน่งไว้ดูย้อนหลัง แม้ไม่ได้ส่งเป็นคำ
+// ระบายหลายที่ (9 พ.ย. ระบายหิน 3 ก้อน แต่ก้อนซ้ายไม่ถูกลบ): นับที่ + บอกตำแหน่งเป็นคำ เรียงซ้ายไปขวา
+{
+  const W = 320, H = 240, m = Buffer.alloc(W * H * 4, 255);
+  const paint = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[(y * W + x) * 4 + 3] = 0; };
+  paint(20, 180, 60, 220); // ล่างซ้าย
+  paint(260, 100, 278, 140); paint(281, 100, 300, 140); // ขวากลาง: ยกนิ้วแล้วระบายต่อ ห่าง 3px = ที่เดียว
+  paint(250, 200, 300, 230); // ล่างขวา
+  paint(150, 20, 152, 22); // แตะพลาด 4px ไม่นับ
+  const prep = await prepareLocalEdit(await png(Buffer.alloc(W * H * 4, 200), W, H), await png(m, W, H));
+  assert.deepEqual(highlightAreas(prep), ['at the bottom left', 'at the bottom right', 'on the right side']);
+  assert.deepEqual(highlightAreas(await prepareLocalEdit(await png(Buffer.alloc(W * H * 4, 200), W, H), null)), []);
+}
+{
+  const two = Buffer.alloc(original.length, 255);
+  for (let y = 16; y < 30; y++) for (let x = 0; x < width; x++) if ((x >= 4 && x < 14) || (x >= 50 && x < 60)) two[(y * width + x) * 4 + 3] = 0;
+  const before = calls.length;
+  assert.equal((await POST({ ...base, src: sourceMeta.src, mode: 'rough', mask: (await png(two)).toString('base64'), instruction: 'เอาหินออก' })).status, 200);
+  for (const call of calls.slice(before)) {
+    assert.equal(call.image.length, 2);
+    assert.match(call.prompt, /The red paint covers 2 separate areas of the photo: one on the left side, one on the right side\. The user painted every one of them on purpose/);
+    assert.match(call.prompt, /Never leave a painted object unchanged/);
+    assert.match(call.prompt, /Do not apply the change to objects that have no paint on them/);
+  }
+  assert.deepEqual(logs.at(-1).style.areas, ['on the left side', 'on the right side']);
+}
 // พิมพ์อย่างเดียว (ไม่ระบาย หรือระบายว่าง) แก้ได้: ส่งแค่รูปเดิม 1 รูป ไม่มีภาพไฮไลต์ ไม่มี mask และคำสั่งให้หาเป้าหมายจากข้อความ
 for (const mask of [undefined, null, (await png(Buffer.alloc(original.length, 255))).toString('base64')]) {
   const before = calls.length;
@@ -204,4 +233,4 @@ imageRead = { data: Buffer.alloc(3_700_000, 42), type: 'image/png' };
 const streamed = await GET(new Request('http://localhost/api/files/results/test.png'), { params: Promise.resolve({ path: ['results', 'test.png'] }) });
 assert.equal(streamed.status, 200);
 assert.deepEqual(Buffer.from(await streamed.arrayBuffer()), imageRead.data);
-console.log('Local edit passed: exact outside-mask pixels (including erased holes), inward feathering, orientation, validation before charge, saved provenance, mask-preserving retries, lossless streaming, rough visual pointers without clipping, instruction-only edits without any highlight, no stretching (pad to the AI aspect, crop back), and real token usage recorded.');
+console.log('Local edit passed: exact outside-mask pixels (including erased holes), inward feathering, orientation, validation before charge, saved provenance, mask-preserving retries, lossless streaming, rough visual pointers without clipping, several painted areas named by position, instruction-only edits without any highlight, no stretching (pad to the AI aspect, crop back), and real token usage recorded.');
