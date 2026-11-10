@@ -311,6 +311,7 @@ export const QUALITIES_25 = [
 // โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
 export const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
 export const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
+export const qualitiesFor = (modelId: string) => (isGpt25(modelId) ? QUALITIES_25 : QUALITIES);
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ
 export const splitLabel = (label: string) => {
   const m = label.match(/^(.*?)\s*\((.*)\)$/);

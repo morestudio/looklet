@@ -2,7 +2,7 @@
 // SnapAds (เดิมชื่อ Looklet): เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
@@ -17,12 +17,14 @@ import { generateSelectedShots } from '@/lib/shot-batch';
 import { StyleView } from './StyleView';
 import { PLATFORM_ASPECTS } from '@/lib/aspects';
 import {
-  IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { useRecipeSync } from './useRecipeSync';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
+import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
 import { SKIN_MODEL } from '@/lib/skin';
 import {
   api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
@@ -30,20 +32,15 @@ import {
 } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
-  POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, QUALITIES, QUALITIES_25, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25,
+  POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25, qualitiesFor,
   MAX_WEAR, WEAR_TABS, wearPart, type WearSlot,
   presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode, type Preset,
 } from '@/lib/catalog';
 
-type Key = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene';
 const KIND = { model: 'models', outfit: 'outfits', accessory: 'accessories', pose: 'poses', scene: 'scenes' } as const;
 const CATALOG: Record<Key, Item[]> = { model: MODELS, outfit: OUTFITS, accessory: ACCESSORIES, pose: POSES, scene: SCENES };
 
-// อ้างถึงรายการด้วย id (ไม่ใช้ตำแหน่ง ลบ/เพิ่มแล้วไม่ต้องไล่แก้): รูป = src, ฉากแบบคำบรรยาย = ชื่อ
-const idOf = (item: Item) => item.src ?? item.name;
 const find = (list: Item[], id: string | null) => (id === null ? undefined : list.find((i) => idOf(i) === id));
-// ท่าสำเร็จรูป (ไม่มีรูปท่า ให้ AI ตัววางแผนคิดท่าจากฉาก) — id = "preset:<id ใน POSE_PRESETS หรือ auto>" ไม่ชนกับรูป (src ขึ้นต้นด้วย /)
-const PRESET_POSE = 'preset:';
 const POSE_CHOICES = [POSE_AUTO, ...POSE_PRESETS];
 // ของเสริมรูปเก่าที่ไม่มีประเภท -> ถือเป็น "อื่นๆ"
 const accessoryType = (a: Item) => ACCESSORY_TYPES.find((t) => t.id === a.type) ?? ACCESSORY_TYPES.find((t) => t.id === 'other')!;
@@ -78,9 +75,6 @@ const presetAngle = (p: Preset) => {
   return /ต่ำ/.test(label) ? 'low' : /ก้ม/.test(label) ? 'high' : /เฉียง/.test(label) ? 'side' : /สายตา/.test(label) ? 'eye' : 'chest';
 };
 
-// ใช้ภาพที่ไหน: ค่าเริ่มต้น IG · Facebook ฟีด 4:5 (ผู้ใช้ขอ 29 ต.ค. ลูกค้าส่วนใหญ่ลง IG) — AI ทำ 2:3 แล้ว server ตัดบนล่าง
-const DEFAULT_ASPECT = '4:5';
-
 const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 };
 const AUTO: Amounts = { eye: 30, slim: 25, acne: 50, smooth: 35, white: 30 }; // "แต่งอัตโนมัติ": ค่ากลางๆ ดูเป็นธรรมชาติ
 const SLIDERS: [RetouchId, string][] = [['eye', 'ตาโต'], ['slim', 'หน้าเรียว'], ['acne', 'ลบสิว/จุดด่าง'], ['smooth', 'หน้าเนียน'], ['white', 'ผิวขาว']];
@@ -97,61 +91,6 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = StoredPosePlan;
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-// ---------- recipe: steps 1–8 choices saved with each generated image (meta.recipe, lib/recipe.ts) ----------
-type Pick = { model: string; outfit: string | null; accessory: string[]; pose: string | null; scene: string | null; top: string | null; bottom: string | null; shoes: string | null };
-type Recipe = {
-  pick: Pick; preset: string; framing: string; angle: string; placement: string; poseMode: PoseMode; light: LightSource; mood: string;
-  aspect: string; quality: string; extra: string; harmonize: boolean; gaze: string; props: string[]; background: BackgroundMode; goal: PhotoGoal; autoRepair: boolean;
-};
-const START: Recipe = {
-  pick: { model: idOf(MODELS[0]), outfit: null, accessory: [], pose: null, scene: null, top: null, bottom: null, shoes: null },
-  preset: PRESETS[0].id, framing: 'auto', angle: 'auto', placement: 'auto', poseMode: 'pose', light: 'ref', mood: 'auto',
-  aspect: DEFAULT_ASPECT, quality: 'medium', extra: '', harmonize: false, gaze: '', props: [], background: 'explore', goal: 'lifestyle', autoRepair: true,
-};
-// fixed field order: equal recipes -> equal keys
-const recipeKey = (r: Recipe) => JSON.stringify([r.pick.model, r.pick.outfit, r.pick.accessory, r.pick.pose, r.pick.scene, r.pick.top, r.pick.bottom, r.pick.shoes,
-  r.preset, r.framing, r.angle, r.placement, r.poseMode, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
-const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
-// stored recipe -> valid Recipe; an id no longer in the lists (deleted upload) -> null, its step listed in missing (doll shows "+")
-function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe: Recipe; missing: StepKey[] } {
-  const r = raw as Record<string, unknown>;
-  const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
-  const missing = new Set<StepKey>();
-  const has = (key: Key, id: unknown) => typeof id === 'string' && lists[key].some((i) => idOf(i) === id);
-  const ref = (key: Key, id: unknown, step: StepKey) => {
-    if (id === null || id === undefined) return null;
-    if (has(key, id)) return id as string;
-    missing.add(step);
-    return null;
-  };
-  const accessory = (Array.isArray(p.accessory) ? p.accessory : []).filter((id) => has('accessory', id) || void missing.add('accessory')) as string[];
-  const recipe: Recipe = {
-    pick: {
-      model: has('model', p.model) ? p.model as string : START.pick.model, // required: deleted -> first model (as deleteUpload)
-      outfit: ref('outfit', p.outfit, 'outfit'), accessory,
-      pose: typeof p.pose === 'string' && p.pose.startsWith(PRESET_POSE) ? p.pose : ref('pose', p.pose, 'pose'),
-      scene: ref('scene', p.scene, 'scene'), top: ref('outfit', p.top, 'outfit'), bottom: ref('outfit', p.bottom, 'outfit'), shoes: ref('accessory', p.shoes, 'outfit'),
-    },
-    preset: oneOf(r.preset, PRESETS.map((x) => x.id), START.preset),
-    framing: oneOf(r.framing, ['auto', ...FRAMINGS.map((x) => x.id)], 'auto'),
-    angle: oneOf(r.angle, ['auto', ...ANGLES.map((x) => x.id)], 'auto'),
-    placement: oneOf(r.placement, ['auto', ...PLACEMENTS.map((x) => x.id)], 'auto'),
-    poseMode: oneOf<PoseMode>(r.poseMode, POSE_MODES.map((m) => m.id), START.poseMode),
-    light: oneOf<LightSource>(r.light, LIGHT_SOURCES.map((l) => l.id), START.light),
-    mood: oneOf(r.mood, FACE_MOODS.map((m) => m.id), 'auto'),
-    aspect: oneOf<string>(r.aspect, PLATFORM_ASPECTS.map((a) => a.id), DEFAULT_ASPECT),
-    quality: typeof r.quality === 'string' ? r.quality : START.quality,
-    extra: typeof r.extra === 'string' ? r.extra : '',
-    harmonize: r.harmonize === true,
-    gaze: oneOf(r.gaze, ['', ...GAZES.map((g) => g.id)], ''),
-    props: (Array.isArray(r.props) ? r.props : []).filter((id) => PROPS.some((x) => x.id === id)) as string[],
-    background: oneOf<BackgroundMode>(r.background, ['explore', 'keep'], 'explore'),
-    goal: oneOf<PhotoGoal>(r.goal, ['lifestyle', 'outfit', 'editorial'], 'lifestyle'),
-    autoRepair: r.autoRepair !== false,
-  };
-  return { recipe, missing: [...missing] };
-}
-
 type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; recipe?: Partial<Recipe> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
@@ -161,7 +100,6 @@ type Stored = { src: string; name?: string; caption?: string; type?: string; set
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
-type StepKey = 'model' | 'outfit' | 'accessory' | 'pose' | 'scene' | 'settings' | 'view' | 'output';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
   { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
@@ -188,11 +126,19 @@ const wearPatch = (slot: WearSlot, id: string | null) => slot === 'set' ? { outf
 
 export default function TryOn() {
   const [lists, setLists] = useState(CATALOG);
-  // สิ่งที่เลือกอยู่: outfit(ทั้งชุด)/top/bottom/shoes/pose/scene = null คือ "ของเดิม", accessory = หลายชิ้นได้
-  const [pick, setPick] = useState({
-    model: idOf(MODELS[0]), outfit: null as string | null, accessory: [] as string[], pose: null as string | null, scene: null as string | null,
-    top: null as string | null, bottom: null as string | null, shoes: null as string | null,
-  });
+  // every step's choice lives here (lib/tryon-recipe.ts); a new option is added to Recipe, not as its own useState
+  const [choices, setChoices] = useState<Recipe>(START);
+  const update = (patch: Partial<Recipe> | ((r: Recipe) => Partial<Recipe>)) => setChoices((r) => ({ ...r, ...(typeof patch === 'function' ? patch(r) : patch) }));
+  const {
+    pick, // outfit(ทั้งชุด)/top/bottom/shoes/pose/scene = null คือ "ของเดิม", accessory = หลายชิ้นได้
+    preset: presetId, // สไตล์ถ่ายภาพ (แสง + เลนส์ + โทนสี + ระยะ/มุมเริ่มต้น)
+    framing: framingId, angle: angleId, // FRAMINGS / ANGLES, 'auto' = ตามสไตล์
+    placement: placementId, // PLACEMENTS, 'auto' = สุ่มต่อรูป
+    poseMode: poseModeChoice, // เอาอะไรจากรูปท่าโพสต์ (ใช้เมื่อ FIXED_POSE_MODE = null)
+    light: lightChoice, // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
+    mood: faceMood, gaze: gazeId, // FACE_MOODS / GAZES ('' = ไม่กำหนด)
+    aspect, quality, extra, harmonize, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
+  } = choices;
   const [outfitTab, setOutfitTab] = useState<WearSlot>('top'); // แท็บในขั้นเสื้อผ้า
   const [tone, setTone] = useState<string | null>(null); // สีผิว null = สีเดิม
   const [amounts, setAmounts] = useState(NO_RETOUCH);
@@ -202,13 +148,8 @@ export default function TryOn() {
   const [current, setCurrent] = useState<number | null>(null); // กำลังแสดง: null = รูปนางแบบ (ตัวอย่าง), ตัวเลข = results[current]
   const [zoomed, setZoomed] = useState(false);
   const [editing, setEditing] = useState(false); // edit mode: edit panel instead of rail + left panel (Go list items 1, 6, 7)
-  // past image loads its settings (Go list items 3, 4): draft = setup in progress set aside while a past image's recipe fills the panel
-  const [draft, setDraft] = useState<{ recipe: Recipe; chosen: StepKey[]; base: Recipe | null } | null>(null);
-  const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from
-  const [viewKey, setViewKey] = useState<string | null>(null); // panel recipe key when the shown image was opened; differs -> user changed a choice
-  const [syncedSrc, setSyncedSrc] = useState<string | null>(null); // shown image the panel was last synced to
-  const [cleanKey, setCleanKey] = useState<string | null>(null); // draft key at page open (after models load) / last generate; differs = unsaved picks
-  const [confirmStart, setConfirmStart] = useState(false); // "เริ่มจากรูปนี้?" dialog
+  const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from (set aside with the draft)
+  const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
   const [original, setOriginal] = useState(false); // กดค้าง "ดูก่อนแต่ง"
   const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
@@ -218,30 +159,16 @@ export default function TryOn() {
   const [pendingSet, setPendingSet] = useState<{ id: string; left: number } | null>(null);
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null); // null = กำลังโหลด
   const [aiModel, setAiModel] = useState('');
-  const [presetId, setPresetId] = useState(PRESETS[0].id); // สไตล์ถ่ายภาพ (แสง + เลนส์ + โทนสี + ระยะ/มุมเริ่มต้น)
-  const [framingId, setFramingId] = useState('auto'); // ระยะ (FRAMINGS) 'auto' = ตามสไตล์
-  const [angleId, setAngleId] = useState('auto'); // มุมกล้อง (ANGLES) 'auto' = ตามสไตล์
-  const [placementId, setPlacementId] = useState('auto'); // ตำแหน่งในภาพ (PLACEMENTS) 'auto' = สุ่มต่อรูป
-  const [quality, setQuality] = useState('medium');
-  const [extra, setExtra] = useState('');
-  const [harmonize, setHarmonize] = useState(false);
-  const [poseModeChoice, setPoseMode] = useState<PoseMode>('pose'); // เอาอะไรจากรูปท่าโพสต์ (ใช้เมื่อ FIXED_POSE_MODE = null)
-  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('explore');
-  const [photoGoal, setPhotoGoal] = useState<PhotoGoal>('lifestyle');
-  const [autoRepair, setAutoRepair] = useState(true);
   const [shotChoice, setShotChoice] = useState<{
     proposal: ShotProposal; references: { src: string; name: string }[]; choose: (ids: string[]) => void;
   } | null>(null);
-  const [lightChoice, setLightSource] = useState<LightSource>('ref'); // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
   const lightSource: LightSource = FIXED_POSE_MODE ? 'ref' : lightChoice; // ไม่มีปุ่มเลือก = แสงจากรูปท่าเสมอ
-  const [faceMood, setFaceMood] = useState('auto'); // สีหน้า (FACE_MOODS)
-  const [gazeId, setGazeId] = useState(''); // การมอง ('' = ไม่กำหนด)
-  const [aspect, setAspect] = useState(DEFAULT_ASPECT); // ใช้ภาพที่ไหน (PLATFORM_ASPECTS)
-  const [heldProps, setHeldProps] = useState<string[]>([]); // พร็อพในมือ (id ใน PROPS)
   // ของเสริมที่ AI กำลังดูว่าเป็นอะไร (URL รูปชั่วคราว) ขึ้นเป็นการ์ดรอในรายการ
   const [analyzing, setAnalyzing] = useState<string[]>([]);
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
+  const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
+  const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด) — เปิดมาแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม (29 ต.ค. ผู้ใช้ขอ)
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
@@ -250,9 +177,9 @@ export default function TryOn() {
   const [localEdit, setLocalEdit] = useState<{ src: string; caption: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const editBtnRef = useRef<HTMLButtonElement>(null);
+  const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
   const editCloseRef = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);
-  const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
   const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS)
   const [query, setQuery] = useState(''); // ค้นหาตามชื่อในแผงเลือก
   const [filter, setFilter] = useState('all'); // ตัวกรองในแผงเลือก (SOURCE_FILTERS หรือ id ประเภทของเสริม)
@@ -328,7 +255,7 @@ export default function TryOn() {
         if (list.length) { // มีโมเดลเดียว (DEFAULT_AI_MODEL) เลือกเองไม่ได้แล้ว · คุณภาพเริ่มต้นตามโมเดล
           const id = (list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id;
           setAiModel(id);
-          setQuality(defaultQuality(id));
+          update({ quality: defaultQuality(id) });
         }
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
@@ -344,14 +271,12 @@ export default function TryOn() {
 
   // เปลี่ยนโมเดล AI -> คุณภาพกลับเป็นค่าเริ่มต้นของโมเดลนั้น (ระดับที่รุ่นหนึ่งมี อีกรุ่นอาจไม่มี)
   function select(key: Exclude<Key, 'accessory'>, id: string | null) {
-    setPick((p) => ({ ...p, [key]: id })); // stage switches to the paper doll via the recipe change check (below useChosenSteps)
+    update((r) => ({ pick: { ...r.pick, [key]: id } })); // stage switches to the paper doll via the recipe change check (below useChosenSteps)
   }
 
   // panel <- recipe (steps = touched steps for useChosenSteps: "+" vs keep cards on the paper doll)
   function applyRecipe(r: Recipe, steps: StepKey[]) {
-    setPick(r.pick); setPresetId(r.preset); setFramingId(r.framing); setAngleId(r.angle); setPlacementId(r.placement);
-    setPoseMode(r.poseMode); setLightSource(r.light); setFaceMood(r.mood); setAspect(r.aspect); setQuality(r.quality); setExtra(r.extra);
-    setHarmonize(r.harmonize); setGazeId(r.gaze); setHeldProps(r.props); setBackgroundMode(r.background); setPhotoGoal(r.goal); setAutoRepair(r.autoRepair);
+    setChoices(r);
     setChosen(new Set(steps));
   }
 
@@ -363,10 +288,10 @@ export default function TryOn() {
         : `ของเสริมเลือกได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป — กดชิ้นที่เลือกอยู่เพื่อเอาออกก่อน`);
     }
     setStatus('');
-    setPick((p) => ({
+    update(({ pick: p }) => ({ pick: {
       ...p,
       accessory: id === null ? [] : p.accessory.includes(id) ? p.accessory.filter((x) => x !== id) : [...p.accessory, id],
-    }));
+    } }));
   }
 
   // ขั้นเสื้อผ้า: เลือกชิ้นในช่องนั้น (null = ของเดิม) · รวมกับของเสริมแล้วเกิน MAX_WEAR = ไม่ให้เลือก
@@ -376,7 +301,7 @@ export default function TryOn() {
       return setStatus(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาของเสริมออกก่อน`);
     }
     setStatus('');
-    setPick((p) => ({ ...p, ...wearPatch(slot, id) }));
+    update((r) => ({ pick: { ...r.pick, ...wearPatch(slot, id) } }));
   }
 
   // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย
@@ -397,9 +322,9 @@ export default function TryOn() {
     // ของเสริม: ไม่ใช้ toggleAccessory เพราะระหว่างรอ AI ผู้ใช้อาจเลือก/เอาออกชิ้นอื่นไปแล้ว ต้องนับจากค่าล่าสุด
     // เลือกครบแล้ว -> เพิ่มเข้ารายการเฉยๆ ไม่เลือกให้
     // เสื้อผ้า: เลือกในช่องตามส่วนของรูป (type) · รองเท้า (ของเสริมประเภท shoes) ไปช่องรองเท้า ไม่นับเป็นของเสริม
-    if (key === 'outfit') setPick((p) => ({ ...p, ...wearPatch(type === 'top' || type === 'bottom' ? type : 'set', src) }));
-    else if (key === 'accessory' && type === 'shoes') setPick((p) => ({ ...p, shoes: src }));
-    else if (key === 'accessory') setPick((p) => (p.accessory.length < accLimit ? { ...p, accessory: [...p.accessory, src] } : p));
+    if (key === 'outfit') update((r) => ({ pick: { ...r.pick, ...wearPatch(type === 'top' || type === 'bottom' ? type : 'set', src) } }));
+    else if (key === 'accessory' && type === 'shoes') update((r) => ({ pick: { ...r.pick, shoes: src } }));
+    else if (key === 'accessory') update((r) => (r.pick.accessory.length < accLimit ? { pick: { ...r.pick, accessory: [...r.pick.accessory, src] } } : {}));
     else select(key, src);
   }
 
@@ -456,11 +381,10 @@ export default function TryOn() {
     }
     setLists((l) => ({ ...l, accessory: l.accessory.map((a) => (a === d.item ? { ...a, ...info } : a)) }));
     // แก้เป็นรองเท้า -> ย้ายไปช่องรองเท้าในขั้นเสื้อผ้า (ไม่เป็นของเสริมที่เลือกอยู่แล้ว)
-    if (info.type === 'shoes') setPick((p) => ({ ...p, accessory: p.accessory.filter((x) => x !== idOf(d.item)) }));
+    if (info.type === 'shoes') update((r) => ({ pick: { ...r.pick, accessory: r.pick.accessory.filter((x) => x !== idOf(d.item)) } }));
   }
 
   async function deleteUpload(key: Key, item: Item) {
-    if (!confirm(`ลบ "${item.name}"? (ย้ายไปถังขยะ)`)) return;
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
@@ -469,16 +393,18 @@ export default function TryOn() {
     const id = idOf(item);
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
     // ตัวที่เลือกอยู่ถูกลบ -> กลับไปค่าเริ่มต้น
-    setPick((p) => {
-      if (key === 'accessory') return { ...p, accessory: p.accessory.filter((x) => x !== id), shoes: p.shoes === id ? null : p.shoes };
-      if (key === 'outfit') return { ...p, outfit: p.outfit === id ? null : p.outfit, top: p.top === id ? null : p.top, bottom: p.bottom === id ? null : p.bottom };
-      if (p[key] !== id) return p;
-      return { ...p, [key]: key === 'model' ? idOf(MODELS[0]) : null };
+    update(({ pick: p }) => {
+      if (key === 'accessory') return { pick: { ...p, accessory: p.accessory.filter((x) => x !== id), shoes: p.shoes === id ? null : p.shoes } };
+      if (key === 'outfit') return { pick: { ...p, outfit: p.outfit === id ? null : p.outfit, top: p.top === id ? null : p.top, bottom: p.bottom === id ? null : p.bottom } };
+      if (p[key] !== id) return {};
+      return { pick: { ...p, [key]: key === 'model' ? idOf(MODELS[0]) : null } };
     });
   }
 
-  async function deleteResult(i: number) {
-    if (!confirm('ลบรูปที่สร้างนี้? (ย้ายไปถังขยะ)')) return;
+  // by src, not index: results can grow at the front while the dialog is open
+  async function deleteResult(src: string) {
+    const i = results.findIndex((r) => r.src === src);
+    if (i < 0) return;
     try {
       await api('/api/delete', { src: results[i].src });
     } catch (err) {
@@ -618,9 +544,9 @@ export default function TryOn() {
         recipe, // stored with the image (lib/recipe.ts)
       };
       // finished image: open it, unless the user changed choices while waiting (opening it would load its recipe over them)
+      const sentKey = liveKey;
       const showMade = (count = 1) => {
-        setCleanKey(liveKey);
-        if (liveKeyRef.current !== liveKey) {
+        if (!sync.finished(sentKey)) {
           setCurrent((c) => (c === null ? c : c + count)); // list grew at the front: keep the same image on the stage
           setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
           return;
@@ -803,12 +729,6 @@ export default function TryOn() {
   const cur = STEPS[step];
   const { chosen, mark, setChosen } = useChosenSteps(cur.key);
 
-  // ---------- recipe sync (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
-  const recipe: Recipe = {
-    pick, preset: presetId, framing: framingId, angle: angleId, placement: placementId, poseMode: poseModeChoice, light: lightChoice, mood: faceMood,
-    aspect, quality, extra, harmonize, gaze: gazeId, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
-  };
-  const liveKey = recipeKey(recipe);
   // edit panel focus: open -> its close button, close -> back to แต่งรูป (the button that had focus unmounts); Esc closes
   useEffect(() => {
     if (editing) editCloseRef.current?.focus();
@@ -821,31 +741,25 @@ export default function TryOn() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [editing]);
-  useEffect(() => { liveKeyRef.current = liveKey; });
+  // ---------- past image <-> panel (components/useRecipeSync.ts) ----------
+  const recipe = choices; // stored / compared form
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
-  const loadShown = () => applyRecipe(shownRecipe!.recipe, allSteps.filter((k) => !shownRecipe!.missing.includes(k)));
-  const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
-  if (cleanKey === null && aiModels !== null) setCleanKey(liveKey); // quality is set when models load
-  const shownSrc = shown?.src ?? null;
-  const syncing = shownSrc !== syncedSrc;
-  if (syncing) {
-    setSyncedSrc(shownSrc);
-    if (shownRecipe) {
-      if (!draft) setDraft({ recipe, chosen: [...chosen], base });
-      loadShown();
-      setViewKey(recipeKey(shownRecipe.recipe));
-    } else {
-      if (draft) { applyRecipe(draft.recipe, draft.chosen); setBase(draft.base); setDraft(null); }
-      setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
-    }
-  } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
-    // a choice changed while viewing: no recipe -> back to the (changed) draft; recipe -> new draft from it, confirm first if unsaved picks
-    if (!shownRecipe) { setViewKey(null); setSyncedSrc(null); setCurrent(null); }
-    else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
-    else startFromShown();
-  }
-  const draftBase = draft ? draft.base : base; // shown on the "รูปใหม่" tile
+  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, aiModel) : null), [shown, lists, aiModel]);
+  const sync = useRecipeSync({
+    recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
+    ready: aiModels !== null, // quality is set when models load
+    apply: applyRecipe, keep: () => base, restore: setBase, onStart: setBase, close: () => setCurrent(null),
+    revalidate: (r) => readRecipe(r, lists, aiModel).recipe, // missing upload = empty, model = first
+  });
+  const liveKey = sync.liveKey;
+  const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
+  // "ล้าง" in the paper doll label = the "รูปใหม่" tile on a freshly opened page: page-open picks, no past-image base, same step
+  const startOver = () => {
+    sync.reset(sync.pageStart ?? recipe);
+    setBase(null); setOutfitTab('top'); setStatus('');
+    newTileRef.current?.focus(); // the ล้าง button unmounts (base -> null); keep keyboard focus on the page
+  };
+  const draftBase = sync.draft ? sync.draft.extra : base; // shown on the "รูปใหม่" tile
   const changed = base && current === null ? { // paper doll highlights what differs from the past image
     model: base.pick.model !== pick.model, accessory: JSON.stringify(base.pick.accessory) !== JSON.stringify(pick.accessory),
     set: base.pick.outfit !== pick.outfit, top: base.pick.top !== pick.top, bottom: base.pick.bottom !== pick.bottom, shoes: base.pick.shoes !== pick.shoes,
@@ -934,7 +848,7 @@ export default function TryOn() {
   const showSpecial = filter === 'all' && !q; // การ์ด "ชุดเดิม" / "ไม่ใส่" / "AI เลือกท่าให้" โชว์เฉพาะตอนไม่ได้กรอง
   const uploadedCard = (key: Key, item: Item, active: boolean, onClick: () => void, zoom = false) => (
     <Card key={idOf(item)} item={item} active={active} onClick={onClick} zoom={zoom}
-      onDelete={item.uploaded ? () => void deleteUpload(key, item) : undefined} />
+      onDelete={item.uploaded ? () => setDeletingUpload({ key, item }) : undefined} />
   );
   const accTypeFilters = [
     { id: 'all', name: 'ทั้งหมด' },
@@ -1001,7 +915,7 @@ export default function TryOn() {
     panel = picker('accessory', 'accessories', <>
       {visible('accessory').filter((a) => !isShoes(a)).map((a) => (
         <Card key={idOf(a)} item={a} active={pick.accessory.includes(idOf(a))} onClick={() => toggleAccessory(idOf(a))}
-          onDelete={a.uploaded ? () => void deleteUpload('accessory', a) : undefined}
+          onDelete={a.uploaded ? () => setDeletingUpload({ key: 'accessory', item: a }) : undefined}
           footer={a.uploaded && (
             <button className="acc-type" title="แก้ชื่อ/ประเภท" onClick={() => setDialog({ mode: 'edit', item: a })}>
               {accessoryType(a).name} ✎
@@ -1033,24 +947,24 @@ export default function TryOn() {
         {isDirector ? <div className="director-settings">
           <p className="muted-text">AI ดูนางแบบ ชุด และฉาก คิด 3 ไอเดียให้เลือก สร้างเฉพาะไอเดียที่คุณเลือก แล้วตรวจภาพให้</p>
           <p className="sub">ใช้ฉากแบบไหน</p>
-          <ChipGroup options={[{ id: 'explore', name: 'สำรวจมุมใหม่' }, { id: 'keep', name: 'คงมุมฉากเดิม' }]} value={backgroundMode} onChange={(v) => setBackgroundMode(v as BackgroundMode)} />
+          <ChipGroup options={[{ id: 'explore', name: 'สำรวจมุมใหม่' }, { id: 'keep', name: 'คงมุมฉากเดิม' }]} value={backgroundMode} onChange={(v) => update({ background: v as BackgroundMode })} />
           <p className="muted-text">{backgroundMode === 'explore' ? 'เปลี่ยนมุมกล้องได้ เช่น มุมสูงเหนือเตียง ส่วนที่มองไม่เห็นในรูปฉากจะให้ AI คาดคะเน' : 'ใช้มุมกล้องและตำแหน่งเฟอร์นิเจอร์ตามรูปฉาก จัดท่าภายในพื้นที่ที่เห็น'}</p>
           <p className="sub">เป้าหมายของภาพ</p>
-          <ChipGroup options={[{ id: 'lifestyle', name: 'ไลฟ์สไตล์' }, { id: 'outfit', name: 'โชว์ชุดชัด' }, { id: 'editorial', name: 'แฟชั่นสร้างสรรค์' }]} value={photoGoal} onChange={(v) => setPhotoGoal(v as PhotoGoal)} />
-          <label><input type="checkbox" checked={autoRepair} onChange={(e) => setAutoRepair(e.target.checked)} /> แก้ภาพอัตโนมัติได้ 1 ครั้งเมื่อพบปัญหาร้ายแรง (หน้า ชุด มือ/แขนขา หรือส่วนที่ต้องเห็นหลุดกรอบ)</label>
+          <ChipGroup options={[{ id: 'lifestyle', name: 'ไลฟ์สไตล์' }, { id: 'outfit', name: 'โชว์ชุดชัด' }, { id: 'editorial', name: 'แฟชั่นสร้างสรรค์' }]} value={photoGoal} onChange={(v) => update({ goal: v as PhotoGoal })} />
+          <label><input type="checkbox" checked={autoRepair} onChange={(e) => update({ autoRepair: e.target.checked })} /> แก้ภาพอัตโนมัติได้ 1 ครั้งเมื่อพบปัญหาร้ายแรง (หน้า ชุด มือ/แขนขา หรือส่วนที่ต้องเห็นหลุดกรอบ)</label>
           <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · AI จัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด</p>
         </div> : posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้</p>}
         {shown?.posePlan && <ShotPlanView plan={shown.posePlan} />}
       </Section>}
       {MOOD_PICKER && <Section title="สีหน้า">
-        <ChipGroup options={FACE_MOODS} value={isDirector ? 'auto' : faceMood} disabled={isDirector} onChange={setFaceMood} />
+        <ChipGroup options={FACE_MOODS} value={isDirector ? 'auto' : faceMood} disabled={isDirector} onChange={(v) => update({ mood: v })} />
         <p className="muted-text">{mood.hint}</p>
       </Section>}
       <Section title={POSE_PRESET_PICKER ? 'ใช้รูปท่าของฉัน' : 'รูปท่าโพสต์'} note="อัปโหลด หรือเลือกจากตัวอย่าง">
         {/* วิธีใช้รูปท่าอยู่เหนือรายการรูปเสมอ (ยังไม่เลือกรูป = กดไม่ได้) รายการรูปไม่กระโดดตอนกดเลือก */}
         {!fixedMode ? <>
           <p className="sub">ใช้รูปท่าแบบไหน</p>
-          <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => setPoseMode(v as PoseMode)} />
+          <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => update({ poseMode: v as PoseMode })} />
           <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
         </> : fixedMode.id === 'shot-scene'
           ? <p className="muted-text">{shotRoom
@@ -1059,7 +973,7 @@ export default function TryOn() {
           : <p className="muted-text">{fixedMode.hint}</p>}
         {shot && !fixedMode && <>
           <p className="sub">แสง</p>
-          <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => setLightSource(v as LightSource)} />
+          <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => update({ light: v as LightSource })} />
           <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
         </>}
         {/* ไม่มีท่าสำเร็จรูป = การ์ด "ท่าเดิม" อยู่หน้ารายการรูปแบบ ชุดเดิม/ฉากเดิม ใช้ยกเลิกรูปท่าที่เลือกไว้ */}
@@ -1088,21 +1002,21 @@ export default function TryOn() {
       {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ระยะ มุมกล้อง และตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
       <Section title="ระยะ">
         <div className="options view-options">
-          {card('auto', framingValue === 'auto', shot || isDirector, () => setFramingId('auto'), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
-          {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot || isDirector, () => setFramingId(f.id), <PersonView framing={f.id} />, f.name, f.hint))}
+          {card('auto', framingValue === 'auto', shot || isDirector, () => update({ framing: 'auto' }), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
+          {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot || isDirector, () => update({ framing: f.id }), <PersonView framing={f.id} />, f.name, f.hint))}
         </div>
       </Section>
       <Section title="มุมกล้อง">
         <div className="options view-options">
-          {card('auto', angleValue === 'auto', shot || isDirector, () => setAngleId('auto'), <PersonView angle={presetAngle(preset)} />, isDirector && backgroundMode === 'keep' ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
-          {ANGLES.map((a) => card(a.id, angleValue === a.id, shot || isDirector, () => setAngleId(a.id), <PersonView angle={a.id} />, a.name, a.hint))}
+          {card('auto', angleValue === 'auto', shot || isDirector, () => update({ angle: 'auto' }), <PersonView angle={presetAngle(preset)} />, isDirector && backgroundMode === 'keep' ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
+          {ANGLES.map((a) => card(a.id, angleValue === a.id, shot || isDirector, () => update({ angle: a.id }), <PersonView angle={a.id} />, a.name, a.hint))}
         </div>
       </Section>
       <Section title="ตำแหน่งในภาพ">
         {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
         <div className="options view-options">
-          {card('auto', !placementChoice, shot || keepsPlace || isDirector, () => setPlacementId('auto'), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
-          {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace || isDirector, () => setPlacementId(p.id), <PersonView placement={p.id} />, p.name, p.hint))}
+          {card('auto', !placementChoice, shot || keepsPlace || isDirector, () => update({ placement: 'auto' }), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
+          {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace || isDirector, () => update({ placement: p.id }), <PersonView placement={p.id} />, p.name, p.hint))}
         </div>
       </Section>
     </>;
@@ -1112,14 +1026,14 @@ export default function TryOn() {
     panel = <>
       <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect}`}>
         <div className="options aspect-options">{PLATFORM_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
-          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => setAspect(a.id)}>
+          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => update({ aspect: a.id })}>
           <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
           <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
         </button>)}</div>
       </Section>
       <Section title="สั่งเพิ่มเติม">
         {isDirector && <p className="muted-text">AI จัดท่าและองค์ประกอบให้ทั้งหมด เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์หากต้องการสั่งเอง</p>}
-        <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} onChange={(e) => setExtra(e.target.value)} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
+        <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
       </Section>
       <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>
@@ -1127,35 +1041,34 @@ export default function TryOn() {
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
           <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
+            <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
           </Section>
         )}
         <Section title="การมอง" note={isDirector ? 'AI เลือกให้ หน้าและสายตาหลากหลาย' : shot ? 'ใช้จากรูปต้นแบบ' : 'อัตโนมัติ = สุ่มมุมหน้าและสายตาต่อรูป'}>
-          <ChipGroup options={[{ id: '', name: 'อัตโนมัติ' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={setGazeId} />
+          <ChipGroup options={[{ id: '', name: 'อัตโนมัติ' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={(v) => update({ gaze: v })} />
         </Section>
         <Section title="พร็อพในมือ" note={isDirector ? 'AI จัดท่าและการใช้สิ่งของในฉากให้' : 'เลือกได้หลายอย่าง'}>
           <div className="chips">
             {PROPS.map((p) => (
               <button key={p.id} type="button" disabled={isDirector} className={'chip' + (!isDirector && heldProps.includes(p.id) ? ' active' : '')}
-                onClick={() => setHeldProps((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}>
+                onClick={() => update((r) => ({ props: r.props.includes(p.id) ? r.props.filter((x) => x !== p.id) : [...r.props, p.id] }))}>
                 {p.name}
               </button>
             ))}
           </div>
         </Section>
         <label className="check">
-          <input type="checkbox" checked={harmonize} onChange={(e) => setHarmonize(e.target.checked)} />
+          <input type="checkbox" checked={harmonize} onChange={(e) => update({ harmonize: e.target.checked })} />
           <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
         </label>
       </details>
-      {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป) · set button hidden until SET_SHOOT (Go list item 11) */}
-      <div className={'gen-row' + (SET_SHOOT ? '' : ' single')}>
-        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{genLabel}</button>
-        {SET_SHOOT && <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
-          title={SET_SHOOT ? `${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า` : 'ยังไม่เปิดให้ใช้'}>
-          ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOOT ? `ค่า AI ${SET_SHOTS.length} เท่า` : 'เร็วๆ นี้'}</small>
-        </button>}
-      </div>
+      {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
+      {SET_SHOOT && <div className="gen-row single">
+        <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+          title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
+          ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
+        </button>
+      </div>}
     </>;
   } else if (cur.key === 'settings') {
     // การ์ดมีภาพวาด (StyleView): ฉาก ไฟ เงา โทนสีของแต่ละสไตล์ ให้เห็นความต่างโดยไม่ต้องจินตนาการ (29 ต.ค.)
@@ -1170,7 +1083,7 @@ export default function TryOn() {
         <div className="options view-options">
           {PRESETS.map((p) => (
             <button key={p.id} type="button" className={'option view-option' + (preset.id === p.id ? ' active' : '')} aria-pressed={preset.id === p.id}
-              disabled={shot && !shotPresetLight} onClick={() => setPresetId(p.id)}>
+              disabled={shot && !shotPresetLight} onClick={() => update({ preset: p.id })}>
               <StyleView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
             </button>
           ))}
@@ -1188,59 +1101,59 @@ export default function TryOn() {
   }
   // edit panel content = production step-9 panel unchanged (Go list item 7)
   const editPanel = <>
-      <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
-        <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
-        <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
-          <IconSparkle /> ปรับผิวสมจริง
-        </button>
-        {!shown && <p className="muted-text">เลือกรูปที่สร้างแล้วจากคลังก่อน</p>}
-        {shown && !canRefineSkin && <p className="muted-text">ต้องตั้งค่า OpenAI API key ก่อนใช้การปรับผิว</p>}
-        {shown?.refinedFrom && <p className="muted-text">รูปนี้ปรับผิวแล้ว · ปิดลุคฟิล์มอัตโนมัติเพื่อคงรายละเอียดผิว</p>}
-      </Section>
-      <Section title="รีทัช" note="ปรับได้ทันที ไม่เสียเงิน">
-        <div className="sliders">
-          {SLIDERS.map(([id, label]) => (
-            <div className="slider" key={id}>
-              <label htmlFor={id}>{label} <output>{amounts[id]}</output></label>
-              <input type="range" id={id} min={0} max={100} value={amounts[id]} style={rangeFill(amounts[id], 0, 100)}
-                onChange={(e) => setAmounts((a) => ({ ...a, [id]: +e.target.value }))} />
-            </div>
-          ))}
-        </div>
-        <p className="sub">สีผิว</p>
-        <div className="chips">
-          <button className={'chip' + (tone === null ? ' active' : '')} onClick={() => setTone(null)}>สีเดิม</button>
-          {SKIN_TONES.map((t) => (
-            <button key={t.color} className={'swatch' + (tone === t.color ? ' active' : '')} style={{ background: t.color }}
-              title={t.name} aria-label={t.name} onClick={() => setTone(t.color)} />
-          ))}
-        </div>
-        <div className="retouch-actions">
-          <button className="btn btn-secondary" onClick={() => setAmounts(AUTO)}><IconSparkle /> แต่งอัตโนมัติ</button>
-          <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFinish('auto'); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
-        </div>
-      </Section>
-      <Section title="ให้ดูเป็นรูปถ่ายจริง" note={shown?.refinedFrom ? 'รูปปรับผิวเริ่มต้นไม่ใส่ลุค' : 'ใส่ให้ทุกรูปอัตโนมัติ'}>
-        <ChipGroup options={[...FINISH_LOOKS]} value={finish} onChange={(v) => setFinish(v as FinishChoice)} />
-        <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'off' ? 'ไม่ใส่ลุค' : finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
-        <div className="sliders">
-          {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
-            <div className="slider" key={id}>
-              <label htmlFor={id}>{label} <output>{film[id]}</output></label>
-              <input type="range" id={id} min={0} max={100} value={film[id]} style={rangeFill(film[id], 0, 100)}
-                onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
-            </div>
-          ))}
-          {finishLook === 'phone' && (
-            <div className="slider">
-              <label htmlFor="phone">ความแรงลุคมือถือ <output>{film.phone}</output></label>
-              <input type="range" id="phone" min={0} max={100} value={film.phone} style={rangeFill(film.phone, 0, 100)} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
-            </div>
-          )}
-        </div>
-        <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
-      </Section>
-    </>;
+    <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
+      <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
+      <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
+        <IconSparkle /> ปรับผิวสมจริง
+      </button>
+      {!shown && <p className="muted-text">เลือกรูปที่สร้างแล้วจากคลังก่อน</p>}
+      {shown && !canRefineSkin && <p className="muted-text">ต้องตั้งค่า OpenAI API key ก่อนใช้การปรับผิว</p>}
+      {shown?.refinedFrom && <p className="muted-text">รูปนี้ปรับผิวแล้ว · ปิดลุคฟิล์มอัตโนมัติเพื่อคงรายละเอียดผิว</p>}
+    </Section>
+    <Section title="รีทัช" note="ปรับได้ทันที ไม่เสียเงิน">
+      <div className="sliders">
+        {SLIDERS.map(([id, label]) => (
+          <div className="slider" key={id}>
+            <label htmlFor={id}>{label} <output>{amounts[id]}</output></label>
+            <input type="range" id={id} min={0} max={100} value={amounts[id]} style={rangeFill(amounts[id], 0, 100)}
+              onChange={(e) => setAmounts((a) => ({ ...a, [id]: +e.target.value }))} />
+          </div>
+        ))}
+      </div>
+      <p className="sub">สีผิว</p>
+      <div className="chips">
+        <button className={'chip' + (tone === null ? ' active' : '')} onClick={() => setTone(null)}>สีเดิม</button>
+        {SKIN_TONES.map((t) => (
+          <button key={t.color} className={'swatch' + (tone === t.color ? ' active' : '')} style={{ background: t.color }}
+            title={t.name} aria-label={t.name} onClick={() => setTone(t.color)} />
+        ))}
+      </div>
+      <div className="retouch-actions">
+        <button className="btn btn-secondary" onClick={() => setAmounts(AUTO)}><IconSparkle /> แต่งอัตโนมัติ</button>
+        <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFinish('auto'); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
+      </div>
+    </Section>
+    <Section title="ให้ดูเป็นรูปถ่ายจริง" note={shown?.refinedFrom ? 'รูปปรับผิวเริ่มต้นไม่ใส่ลุค' : 'ใส่ให้ทุกรูปอัตโนมัติ'}>
+      <ChipGroup options={[...FINISH_LOOKS]} value={finish} onChange={(v) => setFinish(v as FinishChoice)} />
+      <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'off' ? 'ไม่ใส่ลุค' : finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
+      <div className="sliders">
+        {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
+          <div className="slider" key={id}>
+            <label htmlFor={id}>{label} <output>{film[id]}</output></label>
+            <input type="range" id={id} min={0} max={100} value={film[id]} style={rangeFill(film[id], 0, 100)}
+              onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
+          </div>
+        ))}
+        {finishLook === 'phone' && (
+          <div className="slider">
+            <label htmlFor="phone">ความแรงลุคมือถือ <output>{film.phone}</output></label>
+            <input type="range" id="phone" min={0} max={100} value={film.phone} style={rangeFill(film.phone, 0, 100)} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
+          </div>
+        )}
+      </div>
+      <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
+    </Section>
+  </>;
 
   // ---------- ประวัติรูป: รูปในชุดภาพเดียวกันอยู่ในกรอบเดียว เรียงตามมุม (SET_SHOTS) ----------
   const thumb = (i: number, label?: string) => (
@@ -1248,7 +1161,7 @@ export default function TryOn() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => void deleteResult(i)} />
+      <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
@@ -1282,6 +1195,7 @@ export default function TryOn() {
         </div>
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นสไตล์ถ่ายภาพ) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
+          <GalleryLink />
           <TokenUsage />
           <SignOutButton />
         </div>
@@ -1300,7 +1214,8 @@ export default function TryOn() {
           ))}
         </nav>
 
-        <aside className="panel" onClickCapture={mark} onInputCapture={mark} inert={editing}>
+        <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark} inert={editing}>
+          <div className="panel-body">
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
@@ -1308,12 +1223,11 @@ export default function TryOn() {
           </div>
           {shownRecipe && <p className="note">
             <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูปทันที จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
+            {missingNames.length > 0 && <>ถูกลบไปแล้ว: {missingNames.join(', ')} ·{' '}</>}
             <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
           </p>}
           {panel}
-          {nextStep >= 0 && (
-            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
-          )}
+          </div>
           <div className="sticky-bar">
             {barNext >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
               onClick={() => goStep(barNext)}>ถัดไป: {STEPS[barNext].label} →</button>}
@@ -1338,7 +1252,8 @@ export default function TryOn() {
               {!editing && <button type="button" ref={editBtnRef} className="btn btn-primary edit-btn" onClick={() => setEditing(true)}><IconEdit /> แต่งรูป</button>}
               {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
               {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
-            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เลือก' : 'พร้อมสร้าง'} />}
+            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เดิม' : 'พร้อมสร้าง'}
+              action={base && <button type="button" className="link-btn" disabled={generating} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>} />}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
@@ -1366,7 +1281,7 @@ export default function TryOn() {
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
             {/* "รูปใหม่" = the setup in progress (paper doll); first tile, always there */}
-            <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
+            <button type="button" ref={newTileRef} className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
               aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
               {generating
                 ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
@@ -1389,10 +1304,19 @@ export default function TryOn() {
 
       {shotChoice && <ShotChoiceDialog proposal={shotChoice.proposal} references={shotChoice.references} onChoose={shotChoice.choose} />}
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
-      {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
-        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
-        onCancel={() => { setConfirmStart(false); if (shownRecipe) loadShown(); }}
-        onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
+      {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
+      {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingUpload(null)}
+        onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
+      {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingSrc(null)}
+        onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
+      {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
+        body="ตัวเลือกทุกขั้นจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
+        cancel="ยกเลิก" confirm="ล้าง"
+        onCancel={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); startOver(); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);

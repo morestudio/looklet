@@ -31,6 +31,7 @@ function load(file) {
   new Function('require', 'module', 'exports', code)((id) => {
     if (id in mocks) return mocks[id];
     if (id === '@/lib/creative') return load('lib/creative.ts');
+    if (id === '@/lib/recipe') return load('lib/recipe.ts'); // recipe stored with each image
     if (id === '@/lib/packshot') return load('lib/packshot.ts');
     if (id === '@/lib/packshot-prompts') return load('lib/packshot-prompts.ts');
     if (id === './aspects' || id === '@/lib/aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ

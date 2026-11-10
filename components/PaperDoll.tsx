@@ -1,5 +1,6 @@
 'use client';
 // Paper doll: stage before the first image. Croquis + one card per pick, placed by body row.
+import type { ReactNode } from 'react';
 import { thumbSrc } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
 
@@ -39,12 +40,15 @@ function DollRow({ slots, row }: { slots: DollSlot[]; row: number }) {
   );
 }
 
-export function PaperDoll({ left, right, scene, chips, label }: {
-  left: Rows; right: Rows; scene: DollSlot; chips: DollChip[]; label: string;
+export function PaperDoll({ left, right, scene, chips, label, action }: {
+  left: Rows; right: Rows; scene: DollSlot; chips: DollChip[]; label: string; action?: ReactNode; // action: shown on its own line under the label
 }) {
   return (
     <div className="doll">
-      <div className="doll-label">{label}</div>
+      <div className="doll-head">
+        <div className="doll-label">{label}</div>
+        {action}
+      </div>
       <div className="doll-side left">
         {left.map((slots, i) => <DollRow key={i} slots={slots} row={i} />)}
         <div className="doll-scene"><DollCard slot={scene} /></div>

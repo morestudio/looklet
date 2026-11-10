@@ -4,22 +4,32 @@
 import { useState, type ChangeEvent } from 'react';
 import { isSampleGroup, type ProductGroup } from '@/lib/product-groups';
 import { thumbSrc } from '@/lib/browser';
-import { PendingCard } from './ui';
+import { DeleteButton, PendingCard } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
 
-export default function ProductLibrary({ groups, selected, busy, analyzing, saving, onSelect, onUpload, onRename, onRemovePhoto, onRestorePhoto }: {
+export default function ProductLibrary({ groups, selected, busy, analyzing, saving, onSelect, onUpload, onRename, onRemovePhoto, onRestorePhoto, onDelete }: {
   groups: ProductGroup[]; selected?: ProductGroup; busy: boolean;
   analyzing: string[]; saving: { url: string }[];
   onSelect: (id: string) => void; onUpload: (files: File[], append?: boolean) => Promise<void>;
   onRename: (group: ProductGroup, name: string) => Promise<void>;
   onRemovePhoto: (group: ProductGroup, src: string) => Promise<void>;
   onRestorePhoto: (group: ProductGroup, src: string) => Promise<void>;
+  onDelete: (group: ProductGroup) => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null); // ชื่อที่กำลังแก้ (null = ไม่ได้แก้)
   const [removed, setRemoved] = useState<{ group: string; src: string } | null>(null); // รูปที่เพิ่งนำออก ไว้กด "เอากลับ"
   const sample = selected && isSampleGroup(selected); // สินค้าตัวอย่าง (lib/product-groups.ts PRODUCT_SAMPLES): ใช้ได้ แต่แก้ชื่อ/รูปไม่ได้
   const [over, setOver] = useState(false); // กำลังลากไฟล์อยู่เหนือกล่องเพิ่มสินค้า
+  // Go list item 13: spinner until each photo loads, same as Card in ui.tsx · onError counts as loaded
+  const [loaded, setLoaded] = useState<Set<string>>(() => new Set());
+  const done = (src: string) => setLoaded((s) => (s.has(src) ? s : new Set(s).add(src)));
+  const loading = (src?: string) => Boolean(src) && !loaded.has(src!);
+  const img = (src: string, alt: string) => <>
+    {/* cached img can complete before hydration attaches onLoad */}
+    <img src={thumbSrc(src)} alt={alt} loading="lazy" decoding="async" onLoad={() => done(src)} onError={() => done(src)} ref={(el) => { if (el?.complete) done(src); }} />
+    {loading(src) && <div className="pending-spin"><div className="spinner" /></div>}
+  </>;
   const pick = (append: boolean) => (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
@@ -50,11 +60,16 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       </label>
       {analyzing.map((src) => <PendingCard key={src} src={src} />)}
       {saving.map(({ url }) => <PendingCard key={url} src={url} label="กำลังเก็บรูป..." />)}
-      {[...groups].reverse().map((g) => <button type="button" key={g.id} aria-pressed={selected?.id === g.id} disabled={busy}
-        onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '')}>
-        {g.main?.src ? <img src={thumbSrc(g.main.src)} alt={g.name} loading="lazy" decoding="async" /> : <span className="product-empty">ยังไม่มีรูป</span>}
+      {[...groups].reverse().map((g) => {
+        const card = <button type="button" key={g.id} aria-pressed={selected?.id === g.id} disabled={busy}
+        onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '') + (loading(g.main?.src) ? ' loading' : '')}>
+        {g.main?.src ? img(g.main.src, g.name) : <span className="product-empty">ยังไม่มีรูป</span>}
         <b>{g.name}</b><small>{isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}{g.photos.length} รูป</small>
-      </button>)}
+      </button>;
+        // own uploads get × like the model page's Card; samples aren't in storage · no × while busy (generating / saving)
+        // wrapper stays while busy so the card isn't remounted (thumbnail reload, lost focus)
+        return isSampleGroup(g) ? card : <div className="deletable" key={g.id}>{card}{!busy && <DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} />}</div>;
+      })}
     </div>
 
     {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องสี): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
@@ -70,8 +85,8 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
           <button type="button" className="btn btn-tertiary" onClick={() => setEditing(null)}>ยกเลิก</button></span>
       </form>}
       <p className="muted-text">{selected.photos.length} รูป</p>
-      <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src}>
-        <img src={thumbSrc(p.src)} alt={`${selected.name} รูปที่ ${i + 1}`} decoding="async" />
+      <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src} className={loading(p.src) ? 'loading' : undefined}>
+        {img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
         {p.src === selected.main?.src && <span className="current-product-main">รูปหลัก</span>}
         {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
         {!sample && selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}

@@ -1,9 +1,9 @@
 // icons.tsx — ไอคอนเส้น (stroke) ขนาด 24 ใช้สีตามตัวอักษร (currentColor)
 import type { ReactNode } from 'react';
 
-function Svg({ children, size = 22 }: { children: ReactNode; size?: number }) {
+function Svg({ children, size = 22, stroke = 1.5 }: { children: ReactNode; size?: number; stroke?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
@@ -31,6 +31,9 @@ export const IconRetouch = () => (
 );
 export const IconEdit = () => <Svg size={18}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m13 7 4 4" /></Svg>; // แต่งรูป button (Go list item 6)
 export const IconDownload = () => <Svg size={18}><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></Svg>;
+// circular arrow = start over (ล้าง under the paper doll label)
+// thicker stroke + full arrowhead: the 14px / 1.5 version was hard to read at text size
+export const IconReset = () => <Svg size={16} stroke={2.25}><path d="M3 12a9 9 0 1 0 2.8-6.5L3 8" /><path d="M3 3v5h5" /></Svg>;
 export const IconSearch = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5" /></Svg>;
 export const IconZoom = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5M11 8v6M8 11h6" /></Svg>;
 export const IconCompare = () => <Svg size={18}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M12 3v18" /></Svg>;
