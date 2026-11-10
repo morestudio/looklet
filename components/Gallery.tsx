@@ -3,7 +3,7 @@
 // raw stored file; lib/film.ts finish not applied
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { IconHeart, IconInfo } from './icons';
+import { IconEdit, IconHeart, IconInfo } from './icons';
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { api, thumbSrc } from '@/lib/browser';
@@ -134,7 +134,11 @@ export default function Gallery() {
     <aside className="panel edit-panel" aria-label="ข้อมูลรูป" inert={!info}>
       <div className="panel-head">
         <h2>ข้อมูลรูป</h2>
-        {info && favButton(info)}
+        {info && <>
+          <Link className="edit-close gallery-edit" href={(pageOf(info) === 'product' ? '/product' : '/') + '?image=' + encodeURIComponent(info.src)}
+            title="แก้ต่อจากรูปนี้" aria-label="แก้ต่อจากรูปนี้"><IconEdit /></Link>
+          {favButton(info)}
+        </>}
         <button type="button" className="edit-close" aria-label="ปิดแผงข้อมูลรูป" onClick={() => setInfoSrc(null)}>✕</button>
       </div>
       {info && <>

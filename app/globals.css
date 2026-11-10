@@ -672,8 +672,9 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 /* ♥ only-favourites = a checkbox (narrows), not a chip (picks one page) */
 .gallery-fav-filter { align-items: center; gap: var(--space-6); margin: 0; font-size: var(--text-sm); }
 .gallery-fav-filter input { margin: 0 var(--space-2) 0 0; }
-.panel-head .gallery-fav { position: static; width: 32px; height: 32px; margin-left: auto; background: var(--surface-card); opacity: 1; }
-.panel-head .gallery-fav + .edit-close { margin-left: 0; }
+/* panel head: ✎ (an .edit-close link) ♡ ✕, pushed right by ✎'s margin */
+.panel-head .gallery-fav { position: static; width: 32px; height: 32px; background: var(--surface-card); opacity: 1; }
+.panel-head .gallery-edit ~ .gallery-fav, .panel-head .gallery-edit ~ .edit-close { margin-left: 0; }
 /* ⓘ bottom-right over the info strip, same chip as .del */
 .gallery-info-btn { position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-full); background: transparent; color: var(--mute); cursor: pointer; }
 .gallery-info-btn:hover, .gallery-info-btn[aria-pressed="true"] { background: var(--surface-card); color: var(--ink); }
