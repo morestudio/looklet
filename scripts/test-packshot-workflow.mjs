@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const cache = new Map();
 const calls = [];
 const planned = [];
+const saved = []; // meta passed to saveImage
 const ai = {
   availableModels: () => [{ id: 'test:image' }],
   describeLighting: async () => 'soft daylight',
@@ -24,7 +25,7 @@ function load(file) {
     '@/lib/catalog': { isGpt25: () => false, GPT25_SIZES: {} },
     '@/lib/images': { cropTo: async (o) => o, servable: async (o) => o, svgJpeg: async (svg) => (svg.startsWith('<svg') ? 'guide-jpeg' : 'bad-svg') },
     '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }) },
-    '@/lib/storage': { saveImage: async () => '/test/result.jpg' },
+    '@/lib/storage': { saveImage: async (_where, _data, _mime, meta) => { saved.push(meta); return '/test/result.jpg'; } },
     '@/lib/usage': { quotaBlock: async () => null, recordUsage: async () => {} },
     '@/lib/genlog': { localTime: () => 'test', sentences: (s) => s, writeGenerateLog: async () => {} },
   };
@@ -67,6 +68,10 @@ out = await shoot({ shot_type: 'detail', detail_target: 'zipper', support_images
 assert.match(out.call.prompt, /Focus specifically on the existing zipper/);
 assert.match(out.call.prompt, /Images 2 are additional photographs/);
 assert.equal(out.call.images[1].data, 'detail-photo');
+// every product photo sent is stored for /gallery, main first; non-path srcs dropped
+await shoot({ shot_type: 'detail', detail_target: 'zipper', support_images: ['back-photo', 'side-photo'],
+  refs: { product: { src: '/api/files/uploads/products/main.png' }, supports: [{ src: '/api/files/uploads/products/back.png' }, { src: 'http://x/side.png' }] } });
+assert.deepEqual(saved.at(-1).productPhotos, ['/api/files/uploads/products/main.png', '/api/files/uploads/products/back.png']);
 out = await shoot({ shot_type: 'detail', detail_target: 'feature', feature: ' ' });
 assert.equal(out.result.status, 400);
 assert.equal(calls.length, 0);

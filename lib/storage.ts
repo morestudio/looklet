@@ -89,6 +89,7 @@ export type Stored = {
   refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
   favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image
+  productPhotos?: string[]; // product page: product photos sent to the AI, main first (app/api/packshot)
 };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
