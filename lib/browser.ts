@@ -25,6 +25,12 @@ export async function api<T = { src: string }>(path: string, body: unknown): Pro
   return out;
 }
 
+// รูปในตาราง/ประวัติรูป: ขอรูปย่อ 512px JPEG (~40 KB) แทนรูปเต็ม (1–6 MB) — ต้องตรงกับ GRID_THUMB ใน lib/storage-supabase.ts
+// 10 พ.ย. เกินโควตา egress ของ Supabase แผนฟรี เพราะเปิดหน้าครั้งเดียวโหลดรูปเต็มทุกรูปในประวัติ (บัญชีทีม ~250 MB)
+// เฉพาะรูปที่เก็บไว้ (/api/files/...) · รูปตัวอย่างใน public/ และรูปที่ยังไม่ได้เก็บ (blob:/data:) ใช้ตามเดิม · เวทีหลัก/ซูม/ส่งให้ AI ใช้รูปเต็มเหมือนเดิม
+export const thumbSrc = <T extends string | undefined>(src: T): T =>
+  (src?.startsWith('/api/files/') && !src.includes('?') ? `${src}?w=512` : src) as T;
+
 export async function loadImg(src: string) {
   const img = new Image();
   img.src = src;

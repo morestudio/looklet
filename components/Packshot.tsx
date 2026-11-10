@@ -22,7 +22,7 @@ import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage,
+  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, thumbSrc, toWebImage, uploadImage,
 } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
@@ -989,7 +989,7 @@ export default function Packshot() {
   const thumb = (i: number, label?: string) => (
     <div className="deletable" key={results[i].src}>
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
-        <img src={results[i].src} alt={results[i].caption} />
+        <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
       <DeleteButton onClick={() => void deleteResult(i)} />
       {label && <span className="set-label">{label}</span>}

@@ -26,7 +26,7 @@ import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { SKIN_MODEL } from '@/lib/skin';
 import {
   api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
-  saveImageFile, toWebImage, uploadImage,
+  saveImageFile, thumbSrc, toWebImage, uploadImage,
 } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
@@ -978,7 +978,7 @@ export default function TryOn() {
           const item = worn[slot];
           const goTab: WearSlot = slot !== 'shoes' && outfit ? 'set' : slot;
           return <button key={slot} type="button" className={'wear-slot' + (outfitTab === goTab ? ' active' : '')} onClick={() => { setOutfitTab(goTab); setQuery(''); }}>
-            <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={item.src} alt="" />}</span>
+            <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={thumbSrc(item.src)} alt="" />}</span>
             <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
             <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
           </button>;
@@ -1246,7 +1246,7 @@ export default function TryOn() {
   const thumb = (i: number, label?: string) => (
     <div className="deletable" key={results[i].src}>
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
-        <img src={results[i].src} alt={results[i].caption} />
+        <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
       <DeleteButton onClick={() => void deleteResult(i)} />
       {label && <span className="set-label">{label}</span>}

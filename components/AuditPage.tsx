@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { SignOutButton } from './AuthForm';
 import { IconCopy } from './icons';
+import { thumbSrc } from '@/lib/browser';
 import { AdminTabs, PageSwitch } from './ui';
 
 type Row = {
@@ -27,8 +28,8 @@ const IMAGE_KEYS = new Set(['image', 'name', 'type', 'file', 'sent']); // ฟิ
 const isImage = (o: Record<string, unknown>) => typeof o.image === 'number' && typeof o.sent === 'string';
 const when = (iso: string) => new Date(iso).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
 const num = (n: number) => Math.round(n).toLocaleString('th-TH');
-// log เก็บชื่อไฟล์แบบอ่านออก (ถอดรหัสแล้ว) -> กลับเป็น URL · รูปใน /api/files ขอรูปย่อได้
-const thumb = (src: string) => (src.startsWith('/api/files/') ? `${src}?w=400` : src);
+// log เก็บชื่อไฟล์แบบอ่านออก (ถอดรหัสแล้ว) -> กลับเป็น URL · รูปใน /api/files ขอรูปย่อได้ (ขนาดเดียวกับตารางในหน้าอื่น = รูปย่อเดียวกัน)
+const thumb = (src: string) => thumbSrc(src);
 
 function auditUrl(f: Filters, before?: number) {
   const q = new URLSearchParams();

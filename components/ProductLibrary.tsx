@@ -3,6 +3,7 @@
 // ปรับ 27 ต.ค. ผู้ใช้สับสน: สินค้าที่เลือก (ใหม่สุด) อยู่ท้ายกล่องเลื่อนเล็กๆ มองไม่เห็น, คำว่า "กลุ่ม", ปุ่มอัปโหลด 2 ปุ่มคล้ายกัน, ชื่อไฟล์แก้ไม่ได้
 import { useState, type ChangeEvent } from 'react';
 import { isSampleGroup, type ProductGroup } from '@/lib/product-groups';
+import { thumbSrc } from '@/lib/browser';
 import { PendingCard } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
@@ -51,7 +52,7 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       {saving.map(({ url }) => <PendingCard key={url} src={url} label="กำลังเก็บรูป..." />)}
       {[...groups].reverse().map((g) => <button type="button" key={g.id} aria-pressed={selected?.id === g.id} disabled={busy}
         onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '')}>
-        {g.main?.src ? <img src={g.main.src} alt={g.name} /> : <span className="product-empty">ยังไม่มีรูป</span>}
+        {g.main?.src ? <img src={thumbSrc(g.main.src)} alt={g.name} loading="lazy" decoding="async" /> : <span className="product-empty">ยังไม่มีรูป</span>}
         <b>{g.name}</b><small>{isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}{g.photos.length} รูป</small>
       </button>)}
     </div>
@@ -70,7 +71,7 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       </form>}
       <p className="muted-text">{selected.photos.length} รูป</p>
       <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src}>
-        <img src={p.src} alt={`${selected.name} รูปที่ ${i + 1}`} />
+        <img src={thumbSrc(p.src)} alt={`${selected.name} รูปที่ ${i + 1}`} decoding="async" />
         {p.src === selected.main?.src && <span className="current-product-main">รูปหลัก</span>}
         {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
         {!sample && selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}

@@ -33,6 +33,11 @@ export async function inputJpeg(img: Img): Promise<Img> {
   }
 }
 
+// รูปย่อสำหรับตาราง/ประวัติรูป (/api/files?w=): JPEG พื้นขาว (รูปสินค้าพื้นใส) ไม่ขยายรูปที่เล็กกว่า — lib/storage.ts readThumb / saveImage
+export async function thumbJpeg(data: Buffer, width: number): Promise<Buffer> {
+  return sharp(data).rotate().resize({ width, withoutEnlargement: true }).flatten({ background: '#fff' }).jpeg({ quality: 80 }).toBuffer();
+}
+
 // ภาพ SVG ที่เราวาดเอง (ไกด์มุมของ "ตั้งมุมเอง" lib/turntable.ts) -> JPEG base64 สำหรับส่งให้ AI
 export async function svgJpeg(svg: string): Promise<string> {
   return (await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer()).toString('base64');
