@@ -9,6 +9,8 @@ export function recipeKey(recipe: unknown): string {
     ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
 }
 
+export const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
+
 // plain object only, JSON size capped; anything else -> null (not stored)
 export function storableRecipe(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;

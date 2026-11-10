@@ -8,7 +8,7 @@ import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
 import CreativeShot from './CreativeShot';
-import { readCreativeConcept, type CreativeConcept } from '@/lib/creative';
+import { type CreativeConcept } from '@/lib/creative';
 import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
@@ -16,27 +16,25 @@ import {
 } from './icons';
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
-import { defaultTurn, readTurn, turnFill, type Turn } from '@/lib/turntable';
+import { defaultTurn, turnFill, type Turn } from '@/lib/turntable';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
 import { recipeKey } from '@/lib/recipe';
+import { PRESET, creativeScopeOf, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
-  PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS, PRODUCT_ANGLES, BACKDROP_COLORS, PROP_STYLES,
+  PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
   NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
   HAND_MODES, HAND_POSES, handPoses, resolveHandPose, CUSTOM_ANGLE, customAngleShot, turntableAngle,
 } from '@/lib/packshot';
 
-type Key = 'product' | 'ref' | 'scene' | 'prop';
 const KIND = { product: 'products', ref: 'product-refs', scene: 'product-scenes', prop: 'product-props' } as const;
 const NOUN = { product: 'สินค้า', ref: 'ภาพอ้างอิง', scene: 'รูปฉาก', prop: 'รูปพร็อพ' } as const;
-const idOf = (item: Item) => item.src ?? item.name;
 const find = (list: Item[], id: string | null) => (id === null ? undefined : list.find((i) => idOf(i) === id));
-const PRESET = 'preset'; // ทุกขั้น: 'preset' = ตามฉาก (ค่าที่ฉากที่เลือกจับคู่ให้)
 const NO_RETOUCH: Amounts = { eye: 0, slim: 0, acne: 0, smooth: 0, white: 0 }; // หน้าสินค้าแสดงรูปโดยไม่แต่งหน้าและไม่ใส่เอฟเฟกต์
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // ยังไม่มีรูปให้โชว์
 // เปิดตัวรอบแรก (27 ต.ค.): ใช้ได้แค่ 3 ประเภท เรียงตามนี้ · ที่เหลือยังโชว์แต่เป็นสีเทา กดไม่ได้
@@ -59,7 +57,6 @@ const downloadName = (ext: string) => `snapads-product-${Date.now()}.${ext}`; //
 // แถมลอกทั้งช็อตแล้วขั้นอื่นใช้ไม่ได้ครึ่งเมนู · เปิดคืน = true (โค้ด UI/API ยังอยู่ครบ)
 const REF_SHOT = false;
 
-type StepKey = 'creative' | 'hand' | 'shot' | 'product' | 'ref' | 'set' | 'props' | 'angle' | 'framing' | 'settings';
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = ([
   { key: 'product', label: 'สินค้า', title: 'เลือกสินค้า', Icon: IconBag },
   { key: 'shot', label: 'ประเภทภาพ', title: 'เลือกประเภทภาพ', Icon: IconFrame },
@@ -82,63 +79,6 @@ function stepUsed(key: StepKey, type: ShotType) {
   if (key === 'angle') return type !== 'multi';
   if (key === 'framing') return type === 'styled' || type === 'scale';
   return true;
-}
-
-// ---------- recipe: every step's choices saved with each generated image (meta.recipe, lib/recipe.ts), as on the model page ----------
-type Size = { width: string; height: string; depth: string };
-type Recipe = {
-  pick: Record<Key, string | null>; shotType: ShotType; idea: string; facts: string; concept: CreativeConcept | null;
-  detailTarget: string; feature: string; scaleRef: string; handPose: string; dimensions: Size; referenceSize: Omit<Size, 'height'>; extraAngles: string[];
-  scene: string; color: string; props: string; propText: string; angle: string; turn: Turn | null; framing: string; refMode: RefMode;
-  aspect: string; quality: string; extra: string;
-};
-const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
-const text = (v: unknown) => (typeof v === 'string' ? v : '');
-// creative ideas are bound to the product's photos + the inputs they were planned from (changed inputs = ideas no longer valid)
-const creativeScopeOf = (group: ProductGroup | undefined, idea: string, facts: string, inspirationSrc: string | undefined) =>
-  JSON.stringify([group?.id, group?.main?.src, group?.photos.map((p) => p.src), idea, facts, inspirationSrc]);
-// stored recipe -> valid Recipe; an id no longer in the lists (deleted product/upload) -> null, its step listed in missing
-function readRecipe(raw: Partial<Recipe>, lists: Record<Key, ProductPhoto[]>, groups = productGroups(lists.product)): { recipe: Recipe; missing: StepKey[] } {
-  const r = raw as Record<string, unknown>;
-  const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
-  const missing = new Set<StepKey>();
-  const ids = (key: Key) => (key === 'product' ? groups.map((g) => g.id) : lists[key].map(idOf));
-  const ref = (key: Key, id: unknown, step: StepKey) => {
-    if (id === null || id === undefined) return null;
-    if (typeof id === 'string' && ids(key).includes(id)) return id;
-    missing.add(step);
-    return null;
-  };
-  const size = (v: unknown) => {
-    const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
-    return { width: text(o.width), height: text(o.height), depth: text(o.depth) };
-  };
-  const concept = r.concept ? readCreativeConcept(r.concept) : null;
-  if (r.concept && !concept) missing.add('creative');
-  const recipe: Recipe = {
-    pick: { product: ref('product', p.product, 'product'), ref: ref('ref', p.ref, 'creative'), scene: ref('scene', p.scene, 'set'), prop: ref('prop', p.prop, 'props') },
-    shotType: oneOf<ShotType>(r.shotType, SHOT_TYPES.map((t) => t.id), 'clean'),
-    idea: text(r.idea), facts: text(r.facts), concept,
-    detailTarget: oneOf(r.detailTarget, DETAIL_TARGETS.map((x) => x.id), 'texture'),
-    feature: text(r.feature),
-    scaleRef: oneOf(r.scaleRef, SCALE_REFERENCES.map((x) => x.id), 'hand'),
-    handPose: oneOf(r.handPose, HAND_POSES.map((x) => x.id), 'hold'),
-    dimensions: size(r.dimensions),
-    referenceSize: (({ width, depth }) => ({ width, depth }))(size(r.referenceSize)),
-    extraAngles: (Array.isArray(r.extraAngles) ? r.extraAngles : []).filter((id) => PRODUCT_SET_SHOTS.some((x) => x.id === id)) as string[],
-    scene: oneOf(r.scene, [PRESET, ...SETS.map((x) => x.id)], PRESET),
-    color: oneOf(r.color, BACKDROP_COLORS.map((x) => x.id), 'white'),
-    props: oneOf(r.props, [NO_PROPS, ...PROP_STYLES.map((x) => x.id)], NO_PROPS),
-    propText: text(r.propText),
-    angle: oneOf(r.angle, [PRESET, CUSTOM_ANGLE, ...PRODUCT_ANGLES.map((x) => x.id)], PRESET),
-    turn: r.turn ? readTurn(r.turn) : null,
-    framing: oneOf(r.framing, [PRESET, ...PRODUCT_FRAMINGS.map((x) => x.id)], PRESET),
-    refMode: oneOf<RefMode>(r.refMode, REF_MODES.map((m) => m.id), 'shot'),
-    aspect: oneOf<string>(r.aspect, PRODUCT_ASPECTS.map((a) => a.id), '1:1'),
-    quality: typeof r.quality === 'string' ? r.quality : 'high',
-    extra: text(r.extra),
-  };
-  return { recipe, missing: [...missing] };
 }
 
 // สัดส่วน "อัตโนมัติ": 4:5 (ฟีด IG) · ลอกทั้งช็อต = สัดส่วนที่ใกล้รูปต้นแบบที่สุด
