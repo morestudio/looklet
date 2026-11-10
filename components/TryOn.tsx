@@ -2,7 +2,7 @@
 // SnapAds (เดิมชื่อ Looklet): เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
@@ -21,9 +21,9 @@ import {
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { useRecipeSync } from './useRecipeSync';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
-import { recipeKey } from '@/lib/recipe';
 import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
 import { SKIN_MODEL } from '@/lib/skin';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
@@ -143,14 +143,7 @@ export default function TryOn() {
   const [current, setCurrent] = useState<number | null>(null); // กำลังแสดง: null = รูปนางแบบ (ตัวอย่าง), ตัวเลข = results[current]
   const [zoomed, setZoomed] = useState(false);
   const [editing, setEditing] = useState(false); // edit mode: edit panel instead of rail + left panel (Go list items 1, 6, 7)
-  // past image loads its settings (Go list items 3, 4): draft = setup in progress set aside while a past image's recipe fills the panel
-  const [draft, setDraft] = useState<{ recipe: Recipe; chosen: StepKey[]; base: Recipe | null } | null>(null);
-  const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from
-  const [viewKey, setViewKey] = useState<string | null>(null); // panel recipe key when the shown image was opened; differs -> user changed a choice
-  const [syncedSrc, setSyncedSrc] = useState<string | null>(null); // shown image the panel was last synced to
-  const [cleanKey, setCleanKey] = useState<string | null>(null); // draft key at page open (after models load) / last generate; differs = unsaved picks
-  const [fresh, setFresh] = useState<Recipe | null>(null); // recipe at page open (after models load): what "ล้าง" resets the draft to
-  const [confirmStart, setConfirmStart] = useState(false); // "เริ่มจากรูปนี้?" dialog
+  const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from (set aside with the draft)
   const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
   const [original, setOriginal] = useState(false); // กดค้าง "ดูก่อนแต่ง"
   const [status, setStatus] = useState('');
@@ -183,7 +176,6 @@ export default function TryOn() {
   const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
   const editCloseRef = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);
-  const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
   const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS)
   const [query, setQuery] = useState(''); // ค้นหาตามชื่อในแผงเลือก
   const [filter, setFilter] = useState('all'); // ตัวกรองในแผงเลือก (SOURCE_FILTERS หรือ id ประเภทของเสริม)
@@ -543,9 +535,9 @@ export default function TryOn() {
         recipe, // stored with the image (lib/recipe.ts)
       };
       // finished image: open it, unless the user changed choices while waiting (opening it would load its recipe over them)
+      const sentKey = liveKey;
       const showMade = (count = 1) => {
-        setCleanKey(liveKey);
-        if (liveKeyRef.current !== liveKey) {
+        if (!sync.finished(sentKey)) {
           setCurrent((c) => (c === null ? c : c + count)); // list grew at the front: keep the same image on the stage
           setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
           return;
@@ -728,9 +720,6 @@ export default function TryOn() {
   const cur = STEPS[step];
   const { chosen, mark, setChosen } = useChosenSteps(cur.key);
 
-  // ---------- recipe sync (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
-  const recipe = choices; // stored / compared form
-  const liveKey = recipeKey(recipe);
   // edit panel focus: open -> its close button, close -> back to แต่งรูป (the button that had focus unmounts); Esc closes
   useEffect(() => {
     if (editing) editCloseRef.current?.focus();
@@ -743,42 +732,24 @@ export default function TryOn() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [editing]);
-  useEffect(() => { liveKeyRef.current = liveKey; });
+  // ---------- past image <-> panel (components/useRecipeSync.ts) ----------
+  const recipe = choices; // stored / compared form
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists, aiModel) : null;
-  const loadShown = () => applyRecipe(shownRecipe!.recipe, allSteps.filter((k) => !shownRecipe!.missing.includes(k)));
-  const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
-  if (cleanKey === null && aiModels !== null) { setCleanKey(liveKey); setFresh(recipe); } // quality is set when models load
+  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, aiModel) : null), [shown, lists, aiModel]);
+  const sync = useRecipeSync({
+    recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
+    ready: aiModels !== null, // quality is set when models load
+    apply: applyRecipe, keep: () => base, restore: setBase, onStart: setBase, close: () => setCurrent(null),
+    revalidate: (r) => readRecipe(r, lists, aiModel).recipe, // missing upload = empty, model = first
+  });
+  const liveKey = sync.liveKey;
   // "ล้าง" in the paper doll label = the "รูปใหม่" tile on a freshly opened page: page-open picks, no past-image base, same step
   const startOver = () => {
-    const r = fresh ?? recipe;
-    applyRecipe(r, []);
-    setBase(null); setViewKey(null); setSyncedSrc(null); setCurrent(null);
-    setCleanKey(recipeKey(r)); setOutfitTab('top'); setStatus('');
+    sync.reset(sync.pageStart ?? recipe);
+    setBase(null); setOutfitTab('top'); setStatus('');
     newTileRef.current?.focus(); // the ล้าง button unmounts (base -> null); keep keyboard focus on the page
   };
-  const shownSrc = shown?.src ?? null;
-  const syncing = cleanKey !== null && shownSrc !== syncedSrc; // clicked before models loaded -> loads right after, so default quality can't overwrite it
-  if (syncing) {
-    setSyncedSrc(shownSrc);
-    if (shownRecipe) {
-      if (!draft) setDraft({ recipe, chosen: [...chosen], base });
-      loadShown();
-      setViewKey(recipeKey(shownRecipe.recipe));
-    } else {
-      if (draft) {
-        // deleted while viewing -> same checks as a past image (missing upload = empty, model = first)
-        applyRecipe(readRecipe(draft.recipe, lists, aiModel).recipe, draft.chosen); setBase(draft.base); setDraft(null);
-      }
-      setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
-    }
-  } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
-    // a choice changed while viewing: no recipe -> back to the (changed) draft; recipe -> new draft from it, confirm first if unsaved picks
-    if (!shownRecipe) { setViewKey(null); setSyncedSrc(null); setCurrent(null); }
-    else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
-    else startFromShown();
-  }
-  const draftBase = draft ? draft.base : base; // shown on the "รูปใหม่" tile
+  const draftBase = sync.draft ? sync.draft.extra : base; // shown on the "รูปใหม่" tile
   const changed = base && current === null ? { // paper doll highlights what differs from the past image
     model: base.pick.model !== pick.model, accessory: JSON.stringify(base.pick.accessory) !== JSON.stringify(pick.accessory),
     set: base.pick.outfit !== pick.outfit, top: base.pick.top !== pick.top, bottom: base.pick.bottom !== pick.bottom, shoes: base.pick.shoes !== pick.shoes,
@@ -1319,10 +1290,8 @@ export default function TryOn() {
 
       {shotChoice && <ShotChoiceDialog proposal={shotChoice.proposal} references={shotChoice.references} onChoose={shotChoice.choose} />}
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
-      {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
-        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
-        onCancel={() => { setConfirmStart(false); if (shownRecipe) { loadShown(); setViewKey(recipeKey(shownRecipe.recipe)); } }} // key from today's lists, else it reopens
-        onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
+      {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
