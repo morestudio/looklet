@@ -92,6 +92,21 @@ assert.equal(uploads.length, 1, 'No thumbnail for an unreadable file, but the fi
 await storage.deleteImage(src);
 assert.deepEqual(removed, [key, `thumbs/400/${key}.jpg`, `thumbs/512/${key}.jpg`]);
 
+// 6b) ภาพไฮไลต์สีแดงของแก้เฉพาะจุด: เก็บที่ guides/ ไม่มีแถวในตาราง (ไม่ขึ้นในคลัง) เปิดได้เฉพาะ superadmin ลบผ่าน deleteImage ไม่ได้
+const rowsBefore = rows.length;
+const guideSrc = await storage.saveGuide(Buffer.from('red-guide'));
+assert.match(guideSrc, /^\/api\/files\/guides\/[\w-]+\.jpg$/);
+assert(objects.has(guideSrc.slice('/api/files/'.length)));
+assert.equal(rows.length, rowsBefore, 'A guide is not a library image');
+assert.equal(await storage.readImage(parts(guideSrc)), null, 'Team accounts cannot open guides');
+assert.equal(await storage.readThumb(parts(guideSrc), 512), null);
+role = 'superadmin';
+assert.equal(String((await storage.readImage(parts(guideSrc))).data), 'red-guide');
+assert.equal(String((await storage.readThumb(parts(guideSrc), 512)).data), 'red-guide', 'The audit page thumbnail is the saved guide itself');
+assert.equal(await storage.deleteImage(guideSrc), false);
+role = 'team';
+assert.equal(await storage.readImage(['guides', '..', 'x.jpg']), null);
+
 // 7) route: ?w=512 ใช้ readThumb เท่านั้น (ไม่อ่านรูปเต็ม) · ขนาดอื่นได้รูปเต็ม
 const calls = [];
 const route = appLoader({ overrides: {
@@ -112,4 +127,4 @@ await route.GET(new Request('http://localhost/api/files/results/a.png?w=999'), {
 assert.deepEqual(calls, [['full']]);
 
 Module._load = realLoad;
-console.log('Thumbnails passed: saved with each new image, read without downloading the full photo, old images thumbnailed once then reused, same privacy as full photos, broken files never break saving, deleted with the photo, and the route only reads thumbnails for ?w=.');
+console.log('Thumbnails and guides passed: red highlight images saved outside the library and readable only by the superadmin; saved with each new image, read without downloading the full photo, old images thumbnailed once then reused, same privacy as full photos, broken files never break saving, deleted with the photo, and the route only reads thumbnails for ?w=.');
