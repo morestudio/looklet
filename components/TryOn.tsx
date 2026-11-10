@@ -229,7 +229,10 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.filter((r) => r.page !== 'product').map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan, recipe: r.recipe })));
+        const past = lib.results.filter((r) => r.page !== 'product').map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan, recipe: r.recipe }));
+        setResults(past);
+        const at = past.findIndex((r) => r.src === new URLSearchParams(location.search).get('image')); // ✎ on /gallery
+        if (at >= 0) setCurrent(at);
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): Item => ({ name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         setLists({

@@ -169,6 +169,11 @@ const upload = await withAccount(alice, () => storage.saveImage({ area: 'uploads
 assert.equal(await withAccount(bob, () => storage.updateMeta(upload, { name: 'stolen' })), false);
 assert.equal(await withAccount(alice, () => storage.updateMeta(upload, { name: 'tote', owner: 'bob' })), true);
 assert.deepEqual(db.images.find((x) => x.path.endsWith(upload.split('/').pop())).meta, { name: 'tote', owner: 'alice' });
+// ♡ on results (/gallery): same privacy as uploads
+assert.equal(await withAccount(bob, () => storage.updateMeta(aliceSrc, { favorite: true })), false);
+assert.equal(await withAccount(alice, () => storage.updateMeta(teamSrc, { favorite: true })), false);
+assert.equal(await withAccount(alice, () => storage.updateMeta(aliceSrc, { favorite: true })), true);
+assert.equal(db.images.find((x) => x.meta.caption === 'alice').meta.favorite, true);
 
 // ---------- post(): เข้าสู่ระบบก่อน + บังคับโมเดล + รู้ว่าใครเรียก ----------
 let seen;

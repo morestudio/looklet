@@ -88,6 +88,7 @@ export type Stored = {
   editedFrom?: string;
   refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
+  favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image
 };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
@@ -167,9 +168,9 @@ export async function readThumb(parts: string[], width: number) {
   return data && { data, type: 'image/jpeg' };
 }
 
-// แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ ที่มี .json อยู่แล้ว
-export async function updateMeta(src: string, meta: Record<string, string>) {
-  if (!src.startsWith(URL_PREFIX + 'uploads/')) return false;
+// แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง / ♡ ของรูปที่สร้าง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ และ results/ ที่มี .json อยู่แล้ว
+export async function updateMeta(src: string, meta: Record<string, string | boolean>) {
+  if (!src.startsWith(URL_PREFIX + 'uploads/') && !src.startsWith(URL_PREFIX + 'results/')) return false;
   const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
   if (!f) return false;
   if (supabaseEnabled) return sbUpdateMeta(f.key, stripOwner(meta), (old) => visibleTo(old));

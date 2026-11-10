@@ -355,8 +355,11 @@ export default function Packshot() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        setResults(lib.results.filter((r) => r.page === 'product')
-          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe })));
+        const past = lib.results.filter((r) => r.page === 'product')
+          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe }));
+        setResults(past);
+        const at = past.findIndex((r) => r.src === new URLSearchParams(location.search).get('image')); // ✎ on /gallery
+        if (at >= 0) setCurrent(at);
         const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
           .map((u): ProductPhoto => ({ ...u, name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         // สินค้าตัวอย่างอยู่ก่อน (เก่าสุด) รายการแสดงใหม่สุดก่อน -> สินค้าของผู้ใช้ขึ้นก่อน ตัวอย่างต่อท้าย · ยังไม่มีสินค้าเลย = เลือกตัวอย่างไว้ให้
