@@ -1,5 +1,5 @@
 -- ที่เก็บรูปบน Supabase (lib/storage-supabase.ts) — รันครั้งเดียวต่อโปรเจกต์ รันซ้ำได้ไม่พัง
--- รูป: bucket "images" (private), ข้อมูลรูป: ตาราง images (path = ชื่อ object ใน bucket = path ใน /api/files/...)
+-- รูป: bucket "images" (private), ข้อมูลรูป: ตาราง images (path = path ใน /api/files/... = id ของรูป, object = ที่อยู่ไฟล์ใน bucket)
 
 create table if not exists public.images (
   path text primary key,                                        -- results/<ไฟล์> หรือ uploads/<ประเภท>/<ไฟล์>
@@ -9,6 +9,9 @@ create table if not exists public.images (
   created timestamptz not null default now()
 );
 create index if not exists images_area_kind_created on public.images (area, kind, created desc);
+-- 10 พ.ย.: จัดโฟลเดอร์ใน bucket ตามบัญชี (team/... = คลังร่วมของทีม, customers/<id บัญชี>/... = ลูกค้า) — ลิงก์รูปและ path ไม่เปลี่ยน
+-- object = ที่อยู่ไฟล์จริง (objectKey ใน lib/storage-supabase.ts) · null = ไฟล์ยังอยู่ที่ path เดิม (scripts/storage-rearrange.mjs ย้ายให้)
+alter table public.images add column if not exists object text;
 
 -- เปิด RLS โดยไม่มี policy: เข้าได้เฉพาะ server ที่ใช้ secret key (anon key จากหน้าเว็บอ่านไม่ได้)
 alter table public.images enable row level security;
