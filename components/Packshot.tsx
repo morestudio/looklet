@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
+import { useRecipeSync } from './useRecipeSync';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
 import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
@@ -21,7 +22,6 @@ import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, Pag
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
-import { recipeKey } from '@/lib/recipe';
 import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
@@ -280,12 +280,6 @@ export default function Packshot() {
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
   const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
-  // past image loads its settings (Go list item 3): draft = setup in progress set aside while a past image's recipe fills the panel
-  const [draft, setDraft] = useState<{ recipe: Recipe; chosen: StepKey[]; concepts: typeof conceptState } | null>(null);
-  const [viewKey, setViewKey] = useState<string | null>(null); // panel recipe key when the shown image was opened; differs -> user changed a choice
-  const [syncedSrc, setSyncedSrc] = useState<string | null>(null); // shown image the panel was last synced to
-  const [cleanKey, setCleanKey] = useState<string | null>(null); // draft key at page open (after models + library load) / last generate; differs = unsaved picks
-  const [confirmStart, setConfirmStart] = useState(false); // "เริ่มจากรูปนี้?" dialog
   const [libReady, setLibReady] = useState(false); // library loaded (product is preselected then)
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
@@ -293,7 +287,6 @@ export default function Packshot() {
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
   const productUploadRef = useRef(false);
   const frameRef = useRef<HTMLDivElement>(null);
-  const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
   const creativeScopeRef = useRef(''); // latest creativeScope, read when planning finishes
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
@@ -432,9 +425,11 @@ export default function Packshot() {
     return src;
   }
 
-  // panel <- recipe (steps = touched steps for useChosenSteps) · concepts: the idea list to show in ไอเดียภาพ
-  function applyRecipe(r: Recipe, steps: StepKey[], concepts: typeof conceptState) {
-    setChoices(r); setConceptState(concepts);
+  // panel <- recipe (steps = touched steps for useChosenSteps); idea list =the recipe's own idea, bound to its product and inputs (a returning draft restores its list after)
+  function applyRecipe(r: Recipe, steps: StepKey[]) {
+    const inspirationSrc = r.shotType === 'creative' ? find(lists.ref, r.pick.ref)?.src : undefined;
+    setChoices(r);
+    setConceptState(r.concept ? { scope: creativeScopeOf(groups.find((g) => g.id === r.pick.product), r.idea, r.facts, inspirationSrc), concepts: [r.concept] } : null);
     setChosen(new Set(steps));
     if (!stepUsed(STEPS[step].key, r.shotType)) setStep(STEPS.findIndex((s) => s.key === 'shot')); // rail greys that step out
   }
@@ -636,9 +631,9 @@ export default function Packshot() {
         recipe, // stored with the image (lib/recipe.ts)
       };
       // finished image: open it, unless the user changed choices while waiting (opening it would load its recipe over them)
+      const sentKey = liveKey;
       const showMade = () => {
-        setCleanKey(liveKey);
-        if (liveKeyRef.current !== liveKey) {
+        if (!sync.finished(sentKey)) {
           setCurrent((c) => (c === null ? c : c + 1)); // list grew at the front: keep the same image on the stage
           setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
           return;
@@ -736,45 +731,23 @@ export default function Packshot() {
   const cur = STEPS[step];
   const { chosen, mark, setChosen } = useChosenSteps(cur.key);
 
-  // ---------- recipe sync, as on the model page (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
+  // ---------- past image <-> panel (components/useRecipeSync.ts) ----------
   // stored / compared form of choices: the idea only for Creative and only while still valid
   const recipe: Recipe = { ...choices, concept: shotType === 'creative' ? creativeConcept ?? null : null };
-  const liveKey = recipeKey(recipe);
-  useEffect(() => { liveKeyRef.current = liveKey; creativeScopeRef.current = creativeScope; });
+  useEffect(() => { creativeScopeRef.current = creativeScope; });
   const allSteps = STEPS.map((s) => s.key);
   const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, groups) : null), [shown, lists, groups]);
-  const loadShown = () => {
-    const r = shownRecipe!.recipe;
-    // the image's own idea becomes the only one listed, bound to the restored product and inputs
-    const inspirationSrc = r.shotType === 'creative' ? find(lists.ref, r.pick.ref)?.src : undefined;
-    const concepts = r.concept ? { scope: creativeScopeOf(groups.find((g) => g.id === r.pick.product), r.idea, r.facts, inspirationSrc), concepts: [r.concept] } : null;
-    applyRecipe(r, allSteps.filter((k) => !shownRecipe!.missing.includes(k)), concepts);
-  };
-  const startFromShown = () => { setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
-  if (cleanKey === null && aiModels !== null && libReady) setCleanKey(liveKey); // quality is set when models load, product when the library loads
-  const shownSrc = shown?.src ?? null;
-  const syncing = cleanKey !== null && shownSrc !== syncedSrc; // clicked before page setup finished -> loads right after it
-  if (syncing) {
-    setSyncedSrc(shownSrc);
-    if (shownRecipe) {
-      if (!draft) setDraft({ recipe, chosen: [...chosen], concepts: conceptState });
-      loadShown();
-      setViewKey(recipeKey(shownRecipe.recipe));
-    } else {
-      if (draft) {
-        const back = readRecipe(draft.recipe, lists, groups).recipe; // deleted while viewing -> null, as for a past image
-        if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
-        applyRecipe(back, draft.chosen, draft.concepts);
-        setDraft(null);
-      }
-      setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
-    }
-  } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
-    // a choice changed while viewing: no recipe -> back to the (changed) draft; recipe -> new draft from it, confirm first if unsaved picks
-    if (!shownRecipe) { setViewKey(null); setSyncedSrc(null); setCurrent(null); }
-    else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
-    else startFromShown();
-  }
+  const sync = useRecipeSync({
+    recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
+    ready: aiModels !== null && libReady, // quality is set when models load, product when the library loads
+    apply: applyRecipe, keep: () => conceptState, restore: setConceptState, close: () => setCurrent(null),
+    revalidate: (r) => {
+      const back = readRecipe(r, lists, groups).recipe;
+      if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
+      return back;
+    },
+  });
+  const liveKey = sync.liveKey;
   const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
   // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปพื้นหินขอบหมึก) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
   const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
@@ -1163,10 +1136,8 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
-      {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
-        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
-        onCancel={() => { setConfirmStart(false); if (shownRecipe) { loadShown(); setViewKey(recipeKey(shownRecipe.recipe)); } }} // key from today's lists, else it reopens
-        onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
+      {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
