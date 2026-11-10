@@ -1,5 +1,5 @@
 // product page (components/Packshot.tsx) recipe: every step's choices saved with each generated image (meta.recipe, lib/recipe.ts)
-import type { Item } from './catalog';
+import { defaultQuality, qualitiesFor, type Item } from './catalog';
 import { readCreativeConcept, type CreativeConcept } from './creative';
 import {
   BACKDROP_COLORS, CUSTOM_ANGLE, DETAIL_TARGETS, HAND_POSES, NO_PROPS, PRODUCT_ANGLES, PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_SET_SHOTS,
@@ -58,7 +58,8 @@ const text = (v: unknown) => (typeof v === 'string' ? v : '');
 export const creativeScopeOf = (group: ProductGroup | undefined, idea: string, facts: string, inspirationSrc: string | undefined) =>
   JSON.stringify([group?.id, group?.main?.src, group?.photos.map((p) => p.src), idea, facts, inspirationSrc]);
 // stored recipe -> valid Recipe; an id no longer in the lists (deleted product/upload) -> null, its step listed in missing
-export function readRecipe(raw: Partial<Recipe>, lists: Record<PickKey, ProductPhoto[]>, groups = productGroups(lists.product)): { recipe: Recipe; missing: StepKey[] } {
+// model: quality must be one the current model offers
+export function readRecipe(raw: Partial<Recipe>, lists: Record<PickKey, ProductPhoto[]>, model: string, groups = productGroups(lists.product)): { recipe: Recipe; missing: StepKey[] } {
   const r = raw as Record<string, unknown>;
   const p = (r.pick && typeof r.pick === 'object' ? r.pick : {}) as Record<string, unknown>;
   const missing = new Set<StepKey>();
@@ -98,7 +99,7 @@ export function readRecipe(raw: Partial<Recipe>, lists: Record<PickKey, ProductP
     framing: oneOf(r.framing, [PRESET, ...PRODUCT_FRAMINGS.map((x) => x.id)], d.framing),
     refMode: oneOf<RefMode>(r.refMode, REF_MODES.map((m) => m.id), START.refMode),
     aspect: oneOf<string>(r.aspect, PRODUCT_ASPECTS.map((a) => a.id), d.aspect),
-    quality: typeof r.quality === 'string' ? r.quality : START.quality,
+    quality: oneOf(r.quality, qualitiesFor(model).map((q) => q.id), defaultQuality(model)),
     extra: text(r.extra),
   };
   return { recipe, missing: [...missing] };

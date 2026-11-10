@@ -24,7 +24,7 @@ import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors'
 import { NO_FILM } from '@/lib/film';
 import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
-import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
+import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
   PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
@@ -736,13 +736,13 @@ export default function Packshot() {
   const recipe: Recipe = { ...choices, concept: shotType === 'creative' ? creativeConcept ?? null : null };
   useEffect(() => { creativeScopeRef.current = creativeScope; });
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, groups) : null), [shown, lists, groups]);
+  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, aiModel, groups) : null), [shown, lists, aiModel, groups]);
   const sync = useRecipeSync({
     recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
     ready: aiModels !== null && libReady, // quality is set when models load, product when the library loads
     apply: applyRecipe, keep: () => conceptState, restore: setConceptState, close: () => setCurrent(null),
     revalidate: (r) => {
-      const back = readRecipe(r, lists, groups).recipe;
+      const back = readRecipe(r, lists, aiModel, groups).recipe;
       if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
       return back;
     },
@@ -1012,7 +1012,7 @@ export default function Packshot() {
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
           <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={(v) => update({ quality: v })} />
+            <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
           </Section>
         )}
       </details>
