@@ -17,7 +17,7 @@ import { generateSelectedShots } from '@/lib/shot-batch';
 import { StyleView } from './StyleView';
 import { PLATFORM_ASPECTS } from '@/lib/aspects';
 import {
-  IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
@@ -105,7 +105,7 @@ const START: Recipe = {
 };
 // fixed field order: equal recipes -> equal keys
 const recipeKey = (r: Recipe) => JSON.stringify([r.pick.model, r.pick.outfit, r.pick.accessory, r.pick.pose, r.pick.scene, r.pick.top, r.pick.bottom, r.pick.shoes,
-  r.preset, r.framing, r.angle, r.placement, r.poseMode, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
+r.preset, r.framing, r.angle, r.placement, r.poseMode, r.light, r.mood, r.aspect, r.quality, r.extra, r.harmonize, r.gaze, r.props, r.background, r.goal, r.autoRepair]);
 const oneOf = <T extends string>(v: unknown, ids: readonly T[], fallback: T): T => (typeof v === 'string' && ids.includes(v as T) ? v as T : fallback);
 // stored recipe -> valid Recipe; an id no longer in the lists (deleted upload) -> null, its step listed in missing (doll shows "+")
 function readRecipe(raw: Partial<Recipe>, lists: Record<Key, Item[]>): { recipe: Recipe; missing: StepKey[] } {
@@ -203,7 +203,9 @@ export default function TryOn() {
   const [viewKey, setViewKey] = useState<string | null>(null); // panel recipe key when the shown image was opened; differs -> user changed a choice
   const [syncedSrc, setSyncedSrc] = useState<string | null>(null); // shown image the panel was last synced to
   const [cleanKey, setCleanKey] = useState<string | null>(null); // draft key at page open (after models load) / last generate; differs = unsaved picks
+  const [fresh, setFresh] = useState<Recipe | null>(null); // recipe at page open (after models load): what "ล้าง" resets the draft to
   const [confirmStart, setConfirmStart] = useState(false); // "เริ่มจากรูปนี้?" dialog
+  const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
   const [original, setOriginal] = useState(false); // กดค้าง "ดูก่อนแต่ง"
   const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
@@ -248,6 +250,7 @@ export default function TryOn() {
   const [localEdit, setLocalEdit] = useState<{ src: string; caption: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const editBtnRef = useRef<HTMLButtonElement>(null);
+  const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
   const editCloseRef = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);
   const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
@@ -536,9 +539,9 @@ export default function TryOn() {
     setGenerating(true);
     setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
-      : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
-        : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
-          : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
+        : harmonize ? 'AI กำลังสร้างรูปและปรับแสงรอบสอง... (ประมาณ 30–90 วินาที)'
+          : choice.id.startsWith('openai:') && ['xhigh', 'max'].includes(quality) ? 'AI กำลังสร้างรูปแบบละเอียดสูง... (ประมาณ 1–2 นาที)'
+            : 'AI กำลังสร้างรูป... (ประมาณ 10–60 วินาที)');
     try {
       // ย่อรูปทุกรูปก่อน (ได้ขนาดจริงที่ส่งไว้ทำ log ด้วย)
       const person = await jpegBase64(model.src!);
@@ -820,7 +823,15 @@ export default function TryOn() {
   const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists) : null;
   const loadShown = () => applyRecipe(shownRecipe!.recipe, allSteps.filter((k) => !shownRecipe!.missing.includes(k)));
   const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
-  if (cleanKey === null && aiModels !== null) setCleanKey(liveKey); // quality is set when models load
+  if (cleanKey === null && aiModels !== null) { setCleanKey(liveKey); setFresh(recipe); } // quality is set when models load
+  // "ล้าง" in the paper doll label = the "รูปใหม่" tile on a freshly opened page: page-open picks, no past-image base, same step
+  const startOver = () => {
+    const r = fresh ?? recipe;
+    applyRecipe(r, []);
+    setBase(null); setViewKey(null); setSyncedSrc(null); setCurrent(null);
+    setCleanKey(recipeKey(r)); setOutfitTab('top'); setStatus('');
+    newTileRef.current?.focus(); // the ล้าง button unmounts (base -> null); keep keyboard focus on the page
+  };
   const shownSrc = shown?.src ?? null;
   const syncing = cleanKey !== null && shownSrc !== syncedSrc; // clicked before models loaded -> loads right after, so default quality can't overwrite it
   if (syncing) {
@@ -1181,59 +1192,59 @@ export default function TryOn() {
   }
   // edit panel content = production step-9 panel unchanged (Go list item 7)
   const editPanel = <>
-      <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
-        <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
-        <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
-          <IconSparkle /> ปรับผิวสมจริง
-        </button>
-        {!shown && <p className="muted-text">เลือกรูปที่สร้างแล้วจากคลังก่อน</p>}
-        {shown && !canRefineSkin && <p className="muted-text">ต้องตั้งค่า OpenAI API key ก่อนใช้การปรับผิว</p>}
-        {shown?.refinedFrom && <p className="muted-text">รูปนี้ปรับผิวแล้ว · ปิดลุคฟิล์มอัตโนมัติเพื่อคงรายละเอียดผิว</p>}
-      </Section>
-      <Section title="รีทัช" note="ปรับได้ทันที ไม่เสียเงิน">
-        <div className="sliders">
-          {SLIDERS.map(([id, label]) => (
-            <div className="slider" key={id}>
-              <label htmlFor={id}>{label} <output>{amounts[id]}</output></label>
-              <input type="range" id={id} min={0} max={100} value={amounts[id]} style={rangeFill(amounts[id], 0, 100)}
-                onChange={(e) => setAmounts((a) => ({ ...a, [id]: +e.target.value }))} />
-            </div>
-          ))}
-        </div>
-        <p className="sub">สีผิว</p>
-        <div className="chips">
-          <button className={'chip' + (tone === null ? ' active' : '')} onClick={() => setTone(null)}>สีเดิม</button>
-          {SKIN_TONES.map((t) => (
-            <button key={t.color} className={'swatch' + (tone === t.color ? ' active' : '')} style={{ background: t.color }}
-              title={t.name} aria-label={t.name} onClick={() => setTone(t.color)} />
-          ))}
-        </div>
-        <div className="retouch-actions">
-          <button className="btn btn-secondary" onClick={() => setAmounts(AUTO)}><IconSparkle /> แต่งอัตโนมัติ</button>
-          <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFinish('auto'); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
-        </div>
-      </Section>
-      <Section title="ให้ดูเป็นรูปถ่ายจริง" note={shown?.refinedFrom ? 'รูปปรับผิวเริ่มต้นไม่ใส่ลุค' : 'ใส่ให้ทุกรูปอัตโนมัติ'}>
-        <ChipGroup options={[...FINISH_LOOKS]} value={finish} onChange={(v) => setFinish(v as FinishChoice)} />
-        <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'off' ? 'ไม่ใส่ลุค' : finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
-        <div className="sliders">
-          {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
-            <div className="slider" key={id}>
-              <label htmlFor={id}>{label} <output>{film[id]}</output></label>
-              <input type="range" id={id} min={0} max={100} value={film[id]} style={rangeFill(film[id], 0, 100)}
-                onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
-            </div>
-          ))}
-          {finishLook === 'phone' && (
-            <div className="slider">
-              <label htmlFor="phone">ความแรงลุคมือถือ <output>{film.phone}</output></label>
-              <input type="range" id="phone" min={0} max={100} value={film.phone} style={rangeFill(film.phone, 0, 100)} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
-            </div>
-          )}
-        </div>
-        <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
-      </Section>
-    </>;
+    <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
+      <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
+      <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
+        <IconSparkle /> ปรับผิวสมจริง
+      </button>
+      {!shown && <p className="muted-text">เลือกรูปที่สร้างแล้วจากคลังก่อน</p>}
+      {shown && !canRefineSkin && <p className="muted-text">ต้องตั้งค่า OpenAI API key ก่อนใช้การปรับผิว</p>}
+      {shown?.refinedFrom && <p className="muted-text">รูปนี้ปรับผิวแล้ว · ปิดลุคฟิล์มอัตโนมัติเพื่อคงรายละเอียดผิว</p>}
+    </Section>
+    <Section title="รีทัช" note="ปรับได้ทันที ไม่เสียเงิน">
+      <div className="sliders">
+        {SLIDERS.map(([id, label]) => (
+          <div className="slider" key={id}>
+            <label htmlFor={id}>{label} <output>{amounts[id]}</output></label>
+            <input type="range" id={id} min={0} max={100} value={amounts[id]} style={rangeFill(amounts[id], 0, 100)}
+              onChange={(e) => setAmounts((a) => ({ ...a, [id]: +e.target.value }))} />
+          </div>
+        ))}
+      </div>
+      <p className="sub">สีผิว</p>
+      <div className="chips">
+        <button className={'chip' + (tone === null ? ' active' : '')} onClick={() => setTone(null)}>สีเดิม</button>
+        {SKIN_TONES.map((t) => (
+          <button key={t.color} className={'swatch' + (tone === t.color ? ' active' : '')} style={{ background: t.color }}
+            title={t.name} aria-label={t.name} onClick={() => setTone(t.color)} />
+        ))}
+      </div>
+      <div className="retouch-actions">
+        <button className="btn btn-secondary" onClick={() => setAmounts(AUTO)}><IconSparkle /> แต่งอัตโนมัติ</button>
+        <button className="btn btn-tertiary" onClick={() => { setAmounts(NO_RETOUCH); setTone(null); setFinish('auto'); setFilm(FILM_DEFAULT); }}>รีเซ็ต</button>
+      </div>
+    </Section>
+    <Section title="ให้ดูเป็นรูปถ่ายจริง" note={shown?.refinedFrom ? 'รูปปรับผิวเริ่มต้นไม่ใส่ลุค' : 'ใส่ให้ทุกรูปอัตโนมัติ'}>
+      <ChipGroup options={[...FINISH_LOOKS]} value={finish} onChange={(v) => setFinish(v as FinishChoice)} />
+      <p className="muted-text">{FINISH_LOOKS.find((f) => f.id === finish)!.hint}{finish === 'auto' && shown ? ` · รูปนี้: ${finishLook === 'off' ? 'ไม่ใส่ลุค' : finishLook === 'phone' ? 'มือถือ' : 'ฟิล์ม'}` : ''}</p>
+      <div className="sliders">
+        {finishLook === 'film' && FILM_SLIDERS.map(([id, label]) => (
+          <div className="slider" key={id}>
+            <label htmlFor={id}>{label} <output>{film[id]}</output></label>
+            <input type="range" id={id} min={0} max={100} value={film[id]} style={rangeFill(film[id], 0, 100)}
+              onChange={(e) => setFilm((f) => ({ ...f, [id]: +e.target.value }))} />
+          </div>
+        ))}
+        {finishLook === 'phone' && (
+          <div className="slider">
+            <label htmlFor="phone">ความแรงลุคมือถือ <output>{film.phone}</output></label>
+            <input type="range" id="phone" min={0} max={100} value={film.phone} style={rangeFill(film.phone, 0, 100)} onChange={(e) => setFilm((f) => ({ ...f, phone: +e.target.value }))} />
+          </div>
+        )}
+      </div>
+      <p className="muted-text">ดาวน์โหลดได้รูปที่ใส่ลุคแล้ว · กดค้าง &quot;ดูก่อนแต่ง&quot; = รูปจาก AI ล้วน</p>
+    </Section>
+  </>;
 
   // ---------- ประวัติรูป: รูปในชุดภาพเดียวกันอยู่ในกรอบเดียว เรียงตามมุม (SET_SHOTS) ----------
   const thumb = (i: number, label?: string) => (
@@ -1331,7 +1342,8 @@ export default function TryOn() {
               {!editing && <button type="button" ref={editBtnRef} className="btn btn-primary edit-btn" onClick={() => setEditing(true)}><IconEdit /> แต่งรูป</button>}
               {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
               {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
-            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เลือก' : 'พร้อมสร้าง'} />}
+            </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เดิม' : 'พร้อมสร้าง'}
+              action={base && <button type="button" className="link-btn" disabled={generating} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>} />}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
@@ -1359,7 +1371,7 @@ export default function TryOn() {
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
             {/* "รูปใหม่" = the setup in progress (paper doll); first tile, always there */}
-            <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
+            <button type="button" ref={newTileRef} className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
               aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
               {generating
                 ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
@@ -1392,6 +1404,11 @@ export default function TryOn() {
       {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingSrc(null)}
         onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
+      {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
+        body="ตัวเลือกทุกขั้นจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
+        cancel="ยกเลิก" confirm="ล้าง"
+        onCancel={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); startOver(); }} />}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
       {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
         if (viewer.temp) URL.revokeObjectURL(viewer.src);
