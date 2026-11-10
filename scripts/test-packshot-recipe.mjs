@@ -19,7 +19,7 @@ function load(file) {
   cache.set(file, loaded.exports);
   return loaded.exports;
 }
-const { readRecipe } = load('lib/packshot-recipe.ts');
+const { readRecipe, START, shotTypeDefaults } = load('lib/packshot-recipe.ts');
 const { recipeKey } = load('lib/recipe.ts');
 
 const BAG = '/api/files/uploads/products/bag.jpg';
@@ -48,11 +48,11 @@ const full = {
 };
 const stored = (r) => JSON.parse(JSON.stringify(r)); // as saved to meta.recipe and read back from /api/library
 
-// 1. stored -> loaded: same recipe, nothing missing
+// 1. stored -> loaded: same recipe, nothing missing (Creative doesn't use the scene / prop picks)
 {
   const { recipe, missing } = readRecipe(stored(full), lists);
   assert.deepEqual(missing, []);
-  assert.equal(recipeKey(recipe), recipeKey(full));
+  assert.equal(recipeKey(recipe), recipeKey({ ...full, pick: { ...full.pick, scene: null, prop: null } }));
   assert.deepEqual(Object.keys(recipe).sort(), Object.keys(full).sort(), 'full fixture must set every Recipe field');
 }
 
@@ -60,17 +60,27 @@ const stored = (r) => JSON.parse(JSON.stringify(r)); // as saved to meta.recipe 
 for (const shotType of ['clean', 'styled', 'creative', 'handshot']) {
   assert.equal(readRecipe(stored({ ...full, shotType }), lists).recipe.shotType, shotType);
 }
+// full Custom recipe also round-trips (its picks are all used)
+{
+  const styled = { ...full, shotType: 'styled', concept: null, pick: { ...full.pick, ref: null } };
+  const { recipe, missing } = readRecipe(stored(styled), lists);
+  assert.deepEqual(missing, []);
+  assert.equal(recipeKey(recipe), recipeKey(styled));
+}
 
-// 3. older / partial recipe: missing fields get the page's defaults
+// 3. older / partial recipe: missing fields get what choosing that shot type on the page gives
 {
   const { recipe, missing } = readRecipe({ pick: { product: BAG }, shotType: 'styled' }, lists);
   assert.deepEqual(missing, []);
-  assert.deepEqual(recipe, {
-    pick: { product: BAG, ref: null, scene: null, prop: null }, shotType: 'styled', idea: '', facts: '', concept: null,
+  assert.deepEqual(recipe, { ...START, pick: { ...START.pick, product: BAG }, shotType: 'styled', ...shotTypeDefaults('styled') });
+  assert.deepEqual(shotTypeDefaults('styled'), { scene: 'table', color: 'match', props: 'none', angle: 'preset', framing: 'preset', aspect: '4:5' });
+  assert.deepEqual(readRecipe({}, lists).recipe, START, 'empty recipe = page start');
+  assert.deepEqual(START, { // page-open values, pinned so a changed default shows up here
+    pick: { product: null, ref: null, scene: null, prop: null }, shotType: 'clean', idea: '', facts: '', concept: null,
     detailTarget: 'texture', feature: '', scaleRef: 'hand', handPose: 'hold',
     dimensions: { width: '', height: '', depth: '' }, referenceSize: { width: '', depth: '' }, extraAngles: [],
-    scene: 'preset', color: 'white', props: 'none', propText: '', angle: 'preset', turn: null,
-    framing: 'preset', refMode: 'shot', aspect: '1:1', quality: 'high', extra: '',
+    scene: 'preset', color: 'white', props: 'none', angle: 'preset', framing: 'preset', aspect: '1:1',
+    propText: '', turn: null, refMode: 'shot', quality: 'high', extra: '',
   });
 }
 
@@ -85,13 +95,17 @@ for (const shotType of ['clean', 'styled', 'creative', 'handshot']) {
   assert.deepEqual(recipe.extraAngles, ['top']);
 }
 
-// 5. deleted product / uploads and a broken idea -> null + the step listed in missing
+// 5. deleted product / uploads and a broken idea -> null + the step listed in missing, only for steps the shot type uses
 {
   const empty = { product: [], ref: [], scene: [], prop: [] };
-  const { recipe, missing } = readRecipe({ ...stored(full), concept: { id: 'x' } }, empty);
-  assert.deepEqual(recipe.pick, { product: null, ref: null, scene: null, prop: null });
-  assert.equal(recipe.concept, null);
-  assert.deepEqual([...missing].sort(), ['creative', 'product', 'props', 'set']);
+  const creative = readRecipe({ ...stored(full), concept: { id: 'x' } }, empty);
+  assert.deepEqual(creative.recipe.pick, { product: null, ref: null, scene: null, prop: null });
+  assert.equal(creative.recipe.concept, null);
+  assert.deepEqual([...creative.missing].sort(), ['creative', 'product']); // scene / prop unused by Creative: dropped quietly
+  const styled = readRecipe({ ...stored(full), shotType: 'styled' }, empty);
+  assert.deepEqual([...styled.missing].sort(), ['product', 'props', 'set']); // inspiration unused by Custom
+  assert.deepEqual(readRecipe({ ...stored(full), shotType: 'clean' }, lists).recipe.pick, { product: BAG, ref: null, scene: null, prop: null });
+  assert.equal(readRecipe({ ...stored(full), shotType: 'clean' }, lists).recipe.concept, null, 'idea kept only for Creative');
 }
 
 // 6. not an object -> all defaults, no throw

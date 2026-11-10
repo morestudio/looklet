@@ -3,7 +3,7 @@
 // โครงหน้าเหมือนหน้านางแบบ (components/TryOn.tsx) และใช้ class CSS ชุดเดียวกัน: เมนูขั้นตอนซ้าย แผงเลือก รูปตรงกลาง แผงปรับแต่งขวา
 // หน้าเว็บส่งแค่ id ของตัวเลือก (lib/packshot.ts) ไป app/api/packshot แล้ว server แปลงเป็นคำสั่งเอง
 // คลังรูปแยกจากหน้านางแบบ: สินค้า / ช็อตต้นแบบ / รูปฉาก (KINDS ใน lib/storage.ts) รูปที่สร้างติดป้าย page = 'product'
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
@@ -16,13 +16,13 @@ import {
 } from './icons';
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
-import { defaultTurn, turnFill, type Turn } from '@/lib/turntable';
+import { defaultTurn, turnFill } from '@/lib/turntable';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
 import { recipeKey } from '@/lib/recipe';
-import { PRESET, creativeScopeOf, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
+import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import { api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, toWebImage, uploadImage } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, QUALITIES, QUALITIES_25, defaultQuality, isGpt25, type Item } from '@/lib/catalog';
 import {
@@ -53,9 +53,6 @@ type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
 const downloadName = (ext: string) => `snapads-product-${Date.now()}.${ext}`; // ชื่อไฟล์ดาวน์โหลด (เรียกตอนกดเท่านั้น)
 
-// ช็อตต้นแบบ (ปิด 27 ต.ค.): ซ้ำกับภาพแรงบันดาลใจของ Creative Packshot และ "ใช้รูปฉากของฉัน" ในขั้นฉากและพื้น
-// แถมลอกทั้งช็อตแล้วขั้นอื่นใช้ไม่ได้ครึ่งเมนู · เปิดคืน = true (โค้ด UI/API ยังอยู่ครบ)
-const REF_SHOT = false;
 
 const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = ([
   { key: 'product', label: 'สินค้า', title: 'เลือกสินค้า', Icon: IconBag },
@@ -70,16 +67,6 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   { key: 'framing', label: 'ระยะ', title: 'เลือกระยะ', Icon: IconFrame },
   { key: 'settings', label: 'ตั้งค่า', title: 'ตั้งค่าและสร้างรูป', Icon: IconSettings },
 ] as const).filter((s) => REF_SHOT || s.key !== 'ref');
-// ขั้นที่ประเภทภาพนี้ใช้ · เมนูแสดงครบทุกขั้นเสมอ (ขั้นที่ไม่ใช้เป็นสีเทา) จะได้ไม่ขยับ/เปลี่ยนเลขตอนเปลี่ยนประเภทภาพ
-function stepUsed(key: StepKey, type: ShotType) {
-  if (type === 'creative') return ['product', 'shot', 'creative', 'settings'].includes(key);
-  if (type === 'handshot') return ['product', 'shot', 'hand', 'settings'].includes(key); // ฉาก แสง มุม ระยะ = อัตโนมัติตามท่าถือ
-  if (key === 'creative' || key === 'hand') return false;
-  if (key === 'ref' || key === 'props') return type === 'styled';
-  if (key === 'angle') return type !== 'multi';
-  if (key === 'framing') return type === 'styled' || type === 'scale';
-  return true;
-}
 
 // สัดส่วน "อัตโนมัติ": 4:5 (ฟีด IG) · ลอกทั้งช็อต = สัดส่วนที่ใกล้รูปต้นแบบที่สุด
 const nearestAspect = (w: number, h: number) => PRODUCT_ASPECTS.map((a) => a.id).reduce((best, a) => {
@@ -269,35 +256,19 @@ function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
 
 export default function Packshot() {
   const [lists, setLists] = useState<Record<Key, ProductPhoto[]>>({ product: PRODUCT_SAMPLES, ref: [], scene: [], prop: [] });
-  const [pick, setPick] = useState<Record<Key, string | null>>({ product: null, ref: null, scene: null, prop: null });
-  const [shotType, setShotType] = useState<ShotType>('clean');
-  const [creativeIdea, setCreativeIdea] = useState('');
-  const [creativeFacts, setCreativeFacts] = useState('');
+  // every step's choice lives here (lib/packshot-recipe.ts); a new option is added to Recipe, not as its own useState
+  const [choices, setChoices] = useState<Recipe>(START);
+  const update = (patch: Partial<Recipe> | ((r: Recipe) => Partial<Recipe>)) => setChoices((r) => ({ ...r, ...(typeof patch === 'function' ? patch(r) : patch) }));
+  const {
+    pick, shotType, idea: creativeIdea, facts: creativeFacts, detailTarget, feature, scaleRef, handPose: handPoseId, dimensions, referenceSize, extraAngles,
+    scene: sceneId, color: colorId, props: propsId, propText, angle: angleId, turn, framing: framingId, refMode, aspect, quality, extra,
+  } = choices;
   const [conceptState, setConceptState] = useState<{ scope: string; concepts: CreativeConcept[] } | null>(null);
-  const [conceptId, setConceptId] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
   const planningRef = useRef(false);
-  const [detailTarget, setDetailTarget] = useState('texture');
-  const [feature, setFeature] = useState('');
-  const [scaleRef, setScaleRef] = useState('hand');
-  const [handPoseId, setHandPoseId] = useState('hold'); // Handshot: ท่าถือ (HAND_POSES)
-  const [dimensions, setDimensions] = useState({ width: '', height: '', depth: '' });
-  const [referenceSize, setReferenceSize] = useState({ width: '', depth: '' });
-  const [extraAngles, setExtraAngles] = useState<string[]>([]);
   const [groupBusy, setGroupBusy] = useState(false);
-  const [sceneId, setSceneId] = useState(PRESET); // ฉาก (SETS) · Custom Packshot เลือกฉากจริงเสมอ
-  const [colorId, setColorId] = useState('white'); // สีฉาก (BACKDROP_COLORS)
-  const [propsId, setPropsId] = useState(NO_PROPS); // เริ่มที่ไม่มีพร็อพ (ไม่มี "ตามฉาก" / "AI เลือกให้" ในขั้นพร็อพแล้ว 27 ต.ค.)
-  const [angleId, setAngleId] = useState(PRESET);
-  const [turn, setTurn] = useState<Turn | null>(null); // ตั้งมุมเอง (angleId = 'custom') · null = มุมเริ่มต้นของประเภทสินค้า
-  const [framingId, setFramingId] = useState(PRESET);
-  const [refMode, setRefMode] = useState<RefMode>('shot');
-  const [aspect, setAspect] = useState('1:1');
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null);
   const [aiModel, setAiModel] = useState('');
-  const [quality, setQuality] = useState('high');
-  const [extra, setExtra] = useState('');
-  const [propText, setPropText] = useState(''); // พร็อพของฉันแบบพิมพ์ (Custom)
   const [results, setResults] = useState<Result[]>([]);
   const [current, setCurrent] = useState<number | null>(null); // null = รูปสินค้าที่เลือก (ยังไม่ได้สร้าง)
   const [status, setStatus] = useState('');
@@ -323,6 +294,7 @@ export default function Packshot() {
   const productUploadRef = useRef(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const liveKeyRef = useRef(''); // latest panel recipe key, read when a generation finishes (closure holds the sent one)
+  const creativeScopeRef = useRef(''); // latest creativeScope, read when planning finishes
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
 
@@ -335,7 +307,7 @@ export default function Packshot() {
   const scaleReady = shotType !== 'scale' || (Object.values(dimensions).every(validSize)
     && (scaleRef !== 'laptop' || Object.values(referenceSize).every(validSize)));
   const detailReady = shotType !== 'detail' || detailTarget !== 'feature' || Boolean(feature.trim());
-  const groups = productGroups(lists.product);
+  const groups = useMemo(() => productGroups(lists.product), [lists.product]);
   const selectedGroup = groups.find((g) => g.id === pick.product);
   const product = selectedGroup?.main ? { ...selectedGroup.main, name: selectedGroup.name, type: selectedGroup.type } : undefined;
   // ท่าที่เลือกไว้ไม่เข้ากับสินค้าที่เปลี่ยนมา (เช่น หิ้วหูกระเป๋า -> รองเท้า) = ท่าแรกที่ใช้ได้ ตรงกับที่ API ทำ
@@ -343,7 +315,7 @@ export default function Packshot() {
   const inspiration = shotType === 'creative' ? find(lists.ref, pick.ref) : undefined; // ภาพแรงบันดาลใจ (ไม่บังคับ)
   const creativeScope = creativeScopeOf(selectedGroup, creativeIdea, creativeFacts, inspiration?.src);
   const concepts = conceptState?.scope === creativeScope ? conceptState.concepts : [];
-  const creativeConcept = concepts.find((c) => c.id === conceptId);
+  const creativeConcept = concepts.find((c) => c.id === choices.concept?.id); // from the current list: planner ids are positional
   const creativeReady = shotType !== 'creative' || Boolean(creativeConcept);
   const canPlan = Boolean(product && aiModels?.length) && !groupBusy && busy === null;
   const ref = REF_SHOT && shotType === 'styled' ? find(lists.ref, pick.ref) : undefined;
@@ -395,7 +367,7 @@ export default function Packshot() {
         // สินค้าตัวอย่างอยู่ก่อน (เก่าสุด) รายการแสดงใหม่สุดก่อน -> สินค้าของผู้ใช้ขึ้นก่อน ตัวอย่างต่อท้าย · ยังไม่มีสินค้าเลย = เลือกตัวอย่างไว้ให้
         const next = { product: [...PRODUCT_SAMPLES, ...uploaded('product')], ref: uploaded('ref'), scene: uploaded('scene'), prop: uploaded('prop') };
         setLists(next);
-        setPick((p) => (p.product || !next.product.length ? p : { ...p, product: productGroups(next.product).at(-1)?.id ?? null })); // เลือกสินค้าล่าสุดไว้ให้
+        update((r) => (r.pick.product || !next.product.length ? {} : { pick: { ...r.pick, product: productGroups(next.product).at(-1)?.id ?? null } })); // เลือกสินค้าล่าสุดไว้ให้
       })
       .catch((err) => console.error('โหลดคลังรูปไม่สำเร็จ', err))
       .finally(() => { if (!cancelled) setLibReady(true); });
@@ -411,7 +383,7 @@ export default function Packshot() {
         if (list.length) { // มีโมเดลเดียว (DEFAULT_AI_MODEL) เลือกเองไม่ได้แล้ว · คุณภาพเริ่มต้นตามโมเดล
           const id = (list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id;
           setAiModel(id);
-          setQuality(defaultQuality(id));
+          update({ quality: defaultQuality(id) });
         }
         else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
@@ -419,26 +391,24 @@ export default function Packshot() {
 
   function chooseShotType(id: string) {
     const next = id as ShotType;
-    setShotType(next);
-    setSceneId(next === 'styled' ? 'table' : PRESET); setColorId(next === 'styled' ? 'match' : 'white'); // Custom เริ่มที่โต๊ะขาว (Still life ผลไม้ เดิม)
-    setPropsId(NO_PROPS); setAngleId(PRESET);
-    setFramingId(next === 'detail' ? 'detail' : next === 'scale' ? 'medium' : PRESET);
-    setAspect(next === 'styled' || next === 'creative' || next === 'handshot' ? '4:5' : '1:1');
-    setPick((p) => ({ ...p, ref: null, scene: null }));
+    update((r) => ({
+      shotType: next, ...shotTypeDefaults(next),
+      pick: { product: r.pick.product, ref: null, scene: null, prop: pickUsed('prop', next) ? r.pick.prop : null }, // unused picks never stay in state
+    }));
   }
 
   function select(key: Key, id: string | null) {
-    setPick((p) => ({ ...p, [key]: id }));
     // stage switches to the new product via the recipe change check (below useChosenSteps), as on the model page
-    if (key === 'product' && id !== pick.product) setDimensions({ width: '', height: '', depth: '' });
-    if (key === 'prop' && id) setPropsId(NO_PROPS); // พร็อพของฉัน กับ ตัวเลือกพร็อพ เลือกได้อย่างเดียว
+    update((r) => ({
+      pick: { ...r.pick, [key]: id },
+      ...(key === 'product' && id !== r.pick.product ? { dimensions: START.dimensions } : {}),
+      ...(key === 'prop' && id ? { props: NO_PROPS } : {}), // พร็อพของฉัน กับ ตัวเลือกพร็อพ เลือกได้อย่างเดียว
+    }));
   }
 
   // ตัวเลือกพร็อพ: เลือกแล้วล้างพร็อพของฉัน · กดอันที่เลือกอยู่ซ้ำ = ไม่ใช้พร็อพ (ไม่มีการ์ด "ไม่มีพร็อพ" แล้ว)
   function chooseProp(id: string) {
-    setPropsId((cur) => (cur === id ? NO_PROPS : id));
-    setPropText('');
-    setPick((p) => ({ ...p, prop: null }));
+    update((r) => ({ props: r.props === id ? NO_PROPS : id, propText: '', pick: { ...r.pick, prop: null } }));
   }
 
   // อัปโหลดแล้วเก็บไว้ในคลัง แล้วเลือกให้เลย
@@ -464,11 +434,7 @@ export default function Packshot() {
 
   // panel <- recipe (steps = touched steps for useChosenSteps) · concepts: the idea list to show in ไอเดียภาพ
   function applyRecipe(r: Recipe, steps: StepKey[], concepts: typeof conceptState) {
-    setPick(r.pick); setShotType(r.shotType); setCreativeIdea(r.idea); setCreativeFacts(r.facts); setConceptState(concepts); setConceptId(r.concept?.id ?? null);
-    setDetailTarget(r.detailTarget); setFeature(r.feature); setScaleRef(r.scaleRef); setHandPoseId(r.handPose);
-    setDimensions(r.dimensions); setReferenceSize(r.referenceSize); setExtraAngles(r.extraAngles);
-    setSceneId(r.scene); setColorId(r.color); setPropsId(r.props); setPropText(r.propText); setAngleId(r.angle); setTurn(r.turn); setFramingId(r.framing); setRefMode(r.refMode);
-    setAspect(r.aspect); setQuality(r.quality); setExtra(r.extra);
+    setChoices(r); setConceptState(concepts);
     setChosen(new Set(steps));
     if (!stepUsed(STEPS[step].key, r.shotType)) setStep(STEPS.findIndex((s) => s.key === 'shot')); // rail greys that step out
   }
@@ -548,7 +514,7 @@ export default function Packshot() {
       return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
     }
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
-    setPick((p) => (p[key] === idOf(item) ? { ...p, [key]: null } : p));
+    update((r) => (r.pick[key] === idOf(item) ? { pick: { ...r.pick, [key]: null } } : {}));
   }
 
   // own product = every photo in it (incl. removed ones), same flow as deleteUpload
@@ -604,8 +570,9 @@ export default function Packshot() {
         inspiration: inspirationImage?.data ?? null, idea: creativeIdea, facts: creativeFacts,
         previous: concepts.map((c) => c.title),
       });
+      if (creativeScopeRef.current !== scope) return; // inputs changed or a past image loaded while planning
       setConceptState({ scope, concepts: out.concepts });
-      setConceptId(null);
+      update({ concept: null });
     } catch (err) { setStatus('คิดไอเดียไม่สำเร็จ: ' + (err as Error).message); }
     finally { planningRef.current = false; setPlanning(false); }
   }
@@ -770,15 +737,12 @@ export default function Packshot() {
   const { chosen, mark, setChosen } = useChosenSteps(cur.key);
 
   // ---------- recipe sync, as on the model page (render-time state adjustment; every branch changes the state it checks, so no loop) ----------
-  const recipe: Recipe = {
-    pick, shotType, idea: creativeIdea, facts: creativeFacts, concept: shotType === 'creative' ? creativeConcept ?? null : null, // idea only when used
-    detailTarget, feature, scaleRef, handPose: handPoseId, dimensions, referenceSize, extraAngles,
-    scene: sceneId, color: colorId, props: propsId, propText, angle: angleId, turn, framing: framingId, refMode, aspect, quality, extra,
-  };
+  // stored / compared form of choices: the idea only for Creative and only while still valid
+  const recipe: Recipe = { ...choices, concept: shotType === 'creative' ? creativeConcept ?? null : null };
   const liveKey = recipeKey(recipe);
-  useEffect(() => { liveKeyRef.current = liveKey; });
+  useEffect(() => { liveKeyRef.current = liveKey; creativeScopeRef.current = creativeScope; });
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = shown?.recipe ? readRecipe(shown.recipe, lists, groups) : null;
+  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, groups) : null), [shown, lists, groups]);
   const loadShown = () => {
     const r = shownRecipe!.recipe;
     // the image's own idea becomes the only one listed, bound to the restored product and inputs
@@ -857,7 +821,7 @@ export default function Packshot() {
     </>
   );
   // ตัวเลือกแบบรายการ: ตัวแรก = ตามฉาก (บอกว่าฉากที่เลือกจับคู่อะไรให้)
-  const options = (choices: { id: string; name: string; hint: string }[], value: string, choose: (id: string) => void,
+  const options = (list: { id: string; name: string; hint: string }[], value: string, choose: (id: string) => void,
     { presetName, disabled = false }: { presetName?: string; disabled?: boolean } = {}) => (
     <div className="options">
       {presetName !== undefined && (
@@ -865,7 +829,7 @@ export default function Packshot() {
           <b>ตามฉาก (แนะนำ)</b><small>{setDef.name}: {presetName}</small>
         </button>
       )}
-      {choices.map((c) => (
+      {list.map((c) => (
         <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')} disabled={disabled} onClick={() => choose(c.id)}>
           <b>{c.name}</b><small>{c.hint}</small>
         </button>
@@ -883,9 +847,9 @@ export default function Packshot() {
         onRename={renameGroup} onRemovePhoto={removePhoto} onRestorePhoto={restorePhoto} onDelete={setDeletingProduct} />
     </>;
   } else if (cur.key === 'creative') {
-    panel = <CreativeShot idea={creativeIdea} onIdea={setCreativeIdea}
-      facts={creativeFacts} onFacts={setCreativeFacts} inspiration={picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!inspiration} onClick={() => select('ref', null)} /> })}
-      concepts={concepts} selected={creativeConcept} onSelect={setConceptId} onPlan={() => void planCreative()}
+    panel = <CreativeShot idea={creativeIdea} onIdea={(idea) => update({ idea })}
+      facts={creativeFacts} onFacts={(facts) => update({ facts })} inspiration={picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!inspiration} onClick={() => select('ref', null)} /> })}
+      concepts={concepts} selected={creativeConcept} onSelect={(id) => update({ concept: concepts.find((c) => c.id === id) ?? null })} onPlan={() => void planCreative()}
       planning={planning} canPlan={canPlan} hasProduct={Boolean(product)}
       onGenerate={() => void generate()} canGenerate={canGenerate} generating={busy !== null} />;
   } else if (cur.key === 'shot') {
@@ -901,27 +865,27 @@ export default function Packshot() {
         <p className="muted-text">Front · Back · Side · 45°</p>
         <div className="chips">{PRODUCT_SET_SHOTS.slice(4).map((a) => <button key={a.id} type="button"
           aria-pressed={extraAngles.includes(a.id)} className={'chip' + (extraAngles.includes(a.id) ? ' active' : '')}
-          onClick={() => setExtraAngles((v) => v.includes(a.id) ? v.filter((id) => id !== a.id) : [...v, a.id])}>+ {a.name}</button>)}</div>
+          onClick={() => update((r) => ({ extraAngles: r.extraAngles.includes(a.id) ? r.extraAngles.filter((id) => id !== a.id) : [...r.extraAngles, a.id] }))}>+ {a.name}</button>)}</div>
         <p className="muted-text">เพิ่มรูปด้านหลัง ด้านข้าง และฐานจริงในขั้นสินค้า เพื่อให้รายละเอียดตรงกับสินค้าจริง</p>
       </Section>}
       {shotType === 'detail' && <Section title="ต้องการเน้นจุดไหน">
-        {options(DETAIL_TARGETS, detailTarget, setDetailTarget)}
+        {options(DETAIL_TARGETS, detailTarget, (v) => update({ detailTarget: v }))}
         <label className="shot-field">ตำแหน่ง / ฟีเจอร์{detailTarget === 'feature' ? ' (จำเป็น)' : ' (เพิ่มเติม)'}
-          <textarea className="text-input" value={feature} maxLength={200} onChange={(e) => setFeature(e.target.value)} placeholder="เช่น ซิปช่องด้านหน้ากระเป๋า" />
+          <textarea className="text-input" value={feature} maxLength={200} onChange={(e) => update({ feature: e.target.value })} placeholder="เช่น ซิปช่องด้านหน้ากระเป๋า" />
         </label>
       </Section>}
       {shotType === 'scale' && <>
         <Section title="ขนาดสินค้าจริง" note="เซนติเมตร · กรอกครบทั้ง 3 ด้าน">
           <div className="shot-dimensions">{(['width', 'height', 'depth'] as const).map((key, i) => <label className="shot-field" key={key}>
             {['กว้าง', 'สูง', 'ลึก'][i]} (ซม.)<input className="text-input" type="number" min="0.1" max="10000" step="any" required
-              value={dimensions[key]} onChange={(e) => setDimensions((d) => ({ ...d, [key]: e.target.value }))} />
+              value={dimensions[key]} onChange={(e) => update((r) => ({ dimensions: { ...r.dimensions, [key]: e.target.value } }))} />
           </label>)}</div>
         </Section>
-        <Section title="เทียบขนาดกับ">{options(SCALE_REFERENCES, scaleRef, setScaleRef)}</Section>
+        <Section title="เทียบขนาดกับ">{options(SCALE_REFERENCES, scaleRef, (v) => update({ scaleRef: v }))}</Section>
         {scaleRef === 'laptop' && <Section title="ขนาด Laptop จริง" note="ขนาดตัวเครื่องเป็นเซนติเมตร ไม่ใช่นิ้วหน้าจอ">
           <div className="shot-dimensions">{(['width', 'depth'] as const).map((key, i) => <label className="shot-field" key={key}>
             {['กว้าง', 'ลึก'][i]} (ซม.)<input className="text-input" type="number" min="0.1" max="10000" step="any" required
-              value={referenceSize[key]} onChange={(e) => setReferenceSize((d) => ({ ...d, [key]: e.target.value }))} />
+              value={referenceSize[key]} onChange={(e) => update((r) => ({ referenceSize: { ...r.referenceSize, [key]: e.target.value } }))} />
           </label>)}</div>
         </Section>}
         <p className="muted-text">ภาพ AI ช่วยสื่อสัดส่วนโดยประมาณ ควรแสดงขนาดจริงบนหน้าสินค้าด้วย</p>
@@ -935,7 +899,7 @@ export default function Packshot() {
       {HAND_MODES.map((m) => poses.some((p) => p.mode === m.id) && <Section key={m.id} title={m.name} note={m.hint}>
         <div className="options view-options">
           {poses.filter((p) => p.mode === m.id).map((p) => <button key={p.id} type="button" aria-pressed={handPose.id === p.id}
-            className={'option view-option' + (handPose.id === p.id ? ' active' : '')} onClick={() => setHandPoseId(p.id)}>
+            className={'option view-option' + (handPose.id === p.id ? ' active' : '')} onClick={() => update({ handPose: p.id })}>
             <HandView pose={p.id} /><b>{p.name}</b><small>{p.hint}</small>
           </button>)}
         </div>
@@ -945,14 +909,13 @@ export default function Packshot() {
     panel = <>
       {picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!ref} onClick={() => select('ref', null)} /> })}
       {ref && <Section title="เอาอะไรจากรูปต้นแบบ">
-        <ChipGroup options={[...REF_MODES]} value={refMode} onChange={(v) => setRefMode(v as RefMode)} />
+        <ChipGroup options={[...REF_MODES]} value={refMode} onChange={(v) => update({ refMode: v as RefMode })} />
         <p className="muted-text">{REF_MODES.find((m) => m.id === refMode)!.hint}</p>
       </Section>}
     </>;
   } else if (cur.key === 'set') {
     const chooseScene = (id: string) => {
-      setSceneId(id); select('scene', null);
-      setColorId(shotType === 'styled' ? 'match' : 'white');
+      update((r) => ({ scene: id, color: shotTypeDefaults(r.shotType).color, pick: { ...r.pick, scene: null } }));
     };
     const sceneCards = (title: string) => <Section title={title}>
       <div className="options scene-options">
@@ -982,7 +945,7 @@ export default function Packshot() {
       {background.colors.length > 0 && <Section title="2. เลือกสีที่เข้ากัน" note="คัดสีให้เหมาะกับฉากนี้">
         <div className="background-colors">{background.colors.map((c) => <button type="button" key={c.id}
           className={'background-color' + (color.id === c.id ? ' active' : '')} aria-pressed={color.id === c.id}
-          onClick={() => setColorId(c.id)}>
+          onClick={() => update({ color: c.id })}>
           <span className={'background-swatch' + (!c.swatch ? ' color-auto' : '')} style={c.swatch ? { background: c.swatch } : undefined} />
           <span>{c.name}{c.id === 'white' ? ' (แนะนำ)' : ''}</span>
         </button>)}</div>
@@ -998,8 +961,8 @@ export default function Packshot() {
       {shotNote('พร็อพ')}
       <Section title="พร็อพของฉัน" note="ใช้แทนตัวเลือกพร็อพด้านล่าง">
         <textarea className="text-input" value={propText} maxLength={200} disabled={shot} onChange={(e) => {
-          setPropText(e.target.value);
-          if (e.target.value.trim()) setPropsId(NO_PROPS);
+          const v = e.target.value;
+          update({ propText: v, ...(v.trim() ? { props: NO_PROPS } : {}) });
         }}
           placeholder="พิมพ์พร็อพที่อยากได้ เช่น แก้วกาแฟเซรามิกสีครีม, ช่อลาเวนเดอร์แห้ง" />
         <p className="muted-text">หรือใช้รูปของจริง เช่น กล่องหรือแก้วของแบรนด์ — AI วางของชิ้นนั้นให้เหมือนในรูป</p>
@@ -1026,16 +989,16 @@ export default function Packshot() {
         <p className="note">{shotType === 'styled' ? 'เริ่มจากมุมที่เข้ากับฉาก แล้วปรับได้ตามภาพที่ต้องการ' : 'แนะนำหน้าตรงสำหรับภาพหลัก เลือกมุมอื่นเพื่อแสดงทรงและด้านต่างๆ'}</p>
         <div className="options view-options">
           {shotType === 'styled' && <button type="button" className={'option view-option' + (angleId === PRESET ? ' active' : '')}
-            aria-pressed={angleId === PRESET} disabled={shot} onClick={() => setAngleId(PRESET)}>
+            aria-pressed={angleId === PRESET} disabled={shot} onClick={() => update({ angle: PRESET })}>
             <ViewPreview angle={recommended.id} /><b>ตามฉาก (แนะนำ)</b><small>{setDef.name} · {recommended.name}</small>
           </button>}
           {shotAngles(shotType).map((a) => <button key={a.id} type="button" className={'option view-option' + ((shotType === 'styled' ? angleId === a.id : angle.id === a.id) ? ' active' : '')}
-            aria-pressed={shotType === 'styled' ? angleId === a.id : angle.id === a.id} disabled={shot} onClick={() => setAngleId(a.id)}>
+            aria-pressed={shotType === 'styled' ? angleId === a.id : angle.id === a.id} disabled={shot} onClick={() => update({ angle: a.id })}>
             <ViewPreview angle={a.id} /><b>{a.name}{shotType === 'clean' && a.id === 'front' ? ' (แนะนำ)' : ''}</b><small>{a.hint}</small>
           </button>)}
           {/* ตั้งมุมเอง (2 พ.ย.): ภาพการ์ด = มุมที่ตั้งอยู่ (ตัวแทนสามมิติเดียวกับที่ส่ง AI) */}
           {customAngleShot(shotType) && <button type="button" className={'option view-option' + (customAngle ? ' active' : '')}
-            aria-pressed={customAngle} disabled={shot} onClick={() => setAngleId(CUSTOM_ANGLE)}>
+            aria-pressed={customAngle} disabled={shot} onClick={() => update({ angle: CUSTOM_ANGLE })}>
             <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
               <image href={turnSrc(product?.type, curTurn, 'landscape', 0.42)} width="240" height="150" preserveAspectRatio="xMidYMid slice" />
             </svg>
@@ -1043,14 +1006,14 @@ export default function Packshot() {
           </button>}
         </div>
         {customAngle && <Section title="ตั้งมุมเอง" note="ลากภาพ หรือใช้แถบเลื่อน">
-          <Turntable type={product?.type} turn={curTurn} onChange={setTurn} orient={turnOrient} fill={turnFillAmount} />
+          <Turntable type={product?.type} turn={curTurn} onChange={(t) => update({ turn: t })} orient={turnOrient} fill={turnFillAmount} />
         </Section>}
       </>}
     </>;
   } else if (cur.key === 'framing') {
     // ระยะ: การ์ดมีภาพเหมือนมุมกล้อง (ภาพเดียวกัน ขนาดสินค้าในภาพต่างกัน)
     const framingCard = (id: string, active: boolean, title: string, hint: string, value: string) => <button key={id} type="button"
-      className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={shot} onClick={() => setFramingId(value)}>
+      className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={shot} onClick={() => update({ framing: value })}>
       <ViewPreview framing={id} /><b>{title}</b><small>{hint}</small>
     </button>;
     panel = <>{shotNote('ระยะ')}<div className="options view-options">
@@ -1062,13 +1025,13 @@ export default function Packshot() {
       {/* เลือกตามที่จะโพสต์ (IG / Facebook / TikTok / ร้านค้า) แทนตัวเลขสัดส่วน — กรอบเล็กวาดตามสัดส่วนจริง (28 ต.ค.) */}
       <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect === 'auto' ? '4:5' : aspect}`}>
         <div className="options aspect-options">{PRODUCT_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
-          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => setAspect(a.id)}>
+          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => update({ aspect: a.id })}>
           <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
           <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
         </button>)}</div>
       </Section>
       <Section title="สั่งเพิ่มเติม">
-        <textarea className="text-input" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
+        <textarea className="text-input" value={extra} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
       </Section>
       <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ</small></summary>
@@ -1076,7 +1039,7 @@ export default function Packshot() {
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
           <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={setQuality} />
+            <ChipGroup options={isGpt25(aiModel) ? QUALITIES_25 : QUALITIES} value={quality} onChange={(v) => update({ quality: v })} />
           </Section>
         )}
       </details>
