@@ -239,6 +239,7 @@ export default function TryOn() {
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
   const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
+  const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด) — เปิดมาแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม (29 ต.ค. ผู้ใช้ขอ)
   const [viewer, setViewer] = useState<{ src: string; alt: string; temp: boolean } | null>(null);
@@ -453,7 +454,6 @@ export default function TryOn() {
   }
 
   async function deleteUpload(key: Key, item: Item) {
-    if (!confirm(`ลบ "${item.name}"? (ย้ายไปถังขยะ)`)) return;
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
@@ -822,7 +822,7 @@ export default function TryOn() {
   const startFromShown = () => { setBase(shownRecipe!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); setCurrent(null); };
   if (cleanKey === null && aiModels !== null) setCleanKey(liveKey); // quality is set when models load
   const shownSrc = shown?.src ?? null;
-  const syncing = shownSrc !== syncedSrc;
+  const syncing = cleanKey !== null && shownSrc !== syncedSrc; // clicked before models loaded -> loads right after, so default quality can't overwrite it
   if (syncing) {
     setSyncedSrc(shownSrc);
     if (shownRecipe) {
@@ -830,7 +830,10 @@ export default function TryOn() {
       loadShown();
       setViewKey(recipeKey(shownRecipe.recipe));
     } else {
-      if (draft) { applyRecipe(draft.recipe, draft.chosen); setBase(draft.base); setDraft(null); }
+      if (draft) {
+        // deleted while viewing -> same checks as a past image (missing upload = empty, model = first)
+        applyRecipe(readRecipe(draft.recipe, lists).recipe, draft.chosen); setBase(draft.base); setDraft(null);
+      }
       setViewKey(shown ? recipeKey(draft ? draft.recipe : recipe) : null); // image without recipe: panel keeps the draft
     }
   } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
@@ -928,7 +931,7 @@ export default function TryOn() {
   const showSpecial = filter === 'all' && !q; // การ์ด "ชุดเดิม" / "ไม่ใส่" / "AI เลือกท่าให้" โชว์เฉพาะตอนไม่ได้กรอง
   const uploadedCard = (key: Key, item: Item, active: boolean, onClick: () => void, zoom = false) => (
     <Card key={idOf(item)} item={item} active={active} onClick={onClick} zoom={zoom}
-      onDelete={item.uploaded ? () => void deleteUpload(key, item) : undefined} />
+      onDelete={item.uploaded ? () => setDeletingUpload({ key, item }) : undefined} />
   );
   const accTypeFilters = [
     { id: 'all', name: 'ทั้งหมด' },
@@ -995,7 +998,7 @@ export default function TryOn() {
     panel = picker('accessory', 'accessories', <>
       {visible('accessory').filter((a) => !isShoes(a)).map((a) => (
         <Card key={idOf(a)} item={a} active={pick.accessory.includes(idOf(a))} onClick={() => toggleAccessory(idOf(a))}
-          onDelete={a.uploaded ? () => void deleteUpload('accessory', a) : undefined}
+          onDelete={a.uploaded ? () => setDeletingUpload({ key: 'accessory', item: a }) : undefined}
           footer={a.uploaded && (
             <button className="acc-type" title="แก้ชื่อ/ประเภท" onClick={() => setDialog({ mode: 'edit', item: a })}>
               {accessoryType(a).name} ✎
@@ -1139,14 +1142,13 @@ export default function TryOn() {
           <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
         </label>
       </details>
-      {/* ปุ่มสร้างรูปท้ายเส้นทาง (ขั้นตั้งค่าเป็นขั้นสุดท้ายก่อนแต่งรูป) · set button hidden until SET_SHOOT (Go list item 11) */}
-      <div className={'gen-row' + (SET_SHOOT ? '' : ' single')}>
-        <button className="btn btn-primary gen-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{genLabel}</button>
-        {SET_SHOOT && <button className="btn btn-secondary gen-btn set-btn" disabled={!SET_SHOOT || busy !== null || !aiModels?.length} onClick={() => void generate(true)}
-          title={SET_SHOOT ? `${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า` : 'ยังไม่เปิดให้ใช้'}>
-          ชุดภาพ {SET_SHOTS.length} มุม<small>{SET_SHOOT ? `ค่า AI ${SET_SHOTS.length} เท่า` : 'เร็วๆ นี้'}</small>
-        </button>}
-      </div>
+      {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
+      {SET_SHOOT && <div className="gen-row single">
+        <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+          title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
+          ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
+        </button>
+      </div>}
     </>;
   } else if (cur.key === 'settings') {
     // การ์ดมีภาพวาด (StyleView): ฉาก ไฟ เงา โทนสีของแต่ละสไตล์ ให้เห็นความต่างโดยไม่ต้องจินตนาการ (29 ต.ค.)
@@ -1292,7 +1294,8 @@ export default function TryOn() {
           ))}
         </nav>
 
-        <aside className="panel" onClickCapture={mark} onInputCapture={mark} inert={editing}>
+        <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark} inert={editing}>
+          <div className="panel-body">
           <div className="panel-head">
             <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
@@ -1303,9 +1306,7 @@ export default function TryOn() {
             <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
           </p>}
           {panel}
-          {nextStep >= 0 && (
-            <button className={'btn next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null} onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>
-          )}
+          </div>
           <div className="sticky-bar">
             {barNext >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
               onClick={() => goStep(barNext)}>ถัดไป: {STEPS[barNext].label} →</button>}
@@ -1383,8 +1384,11 @@ export default function TryOn() {
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
       {confirmStart && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
         cancel="ยกเลิก" confirm="เริ่มจากรูปนี้"
-        onCancel={() => { setConfirmStart(false); if (shownRecipe) loadShown(); }}
+        onCancel={() => { setConfirmStart(false); if (shownRecipe) { loadShown(); setViewKey(recipeKey(shownRecipe.recipe)); } }} // key from today's lists, else it reopens
         onConfirm={() => { setConfirmStart(false); if (shownRecipe) startFromShown(); }} />}
+      {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
+        onCancel={() => setDeletingUpload(null)}
+        onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
       {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingSrc(null)}
         onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}

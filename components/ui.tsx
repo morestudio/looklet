@@ -135,12 +135,12 @@ export function Section({ title, note, children }: { title: string; note?: React
 
 // สลับหน้า นางแบบ (components/TryOn.tsx) / สินค้า (components/Packshot.tsx) อยู่ในหัวเว็บของทั้งสองหน้า
 // ปุ่ม "ถัดไป" เป็นพื้นหินขอบหมึก (.btn-ready) เมื่อผู้ใช้เลือกอะไรในขั้นนั้นแล้ว (คลิกตัวเลือก / พิมพ์ / อัปโหลด) — ค่าเริ่มต้นที่เลือกไว้ให้ไม่นับ
-// ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และปุ่มถัดไปเองไม่นับเป็นการเลือก
+// ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และแถบปุ่มล่าง (ถัดไป / สร้างรูป) ไม่นับเป็นการเลือก
 export function useChosenSteps<K extends string>(current: K) {
   const [chosen, setChosen] = useState<ReadonlySet<K>>(new Set());
   const mark = (e: SyntheticEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.next, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
+    if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
     setChosen((prev) => (prev.has(current) ? prev : new Set(prev).add(current)));
   };
   return { chosen, mark, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
