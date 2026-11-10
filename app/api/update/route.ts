@@ -4,7 +4,14 @@ import { json, post } from '@/lib/route';
 import { updateMeta } from '@/lib/storage';
 
 // แก้ชื่อ/ประเภทของเสริมที่เพิ่มไว้แล้ว (AI ทายผิด หรือผู้ใช้อยากเปลี่ยนชื่อ) — รูปสินค้า (หน้าสินค้า) ใช้ประเภทใน PRODUCT_TYPES
+// favorite (boolean) = ♡ of a generated image (/gallery)
 export const POST = post(async (req) => {
+  if (typeof req.favorite === 'boolean') {
+    if (typeof req.src !== 'string' || !req.src.startsWith('/api/files/results/')) return json(400, { error: 'ข้อมูลไม่ถูกต้อง' });
+    if (!(await updateMeta(req.src, { favorite: req.favorite }))) return json(404, { error: 'ไม่พบรูปนี้' });
+    return json(200, { ok: true });
+  }
+  if (typeof req.src === 'string' && !req.src.startsWith('/api/files/uploads/')) return json(400, { error: 'ข้อมูลไม่ถูกต้อง' }); // name/type: uploads only
   const types = typeof req.src === 'string' && req.src.startsWith('/api/files/uploads/products/') ? PRODUCT_TYPES : ACCESSORY_TYPES;
   if (typeof req.src !== 'string' || !types.some((t) => t.id === req.type)) return json(400, { error: 'ข้อมูลไม่ถูกต้อง' });
   const name = String(req.name || '').trim().slice(0, 80);

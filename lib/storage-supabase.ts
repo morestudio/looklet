@@ -53,7 +53,7 @@ export async function sbMeta(key: string): Promise<Record<string, unknown> | nul
   return data ? data.meta : null;
 }
 
-export async function sbUpdateMeta(key: string, meta: Record<string, string>, allowed: (meta: Record<string, unknown>) => boolean) {
+export async function sbUpdateMeta(key: string, meta: Record<string, string | boolean>, allowed: (meta: Record<string, unknown>) => boolean) {
   const { data } = await sb().from('images').select('meta').eq('path', key).maybeSingle();
   if (!data || !allowed(data.meta)) return false;
   const { error } = await sb().from('images').update({ meta: { ...data.meta, ...meta } }).eq('path', key);
