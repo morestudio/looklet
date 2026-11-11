@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
+import { useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
@@ -539,34 +540,7 @@ export default function Packshot() {
     if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
-  // by src, not index: results can grow at the front while the dialog is open
-  // optimistic; out of the gallery = /api/delete from 'gallery'
-  async function toggleGallery(src: string) {
-    const inGallery = Boolean(results.find((r) => r.src === src)?.inGallery);
-    const mark = (v: boolean) => setResults((list) => list.map((r) => (r.src === src ? { ...r, inGallery: v } : r)));
-    mark(!inGallery);
-    try {
-      if (inGallery) await api('/api/delete', { src, from: 'gallery' });
-      else await api('/api/update', { src, inGallery: true });
-      setStatus('');
-    } catch (err) {
-      mark(inGallery);
-      setStatus((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
-    }
-  }
-
-  async function removeFromHistory(src: string) {
-    const i = results.findIndex((r) => r.src === src);
-    if (i < 0) return;
-    try {
-      await api('/api/delete', { src, from: 'history' });
-    } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
-    }
-    const left = results.length - 1;
-    setResults((r) => r.filter((_, j) => j !== i));
-    setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
-  }
+  const { toggleGallery, removeFromHistory } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
 
   async function planCreative() {
     if (!canPlan || planningRef.current || !product || !selectedGroup) return;

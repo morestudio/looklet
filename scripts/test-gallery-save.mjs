@@ -39,9 +39,12 @@ try {
   const make = () => storage.saveImage({ area: 'results' }, 'aW1hZ2U=', 'image/png', { caption: 'test' });
   const meta = async (src) => (await storage.listImages({ area: 'results' })).find((r) => r.src === src);
 
-  // history only: remove from history = file gone
+  // history only: remove from history = file gone, only with permanent (else a stale page could delete it)
   const a = await make();
   let out = await del({ src: a, from: 'history' });
+  assert.equal(out.status, 409);
+  assert.notEqual(await meta(a), undefined);
+  out = await del({ src: a, from: 'history', permanent: true });
   assert.deepEqual([out.status, out.body.fileDeleted], [200, true]);
   assert.equal(await meta(a), undefined);
 
@@ -56,7 +59,7 @@ try {
   out = await del({ src: b, from: 'history' });
   assert.deepEqual([out.status, out.body.fileDeleted], [200, false]);
   assert.equal((await meta(b)).inHistory, false);
-  out = await del({ src: b, from: 'gallery' });
+  out = await del({ src: b, from: 'gallery', permanent: true });
   assert.deepEqual([out.status, out.body.fileDeleted], [200, true]);
   assert.equal(await meta(b), undefined);
 
@@ -69,6 +72,27 @@ try {
   m = await meta(c);
   assert.deepEqual([m.inGallery, m.favorite], [false, false]);
 
+  // permanent on a stale page but still in the other place: only taken out of this place
+  const e = await make();
+  await update({ src: e, inGallery: true });
+  out = await del({ src: e, from: 'history', permanent: true });
+  assert.deepEqual([out.status, out.body.fileDeleted], [200, false]);
+  assert.deepEqual([(await meta(e)).inHistory, (await meta(e)).inGallery], [false, true]);
+
+  // bookmark off never deletes: a gallery-only image (teammate removed it from history) goes back into history
+  out = await update({ src: e, inGallery: false });
+  assert.equal(out.status, 200);
+  assert.deepEqual([(await meta(e)).inGallery, (await meta(e)).inHistory], [false, true]);
+
+  // bookmark on when already in the gallery keeps ♡ and the add time
+  const g = await make();
+  await update({ src: g, inGallery: true });
+  await update({ src: g, favorite: true });
+  const at = (await meta(g)).addedToGalleryAt;
+  await new Promise((r) => setTimeout(r, 5));
+  await update({ src: g, inGallery: true });
+  assert.deepEqual([(await meta(g)).favorite, (await meta(g)).addedToGalleryAt], [true, at]);
+
   // gallery ✎ on a gallery-only image: back into history
   const d = await make();
   await update({ src: d, inGallery: true });
@@ -79,6 +103,7 @@ try {
   // only results take these fields; unknown image -> 404; no `from` keeps the old delete
   assert.equal((await update({ src: '/api/files/uploads/models/x.png', inGallery: true })).status, 400);
   assert.equal((await del({ src: '/api/files/results/missing.png', from: 'history' })).status, 404);
+  assert.equal((await update({ src: '/api/files/results/missing.png', inGallery: true })).status, 404);
   assert.equal((await del({ src: d })).body.fileDeleted, true);
   console.log('gallery save: ok');
 } finally {

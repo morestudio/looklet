@@ -104,15 +104,16 @@ export function GalleryToggle({ inGallery, onClick }: { inGallery: boolean; onCl
 // a stored result's two places; removing it from its last place deletes the file (/api/delete)
 export type Place = 'history' | 'gallery';
 
-// inOtherPlace: /api/delete only takes it out of `from`; otherwise the file goes
-export function RemoveImageDialog({ from, inOtherPlace, onCancel, onConfirm }: {
-  from: Place; inOtherPlace: boolean; onCancel: () => void; onConfirm: () => void;
+// inOtherPlace: /api/delete only takes it out of `from`; otherwise the file goes (Supabase: no trash)
+// copy: เอาออก = still in the other place, ลบ = gone · pageName: the result's studio page, for from="gallery"
+export function RemoveImageDialog({ from, inOtherPlace, pageName = 'นางแบบ', onCancel, onConfirm }: {
+  from: Place; inOtherPlace: boolean; pageName?: string; onCancel: () => void; onConfirm: () => void;
 }) {
-  if (inOtherPlace) return <ConfirmDialog title={from === 'history' ? 'ลบออกจากรูปที่สร้างแล้ว?' : 'เอาออกจากแกลลอรี่?'}
-    body={from === 'history' ? 'รูปยังอยู่ในแกลลอรี่' : 'รูปยังอยู่ในรูปที่สร้างแล้ว'} cancel="ยกเลิก" confirm={from === 'history' ? 'ลบ' : 'เอาออก'}
+  if (inOtherPlace) return <ConfirmDialog title={from === 'history' ? 'เอาออกจากรูปที่สร้างแล้ว?' : 'เอาออกจากแกลลอรี่?'}
+    body={from === 'history' ? 'รูปยังเก็บไว้ในแกลลอรี่' : `รูปยังอยู่ในหน้า${pageName}`} cancel="ยกเลิก" confirm="เอาออก"
     onCancel={onCancel} onConfirm={onConfirm} />;
-  return <ConfirmDialog title="ลบรูปถาวร?"
-    body={(from === 'history' ? 'รูปนี้ไม่ได้บันทึกไว้ในแกลลอรี่' : 'รูปนี้ถูกลบจากรูปที่สร้างแล้วไปก่อนแล้ว') + ' รูปจะถูกย้ายไปถังขยะ'}
+  return <ConfirmDialog title="ลบรูปนี้ถาวร?"
+    body={(from === 'history' ? 'รูปนี้ไม่ได้บันทึกไว้ในแกลลอรี่' : `รูปนี้ไม่อยู่ในหน้า${pageName}แล้ว`) + ' ลบแล้วกู้คืนไม่ได้'}
     cancel="ยกเลิก" confirm="ลบถาวร" onCancel={onCancel} onConfirm={onConfirm} />;
 }
 

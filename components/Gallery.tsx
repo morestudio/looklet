@@ -18,6 +18,7 @@ type Result = {
 type Filter = 'all' | 'model' | 'product';
 const FILTERS: { id: Filter; label: string }[] = [{ id: 'all', label: 'ทั้งหมด' }, { id: 'model', label: 'นางแบบ' }, { id: 'product', label: 'สินค้า' }];
 const pageOf = (r: Result): Exclude<Filter, 'all'> => (r.page === 'product' ? 'product' : 'model');
+const pageName = (r: Result) => (pageOf(r) === 'product' ? 'สินค้า' : 'นางแบบ');
 const when = (sec: number) => new Date(sec * 1000).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 // recipe.pick keys of both pages (lib/tryon-recipe.ts, lib/packshot-recipe.ts) -> step label; ids that aren't paths (pose presets, text scenes) skipped
 // product = group id = its first photo's URL (lib/product-groups.ts); productPhotos (every photo sent) replaces it when stored
@@ -78,12 +79,13 @@ export default function Gallery() {
       onClick={() => void toggleFav(r)}><IconHeart filled={r.favorite} /></button>
   );
 
-  // the file is deleted too when it is no longer in history
+  // permanent = what RemoveImageDialog showed (not in history); the server answers 409 if its flags disagree
   async function removeFromGallery(r: Result) {
+    const permanent = r.inHistory === false;
     try {
-      await api('/api/delete', { src: r.src, from: 'gallery' });
+      await api('/api/delete', { src: r.src, from: 'gallery', permanent });
     } catch (err) {
-      return setError('ลบไม่สำเร็จ: ' + (err as Error).message);
+      return setError((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
     }
     setError('');
     setResults((list) => list && list.filter((x) => x.src !== r.src));
@@ -128,14 +130,14 @@ export default function Gallery() {
       {results === null
         ? <p className="gallery-empty">กำลังโหลดรูป...</p>
         : !shown.length
-          ? <p className="gallery-empty">{favOnly ? 'ยังไม่มีรูปที่ชอบ · กดรูปหัวใจมุมขวาบนของรูปที่ชอบ'
-            : <>ยังไม่มีรูปในแกลลอรี่ · กด <IconBookmark /> บนรูปที่สร้างแล้วในหน้า {filter === 'model' ? modelLink : filter === 'product' ? productLink : <>{modelLink} หรือ {productLink}</>} เพื่อบันทึกมาที่นี่</>}</p>
+          ? <p className="gallery-empty">{favOnly ? <>ยังไม่มีรูปที่ชอบ · กด <IconHeart /> ที่มุมรูปในแกลลอรี่</>
+            : <>ยังไม่มีรูปในแกลลอรี่ · กด <IconBookmark /> บนรูปที่สร้างแล้วในหน้า {filter === 'model' ? modelLink : filter === 'product' ? productLink : <>{modelLink} หรือ {productLink}</>} เพื่อเก็บไว้ที่นี่</>}</p>
           : <div className="gallery-grid">
             {shown.map((r) => (
               <div className="deletable" key={r.src}>
                 <button type="button" className="gallery-card" title={r.caption} onClick={() => setOpen(r)}>
                   <span className="gallery-thumb"><img src={thumbSrc(r.src)} alt={r.caption ?? 'รูปที่สร้าง'} loading="lazy" /></span>
-                  <span className="gallery-info"><b>{pageOf(r) === 'product' ? 'สินค้า' : 'นางแบบ'}</b>{when(r.created)}</span>
+                  <span className="gallery-info"><b>{pageName(r)}</b>{when(r.created)}</span>
                 </button>
                 {favButton(r)}
                 <button type="button" className="gallery-info-btn" title="ข้อมูลรูปนี้" aria-label="ข้อมูลรูปนี้" aria-pressed={infoSrc === r.src}
@@ -150,7 +152,7 @@ export default function Gallery() {
       <div className="panel-head">
         <h2>ข้อมูลรูป</h2>
         {info && <>
-          <button type="button" className="edit-close gallery-edit" title="แก้ต่อจากรูปนี้" aria-label="แก้ต่อจากรูปนี้"
+          <button type="button" className="edit-close gallery-edit" title={`เปิดในหน้า${pageName(info)}`} aria-label={`เปิดในหน้า${pageName(info)}`}
             onClick={() => void openInStudio(info)}><IconEdit /></button>
           {favButton(info)}
         </>}
@@ -161,9 +163,9 @@ export default function Gallery() {
           <img src={thumbSrc(info.src)} alt={info.caption ?? 'รูปที่สร้าง'} />
         </button>
         <dl className="audit-facts">
-          <dt>หน้า</dt><dd>{pageOf(info) === 'product' ? 'สินค้า' : 'นางแบบ'}</dd>
+          <dt>หน้า</dt><dd>{pageName(info)}</dd>
           <dt>สร้างเมื่อ</dt><dd>{when(info.created)}</dd>
-          {(info.editedFrom || info.refinedFrom) && <><dt>แก้จาก</dt><dd>{info.editedFrom ? 'แก้เฉพาะจุด' : 'ปรับผิวสมจริง'}</dd></>}
+          {(info.editedFrom || info.refinedFrom) && <><dt>แก้ด้วย</dt><dd>{info.editedFrom ? 'แก้เฉพาะจุด' : 'ปรับผิวสมจริง'}</dd></>}
           {info.caption && <><dt>ตั้งค่า</dt><dd>{info.caption.split(' · ').join('\n')}</dd></>}
           {(info.stylePlan ?? info.posePlan) && <><dt>AI คิดให้</dt><dd>{(info.stylePlan ?? info.posePlan)!.th}</dd></>}
         </dl>
@@ -179,7 +181,7 @@ export default function Gallery() {
       </>}
     </aside>
     </div>
-    {removing && <RemoveImageDialog from="gallery" inOtherPlace={removing.inHistory !== false}
+    {removing && <RemoveImageDialog from="gallery" inOtherPlace={removing.inHistory !== false} pageName={pageName(removing)}
       onCancel={() => setRemoving(null)}
       onConfirm={() => { setRemoving(null); void removeFromGallery(removing); }} />}
     {open && <ImageViewer key={open.src} src={open.src} alt={open.caption ?? 'รูปที่สร้าง'} onClose={() => setOpen(null)} />}

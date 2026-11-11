@@ -1,16 +1,23 @@
 import { ACCESSORY_TYPES } from '@/lib/catalog';
 import { PRODUCT_TYPES } from '@/lib/packshot';
 import { json, post } from '@/lib/route';
-import { updateMeta } from '@/lib/storage';
+import { readMeta, updateMeta } from '@/lib/storage';
 
 // แก้ชื่อ/ประเภทของเสริมที่เพิ่มไว้แล้ว (AI ทายผิด หรือผู้ใช้อยากเปลี่ยนชื่อ) — รูปสินค้า (หน้าสินค้า) ใช้ประเภทใน PRODUCT_TYPES
 // favorite (boolean) = ♡ of a generated image (/gallery)
-// inGallery: true = add to /gallery (♡ starts off) · inHistory: true = back into history (gallery ✎); removals go through /api/delete
+// inGallery: true = add to /gallery (♡ starts off; no-op when already there, keeps a teammate's ♡)
+// inGallery: false = bookmark off: never deletes; a result already out of history goes back there so it is never in neither place
+// inHistory: true = back into history (gallery ✎) · removing with a confirm goes through /api/delete
 export const POST = post(async (req) => {
-  if (req.inGallery === true || req.inHistory === true) {
+  if (typeof req.inGallery === 'boolean' || req.inHistory === true) {
     if (typeof req.src !== 'string' || !req.src.startsWith('/api/files/results/')) return json(400, { error: 'ข้อมูลไม่ถูกต้อง' });
-    const meta: Record<string, boolean | number> = req.inGallery === true ? { inGallery: true, addedToGalleryAt: Date.now(), favorite: false } : { inHistory: true };
-    if (!(await updateMeta(req.src, meta))) return json(404, { error: 'ไม่พบรูปนี้' });
+    const old = await readMeta(req.src);
+    if (!old) return json(404, { error: 'ไม่พบรูปนี้' });
+    const meta: Record<string, boolean | number> =
+      req.inGallery === true ? (old.inGallery === true ? {} : { inGallery: true, addedToGalleryAt: Date.now(), favorite: false })
+      : req.inGallery === false ? { inGallery: false, favorite: false, ...(old.inHistory === false && { inHistory: true }) }
+      : { inHistory: true };
+    if (Object.keys(meta).length && !(await updateMeta(req.src, meta))) return json(404, { error: 'ไม่พบรูปนี้' });
     return json(200, { ok: true });
   }
   if (typeof req.favorite === 'boolean') {

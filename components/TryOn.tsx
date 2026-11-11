@@ -21,6 +21,7 @@ import {
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
@@ -404,34 +405,7 @@ export default function TryOn() {
     });
   }
 
-  // by src, not index: results can grow at the front while the dialog is open
-  // optimistic; out of the gallery = /api/delete from 'gallery'
-  async function toggleGallery(src: string) {
-    const inGallery = Boolean(results.find((r) => r.src === src)?.inGallery);
-    const mark = (v: boolean) => setResults((list) => list.map((r) => (r.src === src ? { ...r, inGallery: v } : r)));
-    mark(!inGallery);
-    try {
-      if (inGallery) await api('/api/delete', { src, from: 'gallery' });
-      else await api('/api/update', { src, inGallery: true });
-      setStatus('');
-    } catch (err) {
-      mark(inGallery);
-      setStatus((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
-    }
-  }
-
-  async function removeFromHistory(src: string) {
-    const i = results.findIndex((r) => r.src === src);
-    if (i < 0) return;
-    try {
-      await api('/api/delete', { src, from: 'history' });
-    } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
-    }
-    const left = results.length - 1;
-    setResults((r) => r.filter((_, j) => j !== i));
-    setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
-  }
+  const { toggleGallery, removeFromHistory } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
 
   // ใส่หน้าจริงจากรูปนางแบบแทนหน้าที่ AI วาดใหม่ แล้วเซฟเป็นรูปใหม่ (รูปจาก AI ยังอยู่ไว้เทียบ)
   // ทำไม่ได้ (หาหน้าไม่เจอ / หน้าหันคนละมุม) -> บอกเหตุผล แล้วใช้รูปจาก AI ตามเดิม

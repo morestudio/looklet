@@ -1,7 +1,8 @@
 import { json, post } from '@/lib/route';
 import { deleteImage, readMeta, updateMeta } from '@/lib/storage';
 
-// from 'history' | 'gallery': take the result out of that place; the file goes when it is in neither (decided on stored meta, not the client's)
+// from 'history' | 'gallery': take the result out of that place; the file goes only when it is in neither (stored meta)
+// AND the client confirmed a permanent delete (permanent: true), so a stale page can never delete a file it showed as kept
 export const POST = post(async (req) => {
   const src = String(req.src ?? '');
   if ((req.from === 'history' || req.from === 'gallery') && src.startsWith('/api/files/results/')) {
@@ -9,9 +10,10 @@ export const POST = post(async (req) => {
     if (!meta) return json(404, { error: 'ไม่พบรูปนี้' });
     const inOtherPlace = req.from === 'history' ? meta.inGallery === true : meta.inHistory !== false;
     if (inOtherPlace) {
-      await updateMeta(src, req.from === 'history' ? { inHistory: false } : { inGallery: false, favorite: false });
-      return json(200, { ok: true, fileDeleted: false });
+      const ok = await updateMeta(src, req.from === 'history' ? { inHistory: false } : { inGallery: false, favorite: false });
+      return ok ? json(200, { ok: true, fileDeleted: false }) : json(404, { error: 'ไม่พบรูปนี้' });
     }
+    if (req.permanent !== true) return json(409, { error: 'รูปนี้เพิ่งถูกเปลี่ยน ลองรีเฟรชหน้าแล้วทำอีกครั้ง' });
   }
   if (!(await deleteImage(src))) return json(400, { error: 'ลบได้เฉพาะรูปที่สร้างหรือเพิ่มเองเท่านั้น' });
   return json(200, { ok: true, fileDeleted: true });
