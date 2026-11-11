@@ -678,6 +678,8 @@ dialog.local-edit-dialog { width: min(1080px, calc(100vw - 32px)); max-width: no
 /* ⓘ bottom-right over the info strip, same chip as .del */
 .gallery-info-btn { position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-full); background: transparent; color: var(--mute); cursor: pointer; }
 .gallery-info-btn:hover, .gallery-info-btn[aria-pressed="true"] { background: var(--surface-card); color: var(--ink); }
+.gallery-grid .del { width: 28px; height: 28px; } /* same size as ♡ */
+.gallery-grid .del:hover, .gallery-grid .gallery-fav:hover, .panel-head .gallery-fav:hover, .gallery-workspace .edit-close:hover { background: var(--hairline); } /* hover = a darker chip */
 /* info panel = TryOn's แต่งรูป panel (.workspace.editing + .edit-panel): pushes in from the right, the grid narrows */
 .gallery-workspace { grid-template-columns: 0px 0px minmax(0, 1fr) 0px; }
 .gallery-workspace > .gallery-main { grid-area: stage; min-height: 0; max-width: none; margin: 0; overflow-y: auto; }
