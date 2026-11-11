@@ -3,14 +3,14 @@
 // raw stored file; lib/film.ts finish not applied
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { IconEdit, IconHeart, IconInfo } from './icons';
+import { IconEdit, IconHeart, IconInfo, IconTrash } from './icons';
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { api, thumbSrc } from '@/lib/browser';
 import { ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, TokenUsage, useMe } from './ui';
 
 type Result = {
-  src: string; created: number; caption?: string; page?: 'product'; editedFrom?: string; refinedFrom?: string; favorite?: boolean;
+  src: string; created: number; caption?: string; page?: 'product'; editedFrom?: string; refinedFrom?: string; favorite?: boolean; productPhotos?: string[];
   recipe?: { pick?: Record<string, unknown> }; stylePlan?: { name: string; th: string }; posePlan?: { name: string; th: string };
 };
 type Filter = 'all' | 'model' | 'product';
@@ -18,12 +18,12 @@ const FILTERS: { id: Filter; label: string }[] = [{ id: 'all', label: 'ทั้
 const pageOf = (r: Result): Exclude<Filter, 'all'> => (r.page === 'product' ? 'product' : 'model');
 const when = (sec: number) => new Date(sec * 1000).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 // recipe.pick keys of both pages (lib/tryon-recipe.ts, lib/packshot-recipe.ts) -> step label; ids that aren't paths (pose presets, text scenes) skipped
-// product = group id = its first photo's URL (lib/product-groups.ts)
+// product = group id = its first photo's URL (lib/product-groups.ts); productPhotos (every photo sent) replaces it when stored
 const PICK_LABELS: Record<string, string> = {
   model: 'นางแบบ', outfit: 'ชุด', top: 'เสื้อ', bottom: 'ท่อนล่าง', shoes: 'รองเท้า', accessory: 'ของเสริม', pose: 'ท่าโพสต์', scene: 'ฉาก',
   product: 'สินค้า', ref: 'แรงบันดาลใจ', prop: 'พร็อพ',
 };
-const inputsOf = (r: Result) => Object.entries(r.recipe?.pick ?? {}).flatMap(([k, v]) => (Array.isArray(v) ? v : [v])
+const inputsOf = (r: Result) => Object.entries({ ...r.recipe?.pick, ...(r.productPhotos && { product: r.productPhotos }) }).flatMap(([k, v]) => (Array.isArray(v) ? v : [v])
   .filter((src): src is string => typeof src === 'string' && src.startsWith('/') && k in PICK_LABELS).map((src) => ({ label: PICK_LABELS[k], src })));
 
 export default function Gallery() {
@@ -125,7 +125,7 @@ export default function Gallery() {
                 {favButton(r)}
                 <button type="button" className="gallery-info-btn" title="ข้อมูลรูปนี้" aria-label="ข้อมูลรูปนี้" aria-pressed={infoSrc === r.src}
                   onClick={() => setInfoSrc(r.src)}><IconInfo /></button>
-                <DeleteButton onClick={() => setDeleting(r)} />
+                <DeleteButton onClick={() => setDeleting(r)}><IconTrash /></DeleteButton>
               </div>
             ))}
           </div>}

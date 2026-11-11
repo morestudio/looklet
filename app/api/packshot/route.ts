@@ -157,6 +157,9 @@ export const POST = post(async (req) => {
   const supportIndexes = inputs.flatMap((x, i) => x.role === 'product-detail' ? [i + 1] : []);
   if (supportIndexes.length) prompt += ` Images ${supportIndexes.join(', ')} are additional photographs of the SAME product, showing real sides and fine details. Use them as authoritative design evidence, never as styling or background references. Preserve the actual back, sides, base and features; do not invent details.`;
   const images = inputs.map((x) => jpeg(x.data));
+  // product photos actually sent, main first -> meta, shown on /gallery (recipe.pick.product is only the group id)
+  const productPhotos = inputs.filter((x) => x.role === 'product' || x.role === 'product-detail').map((x) => x.ref.src)
+    .filter((s): s is string => typeof s === 'string' && s.startsWith('/'));
 
   // ---------- log (lib/genlog.ts PackshotLog) ----------
   const readable = (src?: string) => {
@@ -226,7 +229,7 @@ export const POST = post(async (req) => {
     // เซฟทันที (เสียเงินไปแล้ว ห้ามหาย) — page = 'product' ให้แต่ละหน้าโชว์เฉพาะรูปของตัวเอง
     const src = await saveImage({ area: 'results' }, out.data, out.mime, {
       page: 'product', caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
-      ...(stylePlan ? { stylePlan } : {}), ...(recipe ? { recipe } : {}),
+      ...(stylePlan ? { stylePlan } : {}), ...(recipe ? { recipe } : {}), ...(productPhotos.length ? { productPhotos } : {}),
     });
     const log = await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
     await recordUsage({ ...usage, status: 'ok', tokens, log });
