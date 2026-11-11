@@ -316,7 +316,7 @@ button, select, input, textarea { font-family: inherit; }
 .after-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: var(--space-4); padding: 0 18%; color: var(--mute); font-size: var(--text-xs); text-align: center; pointer-events: none; }
 .after-empty b { color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; }
 @media (max-width: 860px) {
-  .workspace > .rail, .workspace > .panel { width: auto; }
+  .workspace > .rail, .workspace > .panel { width: auto; justify-self: stretch; } /* block layout honours the desktop justify-self: end (shrinks to fit, pushed right) */
   .workspace > .edit-panel, .workspace.editing > .rail, .workspace.editing > .panel:not(.edit-panel) { display: none; }
   .workspace.editing > .edit-panel { display: block; border-left: 0; border-top: 1px solid var(--hairline-soft); }
 }
