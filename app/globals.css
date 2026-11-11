@@ -292,13 +292,14 @@ button, select, input, textarea { font-family: inherit; }
 .doll-card.empty .doll-pic { border-bottom: 1px dashed var(--control-edge); background: transparent; }
 .doll-card.empty .doll-text { display: grid; place-items: center; width: min(40px, 60%); aspect-ratio: 1; padding: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--ink); font-size: 22px; line-height: 1; }
 .doll-card.empty b { color: var(--mute); font-weight: 500; }
-/* accessories: unlabelled cards + one shared label; wraps to 2 per row when the side column is narrow */
-.doll-group-cards { display: flex; flex-wrap: wrap; gap: var(--space-6); }
-.doll-group .doll-card { width: min(calc(var(--doll-card) * .8), calc((var(--doll-side) - var(--space-6)) / 2)); }
-.doll-group > b { padding-left: 0; color: var(--ink-soft); }
+/* accessories: one card frame, each picture the size of a single card's picture, in one row; shrinks (same aspect) only when the side column is too narrow (--n = count) */
+.doll-group { display: flex; flex-direction: column; width: fit-content; max-width: var(--doll-side); padding: 0 0 var(--space-6); overflow: hidden; border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas); color: var(--ink-soft); }
+.doll-group:has(.doll-card:hover) { border-color: var(--hairline); }
+.doll-group-cards { display: flex; gap: 1px; }
+.doll-group .doll-card { width: min(calc(var(--doll-card) - 2px), calc((var(--doll-side) - 2px - (var(--n) - 1) * 1px) / var(--n))); border: 0; border-radius: 0; } /* - 2px = a single card's picture (inside its border) */
 /* changed from the past image (Go list item 4): thin ochre edge + ochre label (DS: accent = small highlight only) */
-.doll-card.changed, .doll-chip.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.doll-card.changed b, .doll-chip.changed b, .doll-group > b.changed { color: var(--accent-text); }
+.doll-card.changed, .doll-chip.changed, .doll-group.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.doll-card.changed b, .doll-chip.changed b, .doll-group.changed > b { color: var(--accent-text); }
 /* narrow stage (phone): scene joins the left column's feet row; left column starts under the label */
 @container doll (max-width: 520px) {
   .doll-scene { position: static; grid-row: 4; grid-column: 1; align-self: end; }
