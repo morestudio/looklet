@@ -20,7 +20,7 @@ import {
   IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRecipeSync } from './useRecipeSync';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
@@ -91,12 +91,12 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = StoredPosePlan;
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; recipe?: Partial<Recipe> };
+type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; recipe?: Partial<Recipe>; inGallery?: boolean };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
 type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
 // page = 'product' -> รูปจากหน้าสินค้า (components/Packshot.tsx) ไม่โชว์ในประวัติรูปของหน้านี้
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string; recipe?: Partial<Recipe> };
+type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string; recipe?: Partial<Recipe>; inGallery?: boolean; inHistory?: boolean };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
@@ -167,7 +167,7 @@ export default function TryOn() {
   const [analyzing, setAnalyzing] = useState<string[]>([]);
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
-  const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
+  const [removingSrc, setRemovingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด) — เปิดมาแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม (29 ต.ค. ผู้ใช้ขอ)
@@ -229,7 +229,7 @@ export default function TryOn() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        const past = lib.results.filter((r) => r.page !== 'product').map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan, recipe: r.recipe }));
+        const past = lib.results.filter((r) => r.page !== 'product' && r.inHistory !== false).map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, finish: r.finish, refinedFrom: r.refinedFrom, editedFrom: r.editedFrom, posePlan: r.posePlan, recipe: r.recipe, inGallery: r.inGallery }));
         setResults(past);
         const at = past.findIndex((r) => r.src === new URLSearchParams(location.search).get('image')); // ✎ on /gallery
         if (at >= 0) setCurrent(at);
@@ -405,11 +405,26 @@ export default function TryOn() {
   }
 
   // by src, not index: results can grow at the front while the dialog is open
-  async function deleteResult(src: string) {
+  // optimistic; out of the gallery = /api/delete from 'gallery'
+  async function toggleGallery(src: string) {
+    const inGallery = Boolean(results.find((r) => r.src === src)?.inGallery);
+    const mark = (v: boolean) => setResults((list) => list.map((r) => (r.src === src ? { ...r, inGallery: v } : r)));
+    mark(!inGallery);
+    try {
+      if (inGallery) await api('/api/delete', { src, from: 'gallery' });
+      else await api('/api/update', { src, inGallery: true });
+      setStatus('');
+    } catch (err) {
+      mark(inGallery);
+      setStatus((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
+    }
+  }
+
+  async function removeFromHistory(src: string) {
     const i = results.findIndex((r) => r.src === src);
     if (i < 0) return;
     try {
-      await api('/api/delete', { src: results[i].src });
+      await api('/api/delete', { src, from: 'history' });
     } catch (err) {
       return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
     }
@@ -1164,7 +1179,8 @@ export default function TryOn() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
+      <DeleteButton onClick={() => setRemovingSrc(results[i].src)} />
+      <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
@@ -1312,9 +1328,9 @@ export default function TryOn() {
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
-      {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
-        onCancel={() => setDeletingSrc(null)}
-        onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
+      {removingSrc && <RemoveImageDialog from="history" inOtherPlace={Boolean(results.find((r) => r.src === removingSrc)?.inGallery)}
+        onCancel={() => setRemovingSrc(null)}
+        onConfirm={() => { setRemovingSrc(null); void removeFromHistory(removingSrc); }} />}
       {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
         body="ตัวเลือกทุกขั้นจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
         cancel="ยกเลิก" confirm="ล้าง"

@@ -5,7 +5,14 @@ import { updateMeta } from '@/lib/storage';
 
 // แก้ชื่อ/ประเภทของเสริมที่เพิ่มไว้แล้ว (AI ทายผิด หรือผู้ใช้อยากเปลี่ยนชื่อ) — รูปสินค้า (หน้าสินค้า) ใช้ประเภทใน PRODUCT_TYPES
 // favorite (boolean) = ♡ of a generated image (/gallery)
+// inGallery: true = add to /gallery (♡ starts off) · inHistory: true = back into history (gallery ✎); removals go through /api/delete
 export const POST = post(async (req) => {
+  if (req.inGallery === true || req.inHistory === true) {
+    if (typeof req.src !== 'string' || !req.src.startsWith('/api/files/results/')) return json(400, { error: 'ข้อมูลไม่ถูกต้อง' });
+    const meta: Record<string, boolean | number> = req.inGallery === true ? { inGallery: true, addedToGalleryAt: Date.now(), favorite: false } : { inHistory: true };
+    if (!(await updateMeta(req.src, meta))) return json(404, { error: 'ไม่พบรูปนี้' });
+    return json(200, { ok: true });
+  }
   if (typeof req.favorite === 'boolean') {
     if (typeof req.src !== 'string' || !req.src.startsWith('/api/files/results/')) return json(400, { error: 'ข้อมูลไม่ถูกต้อง' });
     if (!(await updateMeta(req.src, { favorite: req.favorite }))) return json(404, { error: 'ไม่พบรูปนี้' });

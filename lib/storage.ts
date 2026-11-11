@@ -89,6 +89,9 @@ export type Stored = {
   refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
   favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image
+  // two places for one result; the file is deleted when it is in neither (/api/delete)
+  inGallery?: boolean; addedToGalleryAt?: number; // ms
+  inHistory?: boolean; // absent = true
   productPhotos?: string[]; // product page: product photos sent to the AI, main first (app/api/packshot)
 };
 
@@ -170,7 +173,7 @@ export async function readThumb(parts: string[], width: number) {
 }
 
 // แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง / ♡ ของรูปที่สร้าง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ และ results/ ที่มี .json อยู่แล้ว
-export async function updateMeta(src: string, meta: Record<string, string | boolean>) {
+export async function updateMeta(src: string, meta: Record<string, string | boolean | number>) {
   if (!src.startsWith(URL_PREFIX + 'uploads/') && !src.startsWith(URL_PREFIX + 'results/')) return false;
   const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
   if (!f) return false;
@@ -180,6 +183,18 @@ export async function updateMeta(src: string, meta: Record<string, string | bool
   if (!old) return false;
   await fs.writeFile(file, JSON.stringify({ ...old, ...meta }));
   return true;
+}
+
+// visibleTo applies, null = missing or not visible
+export async function readMeta(src: string): Promise<Record<string, unknown> | null> {
+  if (!src.startsWith(URL_PREFIX)) return null;
+  const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
+  if (!f) return null;
+  if (supabaseEnabled) {
+    const meta = await sbMeta(f.key);
+    return meta && visibleTo(meta) ? meta : null;
+  }
+  return fs.readFile(f.full.slice(0, -path.extname(f.full).length) + '.json', 'utf8').then(JSON.parse, () => null);
 }
 
 // ลบ = ย้ายไปถังขยะ (กู้คืนได้) ลบได้เฉพาะรูปใน results/ กับ images/uploads/ — บน Supabase ลบจริง

@@ -1,16 +1,18 @@
 'use client';
-// /gallery: all results (page model + product), newest first
+// /gallery: results in the gallery (meta.inGallery), newest added first
 // raw stored file; lib/film.ts finish not applied
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { IconEdit, IconHeart, IconInfo, IconTrash } from './icons';
+import { IconBookmark, IconEdit, IconHeart, IconInfo, IconTrash } from './icons';
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { api, thumbSrc } from '@/lib/browser';
-import { ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, TokenUsage, useMe } from './ui';
+import { DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
 
 type Result = {
   src: string; created: number; caption?: string; page?: 'product'; editedFrom?: string; refinedFrom?: string; favorite?: boolean; productPhotos?: string[];
+  inGallery?: boolean; addedToGalleryAt?: number; inHistory?: boolean;
   recipe?: { pick?: Record<string, unknown> }; stylePlan?: { name: string; th: string }; posePlan?: { name: string; th: string };
 };
 type Filter = 'all' | 'model' | 'product';
@@ -32,16 +34,17 @@ export default function Gallery() {
   const [filter, setFilter] = useState<Filter>('all');
   const [favOnly, setFavOnly] = useState(false); // on top of the page filter
   const [open, setOpen] = useState<Result | null>(null);
-  const [deleting, setDeleting] = useState<Result | null>(null); // pending ConfirmDialog
+  const [removing, setRemoving] = useState<Result | null>(null); // pending ConfirmDialog
   const [infoSrc, setInfoSrc] = useState<string | null>(null); // image shown in the info panel
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set()); // input pictures deleted since (404)
   const me = useMe();
+  const router = useRouter();
   const showRaw = me === null || me.role !== 'customer'; // raw meta for team / superadmin; null = no auth (local tool)
 
   useEffect(() => {
     fetch('/api/library?only=results')
       .then((r) => (r.ok ? (r.json() as Promise<{ results: Result[] }>) : Promise.reject(new Error(String(r.status)))))
-      .then((lib) => setResults([...lib.results].sort((a, b) => b.created - a.created)))
+      .then((lib) => setResults(lib.results.filter((r) => r.inGallery).sort((a, b) => (b.addedToGalleryAt ?? 0) - (a.addedToGalleryAt ?? 0))))
       .catch(() => { setResults([]); setError('โหลดรูปไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง'); });
   }, []);
   useEffect(() => {
@@ -75,15 +78,27 @@ export default function Gallery() {
       onClick={() => void toggleFav(r)}><IconHeart filled={r.favorite} /></button>
   );
 
-  // /api/delete moves the file to trash
-  async function remove(r: Result) {
+  // the file is deleted too when it is no longer in history
+  async function removeFromGallery(r: Result) {
     try {
-      await api('/api/delete', { src: r.src });
+      await api('/api/delete', { src: r.src, from: 'gallery' });
     } catch (err) {
       return setError('ลบไม่สำเร็จ: ' + (err as Error).message);
     }
     setError('');
     setResults((list) => list && list.filter((x) => x.src !== r.src));
+  }
+
+  // studio pages list history only (?image= looks there): put it back there first
+  async function openInStudio(r: Result) {
+    if (r.inHistory === false) {
+      try {
+        await api('/api/update', { src: r.src, inHistory: true });
+      } catch (err) {
+        return setError('เปิดรูปนี้ไม่สำเร็จ: ' + (err as Error).message);
+      }
+    }
+    router.push((pageOf(r) === 'product' ? '/product' : '/') + '?image=' + encodeURIComponent(r.src));
   }
 
   return <div className="app gallery-page">
@@ -114,7 +129,7 @@ export default function Gallery() {
         ? <p className="gallery-empty">กำลังโหลดรูป...</p>
         : !shown.length
           ? <p className="gallery-empty">{favOnly ? 'ยังไม่มีรูปที่ชอบ · กดรูปหัวใจมุมขวาบนของรูปที่ชอบ'
-            : <>ยังไม่มีรูป · สร้างรูปได้ที่หน้า {filter === 'model' ? modelLink : filter === 'product' ? productLink : <>{modelLink} หรือ {productLink}</>}</>}</p>
+            : <>ยังไม่มีรูปในแกลลอรี่ · กด <IconBookmark /> บนรูปที่สร้างแล้วในหน้า {filter === 'model' ? modelLink : filter === 'product' ? productLink : <>{modelLink} หรือ {productLink}</>} เพื่อบันทึกมาที่นี่</>}</p>
           : <div className="gallery-grid">
             {shown.map((r) => (
               <div className="deletable" key={r.src}>
@@ -125,7 +140,7 @@ export default function Gallery() {
                 {favButton(r)}
                 <button type="button" className="gallery-info-btn" title="ข้อมูลรูปนี้" aria-label="ข้อมูลรูปนี้" aria-pressed={infoSrc === r.src}
                   onClick={() => setInfoSrc(r.src)}><IconInfo /></button>
-                <DeleteButton onClick={() => setDeleting(r)}><IconTrash /></DeleteButton>
+                <DeleteButton onClick={() => setRemoving(r)}><IconTrash /></DeleteButton>
               </div>
             ))}
           </div>}
@@ -135,8 +150,8 @@ export default function Gallery() {
       <div className="panel-head">
         <h2>ข้อมูลรูป</h2>
         {info && <>
-          <Link className="edit-close gallery-edit" href={(pageOf(info) === 'product' ? '/product' : '/') + '?image=' + encodeURIComponent(info.src)}
-            title="แก้ต่อจากรูปนี้" aria-label="แก้ต่อจากรูปนี้"><IconEdit /></Link>
+          <button type="button" className="edit-close gallery-edit" title="แก้ต่อจากรูปนี้" aria-label="แก้ต่อจากรูปนี้"
+            onClick={() => void openInStudio(info)}><IconEdit /></button>
           {favButton(info)}
         </>}
         <button type="button" className="edit-close" aria-label="ปิดแผงข้อมูลรูป" onClick={() => setInfoSrc(null)}>✕</button>
@@ -164,9 +179,9 @@ export default function Gallery() {
       </>}
     </aside>
     </div>
-    {deleting && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
-      onCancel={() => setDeleting(null)}
-      onConfirm={() => { setDeleting(null); void remove(deleting); }} />}
+    {removing && <RemoveImageDialog from="gallery" inOtherPlace={removing.inHistory !== false}
+      onCancel={() => setRemoving(null)}
+      onConfirm={() => { setRemoving(null); void removeFromGallery(removing); }} />}
     {open && <ImageViewer key={open.src} src={open.src} alt={open.caption ?? 'รูปที่สร้าง'} onClose={() => setOpen(null)} />}
   </div>;
 }
