@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
+import { useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import { recipeKey } from '@/lib/recipe';
 import CreativeShot from './CreativeShot';
@@ -19,7 +20,7 @@ import {
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
 import { defaultTurn, turnFill } from '@/lib/turntable';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
@@ -49,8 +50,8 @@ const SHOT_TYPE_ORDER = [
 ];
 type Plan = { name: string; th: string }; // พร็อพที่ AI คิดให้
 type SetTag = { id: string; index: number }; // ชุดภาพสินค้า (เหมือน SetTag ใน lib/storage.ts)
-type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe> };
-type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe> };
+type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe>; inGallery?: boolean };
+type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe>; inGallery?: boolean; inHistory?: boolean };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
@@ -284,7 +285,7 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
-  const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
+  const [removingSrc, setRemovingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [libReady, setLibReady] = useState(false); // library loaded (product is preselected then)
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
@@ -358,8 +359,8 @@ export default function Packshot() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        const past = lib.results.filter((r) => r.page === 'product')
-          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe }));
+        const past = lib.results.filter((r) => r.page === 'product' && r.inHistory !== false)
+          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe, inGallery: r.inGallery }));
         setResults(past);
         const at = past.findIndex((r) => r.src === new URLSearchParams(location.search).get('image')); // ✎ on /gallery
         if (at >= 0) setCurrent(at);
@@ -542,19 +543,7 @@ export default function Packshot() {
     if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
-  // by src, not index: results can grow at the front while the dialog is open
-  async function deleteResult(src: string) {
-    const i = results.findIndex((r) => r.src === src);
-    if (i < 0) return;
-    try {
-      await api('/api/delete', { src: results[i].src });
-    } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
-    }
-    const left = results.length - 1;
-    setResults((r) => r.filter((_, j) => j !== i));
-    setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
-  }
+  const { toggleGallery, removeFromHistory } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
 
   async function planCreative() {
     if (!canPlan || planningRef.current || !product || !selectedGroup) return;
@@ -1043,7 +1032,8 @@ export default function Packshot() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
+      <DeleteButton onClick={() => setRemovingSrc(results[i].src)} />
+      <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
@@ -1168,9 +1158,9 @@ export default function Packshot() {
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
-      {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
-        onCancel={() => setDeletingSrc(null)}
-        onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
+      {removingSrc && <RemoveImageDialog from="history" inOtherPlace={Boolean(results.find((r) => r.src === removingSrc)?.inGallery)}
+        onCancel={() => setRemovingSrc(null)}
+        onConfirm={() => { setRemovingSrc(null); void removeFromHistory(removingSrc); }} />}
       {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${productFiles(deletingProduct).length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
         cancel="ยกเลิก" confirm="ลบ" onCancel={() => setDeletingProduct(null)}
         onConfirm={() => { setDeletingProduct(null); void deleteProduct(deletingProduct); }} />}
