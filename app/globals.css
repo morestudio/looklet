@@ -265,7 +265,7 @@ button, select, input, textarea { font-family: inherit; }
 .doll-head { position: absolute; top: 0; left: 0; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); }
 .doll-label { padding: var(--space-4) var(--space-10); border-radius: var(--r-full); background: var(--float-bg); color: var(--ink-soft); font-size: var(--text-xs); font-weight: 700; }
 .doll-figure { grid-row: 1; grid-column: 2; min-height: 0; display: flex; justify-content: center; }
-.doll-figure img { display: block; width: var(--doll-fig); height: 100%; object-fit: contain; object-position: top; pointer-events: none; user-select: none; }
+.doll-figure img { display: block; width: var(--doll-fig); height: 100%; object-fit: contain; pointer-events: none; user-select: none; } /* centred: on a narrow stage the width cap makes it shorter than its column */
 .doll-side { grid-row: 1; min-width: 0; min-height: 0; display: grid; grid-template-rows: repeat(4, minmax(0, 1fr)); }
 .doll-side.left { grid-column: 1; justify-items: end; }
 .doll-side.right { grid-column: 3; justify-items: start; }
