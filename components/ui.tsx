@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type S
 import { authEnabled } from '@/lib/auth';
 import { thumbSrc, USAGE_EVENT } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
+import { IconBookmark } from './icons';
 
 // แถบเลื่อน (input range): Chrome/Safari ระบายส่วนที่เลือกเป็นสีหมึกไม่ได้เอง ต้องบอกเปอร์เซ็นต์ผ่าน --fill (globals.css)
 export function rangeFill(value: number, min: number, max: number): CSSProperties {
@@ -91,6 +92,29 @@ export function DeleteButton({ onClick, title = 'ลบรูปนี้ (ย�
   return (
     <button className="del" title={title} aria-label={title} onClick={(e) => { e.stopPropagation(); onClick(); }}>{children}</button>
   );
+}
+
+export function GalleryToggle({ inGallery, onClick }: { inGallery: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={'gallery-toggle' + (inGallery ? ' on' : '')} title={inGallery ? 'เอาออกจากแกลลอรี่' : 'บันทึกลงแกลลอรี่'} aria-label="บันทึกลงแกลลอรี่"
+      aria-pressed={inGallery} onClick={(e) => { e.stopPropagation(); onClick(); }}><IconBookmark filled={inGallery} /></button>
+  );
+}
+
+// a stored result's two places; removing it from its last place deletes the file (/api/delete)
+export type Place = 'history' | 'gallery';
+
+// inOtherPlace: /api/delete only takes it out of `from`; otherwise the file goes (Supabase: no trash)
+// copy: เอาออก = still in the other place, ลบ = gone · pageName: the result's studio page, for from="gallery"
+export function RemoveImageDialog({ from, inOtherPlace, pageName = 'นางแบบ', onCancel, onConfirm }: {
+  from: Place; inOtherPlace: boolean; pageName?: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  if (inOtherPlace) return <ConfirmDialog title={from === 'history' ? 'เอาออกจากรูปที่สร้างแล้ว?' : 'เอาออกจากแกลลอรี่?'}
+    body={from === 'history' ? 'รูปยังเก็บไว้ในแกลลอรี่' : `รูปยังอยู่ในหน้า${pageName}`} cancel="ยกเลิก" confirm="เอาออก"
+    onCancel={onCancel} onConfirm={onConfirm} />;
+  return <ConfirmDialog title="ลบรูปนี้ถาวร?"
+    body={(from === 'history' ? 'รูปนี้ไม่ได้บันทึกไว้ในแกลลอรี่' : `รูปนี้ไม่อยู่ในหน้า${pageName}แล้ว`) + ' ลบแล้วกู้คืนไม่ได้'}
+    cancel="ยกเลิก" confirm="ลบถาวร" onCancel={onCancel} onConfirm={onConfirm} />;
 }
 
 // การ์ด "+ เพิ่มรูป"

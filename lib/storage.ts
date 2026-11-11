@@ -89,6 +89,9 @@ export type Stored = {
   refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
   favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image
+  // two places for one result; the file is deleted when it is in neither (/api/delete)
+  inGallery?: boolean; addedToGalleryAt?: number; // ms
+  inHistory?: boolean; // absent = true
   productPhotos?: string[]; // product page: product photos sent to the AI, main first (app/api/packshot)
 };
 
@@ -169,28 +172,44 @@ export async function readThumb(parts: string[], width: number) {
   return data && { data, type: 'image/jpeg' };
 }
 
+// results/ or uploads/ image by URL (never guides/); null = not ours
+function storedFile(src: string) {
+  if (!src.startsWith(URL_PREFIX + 'uploads/') && !src.startsWith(URL_PREFIX + 'results/')) return null;
+  return resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
+}
+const sidecar = (full: string) => full.slice(0, -path.extname(full).length) + '.json';
+
 // แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง / ♡ ของรูปที่สร้าง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ และ results/ ที่มี .json อยู่แล้ว
-export async function updateMeta(src: string, meta: Record<string, string | boolean>) {
-  if (!src.startsWith(URL_PREFIX + 'uploads/') && !src.startsWith(URL_PREFIX + 'results/')) return false;
-  const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
+export async function updateMeta(src: string, meta: Record<string, string | boolean | number>) {
+  const f = storedFile(src);
   if (!f) return false;
   if (supabaseEnabled) return sbUpdateMeta(f.key, stripOwner(meta), (old) => visibleTo(old));
-  const file = f.full.slice(0, -path.extname(f.full).length) + '.json';
+  const file = sidecar(f.full);
   const old = await fs.readFile(file, 'utf8').then(JSON.parse, () => null);
   if (!old) return false;
   await fs.writeFile(file, JSON.stringify({ ...old, ...meta }));
   return true;
 }
 
+// visibleTo applies, null = missing or not visible
+export async function readMeta(src: string): Promise<Record<string, unknown> | null> {
+  const f = storedFile(src);
+  if (!f) return null;
+  if (supabaseEnabled) {
+    const meta = await sbMeta(f.key);
+    return meta && visibleTo(meta) ? meta : null;
+  }
+  return fs.readFile(sidecar(f.full), 'utf8').then(JSON.parse, () => null);
+}
+
 // ลบ = ย้ายไปถังขยะ (กู้คืนได้) ลบได้เฉพาะรูปใน results/ กับ images/uploads/ — บน Supabase ลบจริง
 export async function deleteImage(src: string) {
-  if (!src.startsWith(URL_PREFIX)) return false;
-  const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
-  if (!f || f.key.startsWith('guides/')) return false;
+  const f = storedFile(src);
+  if (!f) return false;
   if (supabaseEnabled) return visibleTo(await sbMeta(f.key)) && sbDelete(f.key);
   const trash = path.join(os.homedir(), '.Trash');
   const hasTrash = await fs.stat(trash).then((s) => s.isDirectory(), () => false);
-  for (const p of [f.full, f.full.slice(0, -path.extname(f.full).length) + '.json']) {
+  for (const p of [f.full, sidecar(f.full)]) {
     if (!(await fs.access(p).then(() => true, () => false))) continue;
     if (!hasTrash) {
       await fs.unlink(p);

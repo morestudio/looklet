@@ -7,18 +7,20 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
+import { useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
+import { recipeKey } from '@/lib/recipe';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
 import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
-  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
 import { defaultTurn, turnFill } from '@/lib/turntable';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
@@ -48,8 +50,8 @@ const SHOT_TYPE_ORDER = [
 ];
 type Plan = { name: string; th: string }; // พร็อพที่ AI คิดให้
 type SetTag = { id: string; index: number }; // ชุดภาพสินค้า (เหมือน SetTag ใน lib/storage.ts)
-type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe> };
-type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe> };
+type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe>; inGallery?: boolean };
+type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe>; inGallery?: boolean; inHistory?: boolean };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
@@ -265,6 +267,8 @@ export default function Packshot() {
     pick, shotType, idea: creativeIdea, facts: creativeFacts, detailTarget, feature, scaleRef, handPose: handPoseId, dimensions, referenceSize, extraAngles,
     scene: sceneId, color: colorId, props: propsId, propText, angle: angleId, turn, framing: framingId, refMode, aspect, quality, extra,
   } = choices;
+  const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
+  const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
   const [conceptState, setConceptState] = useState<{ scope: string; concepts: CreativeConcept[] } | null>(null);
   const [planning, setPlanning] = useState(false);
   const planningRef = useRef(false);
@@ -281,7 +285,7 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
-  const [deletingSrc, setDeletingSrc] = useState<string | null>(null); // pending ConfirmDialog
+  const [removingSrc, setRemovingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [libReady, setLibReady] = useState(false); // library loaded (product is preselected then)
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
@@ -355,8 +359,8 @@ export default function Packshot() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        const past = lib.results.filter((r) => r.page === 'product')
-          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe }));
+        const past = lib.results.filter((r) => r.page === 'product' && r.inHistory !== false)
+          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe, inGallery: r.inGallery }));
         setResults(past);
         const at = past.findIndex((r) => r.src === new URLSearchParams(location.search).get('image')); // ✎ on /gallery
         if (at >= 0) setCurrent(at);
@@ -539,19 +543,7 @@ export default function Packshot() {
     if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
-  // by src, not index: results can grow at the front while the dialog is open
-  async function deleteResult(src: string) {
-    const i = results.findIndex((r) => r.src === src);
-    if (i < 0) return;
-    try {
-      await api('/api/delete', { src: results[i].src });
-    } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
-    }
-    const left = results.length - 1;
-    setResults((r) => r.filter((_, j) => j !== i));
-    setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
-  }
+  const { toggleGallery, removeFromHistory } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
 
   async function planCreative() {
     if (!canPlan || planningRef.current || !product || !selectedGroup) return;
@@ -753,6 +745,15 @@ export default function Packshot() {
     },
   });
   const liveKey = sync.liveKey;
+  // "ล้าง" under the stage label = the model page's: page-open choices, same step, but the selected product stays (it is the subject, not a setting)
+  const resetTo = sync.pageStart && { ...sync.pageStart, pick: { ...sync.pageStart.pick, product: choices.pick.product } };
+  const canReset = resetTo !== null && liveKey !== recipeKey(resetTo);
+  const startOver = () => {
+    if (!resetTo) return;
+    sync.reset(resetTo);
+    setStatus('');
+    newTileRef.current?.focus(); // the ล้าง button unmounts (nothing left to reset); keep keyboard focus on the page
+  };
   const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
   // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปพื้นหินขอบหมึก) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
   const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
@@ -1031,7 +1032,8 @@ export default function Packshot() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => setDeletingSrc(results[i].src)} />
+      <DeleteButton onClick={() => setRemovingSrc(results[i].src)} />
+      <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
@@ -1112,6 +1114,11 @@ export default function Packshot() {
               <canvas ref={canvasRef} hidden={empty} />
               {empty && <p className="muted-text">อัปโหลดรูปสินค้าในขั้นที่ 1 แล้วกด &quot;สร้างรูปทันที&quot;</p>}
             </figure>
+            {/* same corner label + ล้าง as the model page's paper doll (.doll-head) */}
+            {current === null && !empty && <div className="doll-head stage-head">
+              <div className="doll-label">พร้อมสร้าง</div>
+              {canReset && <button type="button" className="link-btn" disabled={busy !== null} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>}
+            </div>}
             {canvasStatus && <div className="frame-hint" role="status">{canvasStatus}</div>}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
@@ -1127,7 +1134,7 @@ export default function Packshot() {
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
             {/* "รูปใหม่" = the setup in progress (product photo on the stage); first tile, always there, as on the model page */}
-            <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
+            <button type="button" ref={newTileRef} className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
               aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
               {generating && !pendingSet
                 ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
@@ -1141,14 +1148,19 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
+        body="ตัวเลือกทุกขั้นยกเว้นสินค้าจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
+        cancel="ยกเลิก" confirm="ล้าง"
+        onCancel={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); startOver(); }} />}
       {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
         cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
-      {deletingSrc && <ConfirmDialog title="ลบรูปนี้?" body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
-        onCancel={() => setDeletingSrc(null)}
-        onConfirm={() => { setDeletingSrc(null); void deleteResult(deletingSrc); }} />}
+      {removingSrc && <RemoveImageDialog from="history" inOtherPlace={Boolean(results.find((r) => r.src === removingSrc)?.inGallery)}
+        onCancel={() => setRemovingSrc(null)}
+        onConfirm={() => { setRemovingSrc(null); void removeFromHistory(removingSrc); }} />}
       {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${productFiles(deletingProduct).length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
         cancel="ยกเลิก" confirm="ลบ" onCancel={() => setDeletingProduct(null)}
         onConfirm={() => { setDeletingProduct(null); void deleteProduct(deletingProduct); }} />}
