@@ -340,6 +340,7 @@ button, select, input, textarea { font-family: inherit; }
 .doll-head .link-btn span { text-decoration: underline; text-underline-offset: 2px; } /* underline the word only, not the icon gap */
 .doll-head .link-btn:hover { opacity: .7; }
 .doll-head .link-btn:disabled { cursor: default; opacity: .5; }
+.frame > .stage-head { top: var(--space-12); left: var(--space-12); } /* product page: .doll-head straight in .frame, so add the frame padding the doll gets */
 .note .link-btn { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 
 /* ---------- แต่งรูป ---------- */

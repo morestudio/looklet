@@ -8,12 +8,13 @@ import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
 import { useRecipeSync } from './useRecipeSync';
+import { recipeKey } from '@/lib/recipe';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
 import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
-  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconRetouch, IconScene, IconSearch, IconSettings,
+  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
@@ -265,6 +266,8 @@ export default function Packshot() {
     pick, shotType, idea: creativeIdea, facts: creativeFacts, detailTarget, feature, scaleRef, handPose: handPoseId, dimensions, referenceSize, extraAngles,
     scene: sceneId, color: colorId, props: propsId, propText, angle: angleId, turn, framing: framingId, refMode, aspect, quality, extra,
   } = choices;
+  const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
+  const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
   const [conceptState, setConceptState] = useState<{ scope: string; concepts: CreativeConcept[] } | null>(null);
   const [planning, setPlanning] = useState(false);
   const planningRef = useRef(false);
@@ -753,6 +756,15 @@ export default function Packshot() {
     },
   });
   const liveKey = sync.liveKey;
+  // "ล้าง" under the stage label = the model page's: page-open choices, same step, but the selected product stays (it is the subject, not a setting)
+  const resetTo = sync.pageStart && { ...sync.pageStart, pick: { ...sync.pageStart.pick, product: choices.pick.product } };
+  const canReset = resetTo !== null && liveKey !== recipeKey(resetTo);
+  const startOver = () => {
+    if (!resetTo) return;
+    sync.reset(resetTo);
+    setStatus('');
+    newTileRef.current?.focus(); // the ล้าง button unmounts (nothing left to reset); keep keyboard focus on the page
+  };
   const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
   // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปพื้นหินขอบหมึก) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
   const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
@@ -1112,6 +1124,11 @@ export default function Packshot() {
               <canvas ref={canvasRef} hidden={empty} />
               {empty && <p className="muted-text">อัปโหลดรูปสินค้าในขั้นที่ 1 แล้วกด &quot;สร้างรูปทันที&quot;</p>}
             </figure>
+            {/* same corner label + ล้าง as the model page's paper doll (.doll-head) */}
+            {current === null && !empty && <div className="doll-head stage-head">
+              <div className="doll-label">พร้อมสร้าง</div>
+              {canReset && <button type="button" className="link-btn" disabled={busy !== null} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>}
+            </div>}
             {canvasStatus && <div className="frame-hint" role="status">{canvasStatus}</div>}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
@@ -1127,7 +1144,7 @@ export default function Packshot() {
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
             {/* "รูปใหม่" = the setup in progress (product photo on the stage); first tile, always there, as on the model page */}
-            <button type="button" className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
+            <button type="button" ref={newTileRef} className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
               aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
               {generating && !pendingSet
                 ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
@@ -1141,6 +1158,11 @@ export default function Packshot() {
       </div>
 
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
+      {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
+        body="ตัวเลือกทุกขั้นยกเว้นสินค้าจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
+        cancel="ยกเลิก" confirm="ล้าง"
+        onCancel={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); startOver(); }} />}
       {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
         cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"

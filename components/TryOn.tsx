@@ -22,6 +22,7 @@ import {
 } from './icons';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
 import { useRecipeSync } from './useRecipeSync';
+import { recipeKey } from '@/lib/recipe';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
@@ -760,8 +761,9 @@ export default function TryOn() {
   const startOver = () => {
     sync.reset(sync.pageStart ?? recipe);
     setBase(null); setOutfitTab('top'); setStatus('');
-    newTileRef.current?.focus(); // the ล้าง button unmounts (base -> null); keep keyboard focus on the page
+    newTileRef.current?.focus(); // the ล้าง button unmounts (nothing left to reset); keep keyboard focus on the page
   };
+  const canReset = base !== null || (sync.pageStart !== null && liveKey !== recipeKey(sync.pageStart)); // past-image draft or picks changed since page open
   const draftBase = sync.draft ? sync.draft.extra : base; // shown on the "รูปใหม่" tile
   const changed = base && current === null ? { // paper doll highlights what differs from the past image
     model: base.pick.model !== pick.model, accessory: JSON.stringify(base.pick.accessory) !== JSON.stringify(pick.accessory),
@@ -1256,7 +1258,7 @@ export default function TryOn() {
               {/* ข้อความจากเครื่องมือแต่งรูป (กำลังโหลด / หาหน้าไม่เจอ / แนะนำให้ซูม) ลอยขอบล่างรูป ไม่ดันปุ่มด้านล่าง */}
               {retouchStatus && <div className="frame-hint" role="status">{retouchStatus}</div>}
             </> : <PaperDoll left={dollLeft} right={dollRight} scene={dollScene} chips={dollChips} label={base ? 'พร้อมสร้าง · ปรับจากรูปที่เดิม' : 'พร้อมสร้าง'}
-              action={base && <button type="button" className="link-btn" disabled={generating} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>} />}
+              action={canReset && <button type="button" className="link-btn" disabled={generating} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>} />}
             <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
           </div>
           <div className="stage-tools">
