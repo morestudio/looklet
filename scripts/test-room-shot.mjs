@@ -18,7 +18,7 @@ function setup() {
       directPhoto: async () => { throw new Error('no director here'); },
       planPose: async () => { throw new Error('no pose planner with a pose photo'); },
       reviewShot: async () => { throw new Error('no review here'); },
-      generateImage: async (_model, images, prompt) => { calls.push({ images: images.map((i) => i.data), prompt }); return { ...img(`rendered-${calls.length}`), tokens: 100 * calls.length }; },
+      generateImage: async (_model, images, prompt, opt) => { calls.push({ images: images.map((i) => i.data), prompt, quality: opt?.quality }); return { ...img(`rendered-${calls.length}`), tokens: 100 * calls.length }; },
     },
     'lib/images.ts': {
       cropTo: async (i, aspect) => ({ ...i, data: `${i.data}-cropped${aspect}` }),
@@ -39,9 +39,12 @@ const body = (poseMode, extra = {}) => ({
 
 test('ฉากที่เลือก: ขั้น 1 ถ่ายฉากใหม่ตามรูปท่าที่ตัดเป็น 4:5 แล้วขั้น 2 ใช้ฉากใหม่แทนรูปฉากเดิม', async () => {
   const { POST, calls, lights, usage } = setup();
-  const out = await POST(body('shot-room'));
+  const out = await POST(body('shot-room', { quality: 'high' }));
   assert.equal(out.status, 200);
   assert.equal(calls.length, 2);
+  // 12 พ.ย.: ฉากว่าง (ขั้น 1) ทำที่ medium ประหยัด ~฿1.8 · รูปที่ลูกค้าได้ (ขั้น 2) ยังเป็นคุณภาพที่เลือก
+  assert.deepEqual(calls.map((c) => c.quality), ['medium', 'high']);
+  assert.match(usage[0].log.style.roomScene, /คุณภาพ medium/);
   // ขั้น 1: Image 1 = รูปฉาก, Image 2 = รูปท่าที่ตัดเป็นสัดส่วนสุดท้ายแล้ว
   assert.deepEqual(calls[0].images, ['room', 'pose-cropped4:5']);
   assert.match(calls[0].prompt, /^Create one photograph of the room in image 1, taken exactly the way image 2 was taken/);
@@ -80,4 +83,28 @@ test('ลอกทั้งช็อต + ฉาก เหมือนเดิ�
   assert.doesNotMatch(calls[0].prompt, /already has this framing|already photographed with the camera|room in image 1/);
   assert.equal(usage[0].calls, 1);
   assert.equal(usage[0].log.roomPrompt, undefined);
+});
+
+test('ปรับแสงรอบสอง (harmonize) ปิดแล้ว 12 พ.ย.: request เก่าที่ยังส่ง harmonize: true มา ได้ AI ครั้งเดียว ไม่มีพรอมต์รอบสอง', async () => {
+  const { POST, calls, usage } = setup();
+  const out = await POST(body('shot-scene', { harmonize: true }));
+  assert.equal(out.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(usage[0].calls, 1);
+  assert.equal(usage[0].log.harmonizePrompt, undefined);
+  assert.equal(usage[0].log.style.harmonize, undefined);
+});
+
+test('ฉากที่เลือก: เลือกคุณภาพ low ไว้ ขั้น 1 ไม่สูงกว่ารูปสุดท้าย · xhigh ขั้น 1 ยังเป็น medium', async () => {
+  for (const [chosen, expected] of [['low', ['low', 'low']], ['xhigh', ['medium', 'xhigh']]]) {
+    const { POST, calls } = setup();
+    assert.equal((await POST(body('shot-room', { quality: chosen }))).status, 200);
+    assert.deepEqual(calls.map((c) => c.quality), expected);
+  }
+});
+
+test('ลอกทั้งช็อต + ฉาก (ไม่เลือกฉาก) ใช้คุณภาพที่เลือกเหมือนเดิม', async () => {
+  const { POST, calls } = setup();
+  assert.equal((await POST(body('shot-scene', { quality: 'high' }))).status, 200);
+  assert.deepEqual(calls.map((c) => c.quality), ['high']);
 });

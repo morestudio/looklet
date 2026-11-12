@@ -120,7 +120,7 @@ export default function AuditPage() {
 
   return <div className="admin-page">
     <header className="topbar">
-      <div className="brand">SnapAds <span className="beta">Beta</span></div>
+      <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{message}</div>
       <div className="top-actions"><GalleryLink /><SignOutButton /></div>

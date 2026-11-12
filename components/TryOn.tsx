@@ -1,5 +1,5 @@
 'use client';
-// SnapAds (เดิมชื่อ Looklet): เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
+// Lolo (เดิมชื่อ Looklet แล้ว SnapAds; เปลี่ยนเป็น Lolo 12 พ.ย.): เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -70,6 +70,16 @@ const POSE_PRESET_PICKER = false;
 // ชุดภาพ 4 มุม (SET_SHOTS) — ปุ่มเป็นสีเทากดไม่ได้ไว้ก่อน บอก "เร็วๆ นี้" (29 ต.ค. ผู้ใช้ขอ) · โค้ดสร้างชุดภาพยังอยู่ครบ เปิดใหม่ = true
 const SET_SHOOT = false;
 
+// ปรับแสงรอบสอง (harmonize) — เอาออก 12 พ.ย. (ผู้ใช้ขอ): ส่งรูปที่ได้ให้ AI ทำซ้ำอีกรอบ = จ่าย 2 เท่า (฿6.6 high / ฿10.4 xhigh ต่อรูป เทียบ ~฿3)
+// ซ่อนช่องติ๊กในขั้นสูง และไม่ส่งไป server แม้รูปเก่าที่เปิดมาเคยติ๊กไว้ (recipe.harmonize ยังเก็บ/อ่านได้ แต่ไม่ใช้) · server ก็ไม่ทำรอบสอง (HARMONIZE ใน app/api/generate)
+// โค้ด UI/พรอมต์ยังอยู่ เปิดใหม่ = true ทั้งสองที่
+const HARMONIZE = false;
+
+// ปรับผิวสมจริง (AI ทำรูปใหม่ 1664×2496 ผิวละเอียดขึ้น ~฿2.8 ต่อครั้ง, /api/refine-skin) — เอาออก 12 พ.ย. (ผู้ใช้ขอ)
+// ซ่อนส่วน "ผิวสมจริงด้วย AI" ในแผงแต่งรูปและปุ่มใต้รูป · รูปที่ปรับผิวไว้แล้วยังเทียบกับ "ต้นฉบับก่อนปรับผิว" ได้เหมือนเดิม
+// route /api/refine-skin และโค้ดยังอยู่ (ไม่มีอะไรในหน้าเว็บเรียกแล้ว) เปิดใหม่ = true
+const REFINE_SKIN = false;
+
 // การ์ด "ตามสไตล์" ในขั้นมุมมอง: วาดระยะ/มุมที่สไตล์นั้นใช้ (เดาจากชื่อไทยของสไตล์ ใช้แค่รูปประกอบ ไม่ได้ส่งให้ AI)
 const presetFraming = (p: Preset) => (p.fullBody ? 'full' : 'waist');
 const presetAngle = (p: Preset) => {
@@ -139,8 +149,9 @@ export default function TryOn() {
     poseMode: poseModeChoice, // เอาอะไรจากรูปท่าโพสต์ (ใช้เมื่อ FIXED_POSE_MODE = null)
     light: lightChoice, // ลอกทั้งช็อต: แสงจากรูปต้นแบบ หรือจากสไตล์ถ่ายภาพ
     mood: faceMood, gaze: gazeId, // FACE_MOODS / GAZES ('' = ไม่กำหนด)
-    aspect, quality, extra, harmonize, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
+    aspect, quality, extra, harmonize: harmonizeChoice, props: heldProps, background: backgroundMode, goal: photoGoal, autoRepair,
   } = choices;
+  const harmonize = HARMONIZE && harmonizeChoice; // ปิดอยู่ = ไม่มีรอบสองเสมอ
   const [outfitTab, setOutfitTab] = useState<WearSlot>('top'); // แท็บในขั้นเสื้อผ้า
   const [tone, setTone] = useState<string | null>(null); // สีผิว null = สีเดิม
   const [amounts, setAmounts] = useState(NO_RETOUCH);
@@ -705,7 +716,7 @@ export default function TryOn() {
     try {
       const cv = await currentCanvas();
       if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
-      await saveImageFile(await outputBlob(cv), `snapads-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
+      await saveImageFile(await outputBlob(cv), `lolo-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
       setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
@@ -1051,10 +1062,10 @@ export default function TryOn() {
             ))}
           </div>
         </Section>
-        <label className="check">
+        {HARMONIZE && <label className="check">
           <input type="checkbox" checked={harmonize} onChange={(e) => update({ harmonize: e.target.checked })} />
           <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
-        </label>
+        </label>}
       </details>
       {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
       {SET_SHOOT && <div className="gen-row single">
@@ -1095,7 +1106,7 @@ export default function TryOn() {
   }
   // edit panel content = production step-9 panel unchanged (Go list item 7)
   const editPanel = <>
-    <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
+    {REFINE_SKIN && <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
       <p className="muted-text">เพิ่มรายละเอียดผิวจากรูปที่สร้างไว้ ได้รูปใหญ่ขึ้น 1664×2496 หน้าละเอียดขึ้น (~45 วินาที) เก็บต้นฉบับและรูปใหม่แยกกัน</p>
       <button className="btn btn-secondary" disabled={busy !== null || !canRefineSkin} onClick={() => void refineSkin()}>
         <IconSparkle /> ปรับผิวสมจริง
@@ -1103,7 +1114,7 @@ export default function TryOn() {
       {!shown && <p className="muted-text">เลือกรูปที่สร้างแล้วจากคลังก่อน</p>}
       {shown && !canRefineSkin && <p className="muted-text">ต้องตั้งค่า OpenAI API key ก่อนใช้การปรับผิว</p>}
       {shown?.refinedFrom && <p className="muted-text">รูปนี้ปรับผิวแล้ว · ปิดลุคฟิล์มอัตโนมัติเพื่อคงรายละเอียดผิว</p>}
-    </Section>
+    </Section>}
     <Section title="รีทัช" note="ปรับได้ทันที ไม่เสียเงิน">
       <div className="sliders">
         {SLIDERS.map(([id, label]) => (
@@ -1183,7 +1194,7 @@ export default function TryOn() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">SnapAds <span className="beta">Beta</span></div>
+        <div className="brand">Lolo <span className="beta">Beta</span></div>
         <PageSwitch current="model" />
         <div className="status" role="status" title={status}>
           {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
@@ -1241,7 +1252,7 @@ export default function TryOn() {
               <figure className={'zoomable' + (awaiting ? ' awaiting' : '')} title={awaiting ? undefined : 'กดเพื่อดูเต็มจอและซูม'}
                 onClick={awaiting ? undefined : () => void openViewer(false)}>
                 <canvas ref={canvasRef} />{compare && <figcaption>{skinOriginal ? 'ปรับผิวแล้ว' : 'หลังแต่ง'}</figcaption>}
-                {awaiting && <div className="after-empty"><b>ยังไม่มีการปรับ</b><span>ปรับรีทัชหรือกดปรับผิวสมจริงในแผงแต่งรูป ผลจะขึ้นที่นี่</span></div>}
+                {awaiting && <div className="after-empty"><b>ยังไม่มีการปรับ</b><span>{REFINE_SKIN ? 'ปรับรีทัชหรือกดปรับผิวสมจริงในแผงแต่งรูป ผลจะขึ้นที่นี่' : 'ปรับรีทัชในแผงแต่งรูป ผลจะขึ้นที่นี่'}</span></div>}
               </figure>
               {/* item 6: on the stage background, generated images only */}
               {!editing && <button type="button" ref={editBtnRef} className="btn btn-primary edit-btn" onClick={() => setEditing(true)}><IconEdit /> แต่งรูป</button>}
@@ -1261,7 +1272,7 @@ export default function TryOn() {
               onClick={() => setLocalEdit({ src: shown.src, caption: shown.caption })}><IconRetouch /> แก้เฉพาะจุด</button>}
             {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
               onClick={() => setCurrent(results.findIndex((r) => r.src === shown.editedFrom))}>ดูต้นฉบับ</button>}
-            {shown && <button className="btn btn-secondary tool" disabled={busy !== null || !canRefineSkin}
+            {REFINE_SKIN && shown && <button className="btn btn-secondary tool" disabled={busy !== null || !canRefineSkin}
               title="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8 ได้รูปใหม่ 1664×2496" onClick={() => void refineSkin()}>
               <IconSparkle /> ปรับผิวสมจริง
             </button>}
