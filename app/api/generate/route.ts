@@ -13,6 +13,12 @@ import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
 import { ESTIMATED_TOKENS, quotaBlock, recordUsage } from '@/lib/usage';
 
+const HARMONIZE = false;
+// รูปท่า + ฉากที่เลือก ขั้น 1 (ฉากว่าง) ทำที่คุณภาพ medium (12 พ.ย. ผู้ใช้เลือกหลังทดสอบ): ขั้น 2 เห็นฉากนี้แค่ย่อเหลือ ~819×1024 (inputJpeg)
+// ทดสอบ 2 เคสจริงจากเว็บ (6 พ.ย.): ห้อง แสง กรอบภาพเหมือนเดิม ฉากนุ่มลงนิดเดียว · ประหยัด ~1,780 โทเคน ≈ ฿1.8 ต่อรูป (฿6.5 -> ฿4.7) เร็วขึ้น ~8 วินาที
+// เลือก low ไว้ = ขั้น 1 low ด้วย (ไม่ให้ขั้น 1 สูงกว่ารูปสุดท้าย) · ขั้น 2 (รูปที่ลูกค้าได้) ใช้คุณภาพที่เลือกเหมือนเดิม
+const ROOM_QUALITY = 'medium';
+
 export const maxDuration = 300;
 
 // what = คำบรรยายประเภท, show = ท่าที่ทำให้ของชิ้นนี้เด่น (ทั้งคู่มาจาก ACCESSORY_TYPES)
@@ -197,7 +203,8 @@ export const POST = post(async (req) => {
   const size = isGpt25(String(req.model)) ? GPT25_SIZES[baseSize] : baseSize;
   const opt = { aspect, size, quality: req.quality ?? 'medium' };
 
-  const harmonizeText = req.harmonize && !setRef ? harmonizePrompt(look) : null; // ชุดภาพ: รูปหลักปรับแสงมาแล้ว
+  // ปรับแสงรอบสอง ปิดแล้ว 12 พ.ย. (ผู้ใช้ขอ: จ่าย 2 เท่า) — ไม่ทำแม้ request เก่าจะส่ง harmonize: true มา (หน้าเว็บที่เปิดค้าง) · เปิดใหม่ = HARMONIZE true + TryOn.tsx
+  const harmonizeText = HARMONIZE && req.harmonize && !setRef ? harmonizePrompt(look) : null; // ชุดภาพ: รูปหลักปรับแสงมาแล้ว
 
   // ---------- log สิ่งที่ส่งให้ AI (lib/genlog.ts) แบ่งเป็น ai / model / element / pose / style / prompt ----------
   // params = ค่าที่ lib/ai.ts ส่งให้เจ้านั้นจริง (OpenAI บางโมเดลไม่รับ input_fidelity แล้วส่งใหม่แบบไม่ใส่ — ดูได้ใน terminal)
@@ -230,7 +237,8 @@ export const POST = post(async (req) => {
   if (refLight) style.refLight = refLight; // แสงที่ AI อ่านจากรูปต้นแบบ (ส่งต่อในพรอมต์ด้วย)
   if (skinLight) style.skinLight = skinLight; // แสงบนผิวที่ AI อ่านจากรูปต้นแบบ
   if (sceneLight) style.sceneLight = sceneLight; // แสงที่ AI อ่านจากรูปฉาก
-  if (shotRoom) style.roomScene = 'ขั้น 1 ถ่ายรูปฉากที่เลือกใหม่ตามรูปท่าก่อน แล้วส่งฉากใหม่แทนรูปฉากเดิมในพรอมต์หลัก';
+  const roomQuality = opt.quality === 'low' ? 'low' : ROOM_QUALITY;
+  if (shotRoom) style.roomScene = `ขั้น 1 ถ่ายรูปฉากที่เลือกใหม่ตามรูปท่าก่อน (คุณภาพ ${roomQuality}) แล้วส่งฉากใหม่แทนรูปฉากเดิมในพรอมต์หลัก`;
   if (!isDirector && text(req.extra)) style.extra = text(req.extra)!;
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
@@ -270,7 +278,7 @@ export const POST = post(async (req) => {
     if (roomPrompt) {
       // ขั้น 1 -> ฉากใหม่แทนรูปฉากเดิม (รูปเดิมยังอยู่ใน log ที่ Image เดียวกัน) แล้วอ่านแสงของฉากใหม่ สร้างพรอมต์หลักใหม่
       const sceneAt = inputs.findIndex((x) => x.role === 'ฉาก'), poseAt = inputs.findIndex((x) => x.role === 'ท่าโพสต์');
-      const room = await generateImage(req.model, [images[sceneAt], images[poseAt]], roomPrompt, opt);
+      const room = await generateImage(req.model, [images[sceneAt], images[poseAt]], roomPrompt, { ...opt, quality: roomQuality });
       calls++;
       tokens += room.tokens;
       images[sceneAt] = await inputJpeg(await cropTo(room, aspect));

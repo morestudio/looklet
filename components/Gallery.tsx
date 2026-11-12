@@ -105,7 +105,7 @@ export default function Gallery() {
 
   return <div className="app gallery-page">
     <header className="topbar">
-      <div className="brand">SnapAds <span className="beta">Beta</span></div>
+      <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="gallery" />
       <div className="status" role="status">{error}</div>
       <div className="top-actions">
