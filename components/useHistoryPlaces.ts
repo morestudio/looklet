@@ -1,6 +1,6 @@
 'use client';
 // a studio page's history strip <-> /gallery (TryOn, Packshot); place rules live in app/api/update and app/api/delete
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from '@/lib/browser';
 
 type Placed = { src: string; inGallery?: boolean };
@@ -11,6 +11,7 @@ export function useHistoryPlaces<R extends Placed>(
   setCurrent: Dispatch<SetStateAction<number | null>>,
   setStatus: (status: string) => void,
 ) {
+  const [removingSrc, setRemovingSrc] = useState<string | null>(null);
   const latest = useRef(results); // read after awaits: results can grow at the front (new generation) meanwhile
   useEffect(() => { latest.current = results; }, [results]);
   const pending = useRef(new Map<string, Promise<unknown>>()); // in-flight bookmark request per src
@@ -50,5 +51,11 @@ export function useHistoryPlaces<R extends Placed>(
     setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
   }
 
-  return { toggleGallery, removeFromHistory };
+  const removeDialog = removingSrc ? {
+    inOtherPlace: Boolean(results.find((r) => r.src === removingSrc)?.inGallery),
+    onCancel: () => setRemovingSrc(null),
+    onConfirm: () => { const src = removingSrc; setRemovingSrc(null); void removeFromHistory(src); },
+  } : null;
+
+  return { toggleGallery, removeFromHistory, askRemove: setRemovingSrc, removeDialog };
 }

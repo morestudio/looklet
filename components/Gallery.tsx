@@ -8,12 +8,12 @@ import { IconBookmark, IconEdit, IconHeart, IconInfo, IconTrash } from './icons'
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { api, thumbSrc } from '@/lib/browser';
+import type { StoredResultBase, StylePlan } from '@/lib/result-types';
 import { DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
 
-type Result = {
-  src: string; created: number; caption?: string; page?: 'product'; editedFrom?: string; refinedFrom?: string; favorite?: boolean; productPhotos?: string[];
-  inGallery?: boolean; addedToGalleryAt?: number; inHistory?: boolean;
-  recipe?: { pick?: Record<string, unknown> }; stylePlan?: { name: string; th: string }; posePlan?: { name: string; th: string };
+type Result = StoredResultBase<{ pick?: Record<string, unknown> }> & {
+  created: number; page?: 'product'; refinedFrom?: string; favorite?: boolean; productPhotos?: string[];
+  addedToGalleryAt?: number; stylePlan?: StylePlan; posePlan?: StylePlan;
 };
 type Filter = 'all' | 'model' | 'product';
 const FILTERS: { id: Filter; label: string }[] = [{ id: 'all', label: 'ทั้งหมด' }, { id: 'model', label: 'นางแบบ' }, { id: 'product', label: 'สินค้า' }];

@@ -20,10 +20,11 @@ import {
   IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, StartFromImageDialog, TokenUsage, useChosenSteps } from './ui';
 import { useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import { recipeKey } from '@/lib/recipe';
+import type { ResultBase, StoredResultBase } from '@/lib/result-types';
 import { useRetouchCanvas, type Amounts, type RetouchId } from './useRetouchCanvas';
 import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
@@ -103,12 +104,11 @@ type FinishChoice = (typeof FINISH_LOOKS)[number]['id'];
 
 type PosePlan = StoredPosePlan;
 // set = อยู่ในชุดภาพหลายมุม, finish = ลุคที่เหมาะกับรูปนี้, posePlan = ท่าที่ AI คิดให้
-type Result = { src: string; caption: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; recipe?: Partial<Recipe>; inGallery?: boolean };
+type Result = ResultBase<Recipe> & { finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภาพ (server รับแค่ตัวอักษร ตัวเลข - _)
-type SetTag = { id: string; index: number }; // ชุดภาพหลายมุม (เหมือน SetTag ใน lib/storage.ts — ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
 // page = 'product' -> รูปจากหน้าสินค้า (components/Packshot.tsx) ไม่โชว์ในประวัติรูปของหน้านี้
-type Stored = { src: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: FilmLook; refinedFrom?: string; editedFrom?: string; posePlan?: PosePlan; page?: string; recipe?: Partial<Recipe>; inGallery?: boolean; inHistory?: boolean };
+type Stored = StoredResultBase<Recipe> & { finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
 // ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
@@ -180,7 +180,6 @@ export default function TryOn() {
   const [analyzing, setAnalyzing] = useState<string[]>([]);
   // รูปที่กำลังเก็บขึ้น server (ทุกขั้น) ขึ้นการ์ดรอจนเก็บเสร็จ — เดิมไม่มีการ์ด รูปหายไปหลายวินาทีบนเน็ตมือถือ ผู้ใช้นึกว่ารูปหาย (22 ต.ค.)
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]);
-  const [removingSrc, setRemovingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [saveSrc, setSaveSrc] = useState<string | null>(null); // ดาวน์โหลดไม่ได้ (browser ในแอป) -> โชว์รูปให้กดค้างบันทึก
   // ดูรูปเต็มจอ + ซูม (temp = blob URL ต้องคืนตอนปิด) — เปิดมาแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม (29 ต.ค. ผู้ใช้ขอ)
@@ -417,7 +416,7 @@ export default function TryOn() {
     });
   }
 
-  const { toggleGallery, removeFromHistory } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
+  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
 
   // ใส่หน้าจริงจากรูปนางแบบแทนหน้าที่ AI วาดใหม่ แล้วเซฟเป็นรูปใหม่ (รูปจาก AI ยังอยู่ไว้เทียบ)
   // ทำไม่ได้ (หาหน้าไม่เจอ / หน้าหันคนละมุม) -> บอกเหตุผล แล้วใช้รูปจาก AI ตามเดิม
@@ -1166,7 +1165,7 @@ export default function TryOn() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => setRemovingSrc(results[i].src)} />
+      <DeleteButton onClick={() => askRemove(results[i].src)} />
       <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
@@ -1310,14 +1309,11 @@ export default function TryOn() {
 
       {shotChoice && <ShotChoiceDialog proposal={shotChoice.proposal} references={shotChoice.references} onChoose={shotChoice.choose} />}
       {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
-      {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
-        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
+      {sync.confirm && <StartFromImageDialog onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
       {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
         onCancel={() => setDeletingUpload(null)}
         onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
-      {removingSrc && <RemoveImageDialog from="history" inOtherPlace={Boolean(results.find((r) => r.src === removingSrc)?.inGallery)}
-        onCancel={() => setRemovingSrc(null)}
-        onConfirm={() => { setRemovingSrc(null); void removeFromHistory(removingSrc); }} />}
+      {removeDialog && <RemoveImageDialog from="history" {...removeDialog} />}
       {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
         body="ตัวเลือกทุกขั้นจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
         cancel="ยกเลิก" confirm="ล้าง"

@@ -15,6 +15,9 @@ import { GRID_THUMB, sbDelete, sbGetObject, sbList, sbMeta, sbPutObject, sbRead,
 
 export { THUMB_WIDTHS };
 import type { StoredPosePlan } from './photo-director';
+import type { SetTag, StylePlan } from './result-types';
+
+export type { SetTag, StylePlan };
 
 const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
@@ -78,15 +81,13 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
   return urlOf(where, file);
 }
 
-// set = ชุดภาพหลายมุม: id เดียวกันทั้งชุด + ลำดับในชุด (SET_SHOTS) ไว้จัดกลุ่มในประวัติรูป
-export type SetTag = { id: string; index: number };
 // page = 'product' -> รูปจากหน้าสินค้า (ไม่มี = หน้านางแบบ) แต่ละหน้าโชว์เฉพาะรูปของตัวเองในประวัติรูป
 // stylePlan = พร็อพที่ AI ตัววางแผนคิดให้ (หน้าสินค้า)
 export type Stored = {
   src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off';
   productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
   editedFrom?: string;
-  refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
+  refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: StylePlan;
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
   favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image
   // two places for one result; the file is deleted when it is in neither (/api/delete)
