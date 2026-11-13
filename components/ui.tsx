@@ -88,9 +88,9 @@ export function SaveImageDialog({ src, onClose }: { src: string; onClose: () => 
 }
 
 // ปุ่ม × (ลบ) มุมซ้ายบนของการ์ด/รูปย่อ
-export function DeleteButton({ onClick, title = 'ลบรูปนี้ (ย้ายไปถังขยะ)', children = '×' }: { onClick: () => void; title?: string; children?: ReactNode }) {
+export function DeleteButton({ onClick, title = 'ลบรูปนี้ (ย้ายไปถังขยะ)' }: { onClick: () => void; title?: string }) {
   return (
-    <button className="del" title={title} aria-label={title} onClick={(e) => { e.stopPropagation(); onClick(); }}>{children}</button>
+    <button className="del" title={title} aria-label={title} onClick={(e) => { e.stopPropagation(); onClick(); }}>×</button>
   );
 }
 

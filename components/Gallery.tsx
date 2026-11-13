@@ -3,7 +3,7 @@
 // raw stored file; lib/film.ts finish not applied
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IconBookmark, IconEdit, IconHeart, IconInfo } from './icons';
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
@@ -38,6 +38,7 @@ export default function Gallery() {
   const [removing, setRemoving] = useState<Result | null>(null); // pending ConfirmDialog
   const [infoSrc, setInfoSrc] = useState<string | null>(null); // image shown in the info panel
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set()); // input pictures deleted since (404)
+  const pendingFav = useRef(new Set<string>());
   const me = useMe();
   const router = useRouter();
   const showRaw = me === null || me.role !== 'customer'; // raw meta for team / superadmin; null = no auth (local tool)
@@ -62,6 +63,8 @@ export default function Gallery() {
 
   // ♡ shown at once, put back if saving fails (meta.favorite, /api/update)
   async function toggleFav(r: Result) {
+    if (pendingFav.current.has(r.src)) return;
+    pendingFav.current.add(r.src);
     const set = (favorite: boolean) => setResults((list) => list && list.map((x) => (x.src === r.src ? { ...x, favorite } : x)));
     set(!r.favorite);
     try {
@@ -70,6 +73,8 @@ export default function Gallery() {
     } catch (err) {
       set(Boolean(r.favorite));
       setError('บันทึกรูปที่ชอบไม่สำเร็จ: ' + (err as Error).message);
+    } finally {
+      pendingFav.current.delete(r.src);
     }
   }
 
