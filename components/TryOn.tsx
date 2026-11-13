@@ -1166,7 +1166,7 @@ export default function TryOn() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => setRemovingSrc(results[i].src)} />
+      <DeleteButton title={results[i].inGallery ? 'เอาออกจากรูปที่สร้างแล้ว' : 'ลบรูปนี้ถาวร'} onClick={() => setRemovingSrc(results[i].src)} />
       <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
