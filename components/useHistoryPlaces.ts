@@ -52,3 +52,23 @@ export function useHistoryPlaces<R extends Placed>(
 
   return { toggleGallery, removeFromHistory };
 }
+
+// ← → step through the history strip in on-screen order (order = results indices as drawn, sets grouped); "รูปใหม่" (null) comes first
+export function useHistoryKeys(order: number[], setCurrent: Dispatch<SetStateAction<number | null>>) {
+  const latest = useRef(order);
+  useEffect(() => { latest.current = order; });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return; // Cmd/Alt+← = browser back
+      if (document.querySelector('dialog[open]')) return; // a confirm/viewer dialog is on top
+      if ((e.target as Element).closest?.('input, textarea, select')) return; // sliders, radios, text keep their arrows
+      e.preventDefault(); // no native sideways scroll on top of ours
+      const seq = [null, ...latest.current];
+      setCurrent((c) => seq[Math.min(seq.length - 1, Math.max(0, seq.indexOf(c) + step))]);
+      requestAnimationFrame(() => document.querySelector('.history .active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setCurrent]);
+}

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
-import { useHistoryPlaces } from './useHistoryPlaces';
+import { useHistoryKeys, useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import { recipeKey } from '@/lib/recipe';
 import CreativeShot from './CreativeShot';
@@ -1038,13 +1038,15 @@ export default function Packshot() {
     </div>
   );
   const historyItems: ReactNode[] = [];
+  const historyOrder: number[] = []; // results indices as drawn, for ← →
   const seenSets = new Set<string>();
   results.forEach((r, i) => {
-    if (!r.set) return void historyItems.push(thumb(i));
+    if (!r.set) { historyOrder.push(i); return void historyItems.push(thumb(i)); }
     const id = r.set.id;
     if (seenSets.has(id)) return;
     seenSets.add(id);
     const members = results.map((x, j) => ({ x, j })).filter(({ x }) => x.set?.id === id).sort((a, b) => a.x.set!.index - b.x.set!.index);
+    historyOrder.push(...members.map(({ j }) => j));
     const left = pendingSet?.id === id ? pendingSet.left : 0;
     historyItems.push(
       <div className="set-group" key={'set-' + id}>
@@ -1056,6 +1058,7 @@ export default function Packshot() {
       </div>,
     );
   });
+  useHistoryKeys(historyOrder, setCurrent);
 
   const empty = !shown && !product;
   return (
