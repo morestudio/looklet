@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { IconBookmark, IconEdit, IconHeart, IconInfo, IconTrash } from './icons';
+import { IconBookmark, IconEdit, IconHeart, IconInfo } from './icons';
 import { SignOutButton } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { api, thumbSrc } from '@/lib/browser';
@@ -142,7 +142,7 @@ export default function Gallery() {
                 {favButton(r)}
                 <button type="button" className="gallery-info-btn" title="ข้อมูลรูปนี้" aria-label="ข้อมูลรูปนี้" aria-pressed={infoSrc === r.src}
                   onClick={() => setInfoSrc(r.src)}><IconInfo /></button>
-                <DeleteButton onClick={() => setRemoving(r)}><IconTrash /></DeleteButton>
+                <DeleteButton title={r.inHistory !== false ? 'เอาออกจากแกลลอรี่' : 'ลบรูปนี้ถาวร'} onClick={() => setRemoving(r)} />
               </div>
             ))}
           </div>}
