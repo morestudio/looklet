@@ -34,7 +34,7 @@ import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
   PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
   NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
-  HAND_MODES, HAND_POSES, handPoses, resolveHandPose, CUSTOM_ANGLE, customAngleShot, turntableAngle,
+  HAND_MODES, HAND_POSES, handPoses, resolveHandPose, CUSTOM_ANGLE, customAngleShot, turntableAngle, EXTRA_MAX,
 } from '@/lib/packshot';
 
 const KIND = { product: 'products', ref: 'product-refs', scene: 'product-scenes', prop: 'product-props' } as const;
@@ -1008,7 +1008,7 @@ export default function Packshot() {
         </button>)}</div>
       </Section>
       <Section title="สั่งเพิ่มเติม">
-        <textarea className="text-input" value={extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
+        <textarea className="text-input" value={extra} maxLength={EXTRA_MAX} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
       </Section>
       <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ</small></summary>

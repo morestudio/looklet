@@ -7,6 +7,10 @@
 // ยังไม่ได้ทดสอบเทียบกับรูปตัวอย่าง (ผู้ใช้ให้ข้ามการทดสอบ 26 ต.ค. จะลองเองบนเว็บทดสอบ)
 import { describeTurn, turnSummary, type Turn } from './turntable';
 
+// สั่งเพิ่มเติม: ช่องพิมพ์ คำสั่งที่ส่งให้ AI และ log ใช้ความยาวเดียวกัน
+// (เดิมช่องรับ 1,000 แต่ส่ง AI แค่ 400 ตัวแรก ลูกค้า MAISON 2.11 พิมพ์ยาวทุกรูป ประโยค "สายพาดขอบชาม" โดนตัดทิ้ง 16 พ.ย.)
+export const EXTRA_MAX = 1000;
+
 // ---------- ประเภทสินค้า: AI ดูรูปตอนอัปโหลดแล้วเลือกให้ (lib/ai.ts describeProduct) ----------
 // stand = วางบนฉากยังไง (มุมปกติ), flat = วางนอนยังไง (มุมมองตรงลงมา)
 export type ProductType = { id: string; name: string; prompt: string; stand: string; flat: string };

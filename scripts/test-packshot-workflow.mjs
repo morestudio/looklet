@@ -8,6 +8,7 @@ const cache = new Map();
 const calls = [];
 const planned = [];
 const saved = []; // meta passed to saveImage
+const logs = []; // generation logs (writeGenerateLog)
 const ai = {
   availableModels: () => [{ id: 'test:image' }],
   describeLighting: async () => 'soft daylight',
@@ -27,13 +28,13 @@ function load(file) {
     '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }) },
     '@/lib/storage': { saveImage: async (_where, _data, _mime, meta) => { saved.push(meta); return '/test/result.jpg'; } },
     '@/lib/usage': { quotaBlock: async () => null, recordUsage: async () => {} },
-    '@/lib/genlog': { localTime: () => 'test', sentences: (s) => s, writeGenerateLog: async () => {} },
+    '@/lib/genlog': { localTime: () => 'test', sentences: (s) => s, writeGenerateLog: async (entry) => { logs.push(entry); } },
   };
   new Function('require', 'module', 'exports', code)((id) => {
     if (id in mocks) return mocks[id];
     if (id === '@/lib/creative') return load('lib/creative.ts');
     if (id === '@/lib/recipe') return load('lib/recipe.ts'); // recipe stored with each image
-    if (id === '@/lib/packshot') return load('lib/packshot.ts');
+    if (id === '@/lib/packshot' || id === './packshot') return load('lib/packshot.ts');
     if (id === '@/lib/packshot-prompts') return load('lib/packshot-prompts.ts');
     if (id === './aspects' || id === '@/lib/aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
     if (id === './turntable' || id === '@/lib/turntable') return load('lib/turntable.ts'); // ตั้งมุมเอง
@@ -266,4 +267,16 @@ for (const other of [{ shot_type: 'detail', detail_target: 'logo' }, { shot_type
   assert(!out.call.images.some((i) => i.data === 'guide-jpeg'), other.shot_type);
   assert.doesNotMatch(out.call.prompt, /angle guide/);
 }
+// สั่งเพิ่มเติม: ส่งให้ AI และเก็บใน log ครบถึง EXTRA_MAX (1,000) ทุกประเภทภาพ · เดิมตัดที่ 400 (MAISON 2.11 ประโยคสายกระเป๋าหาย 16 พ.ย.)
+assert.equal(catalog.EXTRA_MAX, 1000);
+const longExtra = 'x'.repeat(900) + ' the strap drapes softly over the bowl edge';
+for (const kind of [{ shot_type: 'styled' }, { shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }, { shot_type: 'handshot' }, { shot_type: 'creative', creative_concept: creative }]) {
+  out = await shoot({ ...kind, extra: longExtra });
+  assert.equal(out.result.status, 200, kind.shot_type);
+  assert(out.call.prompt.includes(longExtra), kind.shot_type);
+  assert.equal(logs.at(-1).style.extra, longExtra, kind.shot_type);
+}
+out = await shoot({ shot_type: 'styled', extra: longExtra + 'y'.repeat(200) + 'TAIL' });
+assert(out.call.prompt.includes(longExtra) && !out.call.prompt.includes('TAIL'));
+assert.equal(logs.at(-1).style.extra.length, 1000);
 console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props, handshot poses and custom turntable angles.');

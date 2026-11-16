@@ -7,7 +7,7 @@ import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, plainShot, shotFramings, resolveProductAngle, resolveProductBackground,
   CUSTOM_ANGLE, customAngleShot, turntableAngle,
   AUTO_PROP_STYLE, AUTO_PROPS, HAND_MODES, LENS, NO_PROPS, PRODUCT_ANGLES, PRODUCT_FRAMINGS, PRODUCT_LIGHTS, PRODUCT_SET_SHOTS, REF_MODES,
-  handshotSingle, isProductAspect, pickOne, productPreset, productType, propStyle, resolveHandPose, type RefMode,
+  handshotSingle, isProductAspect, pickOne, productPreset, productType, propStyle, resolveHandPose, EXTRA_MAX, type RefMode,
 } from '@/lib/packshot';
 import { readCreativeConcept } from '@/lib/creative';
 import { HANDSHOT_SET, buildCreativePackshotPrompt, buildHandshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
@@ -193,7 +193,7 @@ export const POST = post(async (req) => {
   if (variant) styleLog.plinth = variant;
   if (refLight) styleLog.refLight = refLight;
   if (sceneLight) styleLog.sceneLight = sceneLight;
-  if (text(req.extra)) styleLog.extra = text(req.extra)!;
+  if (typeof req.extra === 'string' && req.extra.trim()) styleLog.extra = req.extra.trim().slice(0, EXTRA_MAX); // ข้อความเต็มเท่าที่ส่ง AI (text() ตัด 400)
   const refModeName = REF_MODES.find((m) => m.id === refMode)?.name;
   const logBase = {
     page: 'สินค้า' as const,
