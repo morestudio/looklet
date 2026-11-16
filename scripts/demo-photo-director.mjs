@@ -17,7 +17,9 @@ const folder = new URL(process.argv.includes('--fresh') ? '../output/photo-direc
 await fs.mkdir(folder, { recursive: true });
 const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 async function stored(key, name) {
-  const { data, error } = await db.storage.from('images').download(key);
+  // ไฟล์อยู่ที่คอลัมน์ object (จัดโฟลเดอร์ 10 พ.ย.) · แถวเก่าที่ยังไม่ย้าย = path เดิม
+  const { data: row } = await db.from('images').select('object').eq('path', key).maybeSingle();
+  const { data, error } = await db.storage.from('images').download(row?.object || key);
   if (error) throw new Error(`Cannot load ${name}: ${error.message}`);
   const bytes = Buffer.from(await data.arrayBuffer());
   await fs.writeFile(new URL(name, folder), bytes);

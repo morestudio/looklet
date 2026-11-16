@@ -35,11 +35,15 @@ export const SKIN_TONE = 'Most important, skin tone: keep the real skin tone of 
 // ขนาดคนกับฉาก: สไตล์สั่ง "เต็มความสูงภาพ" AI ขยายคนแทนที่จะขยับกล้องเข้าใกล้ ฉากยังไกลเท่ารูปฉาก คนเลยดูตัวใหญ่ผิดธรรมชาติ
 // (เจอ 20–21 ต.ค.: โซฟา/เก้าอี้ออฟฟิศดูเล็กกว่าตัวคน) -> บอกขนาดจริงของคนและของรอบตัว + ให้ขยับกล้องเข้าใกล้แทนการขยายคน
 // ลอกทั้งช็อต (framed = true): ระยะภาพมาจากรูปต้นแบบ ไม่บอก "ขอบบนเหนือหัว" ไม่งั้นรูปต้นแบบที่เป็นภาพใกล้หน้า AI ถอยกล้องออก (3 พ.ย.)
-const scaleLine = (framed = false) => 'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to '
+// ฉากที่เลือก + รูปท่า (roomAt = เลขรูปฉากที่ทำใหม่แล้ว): ฉากถ่ายระยะ/มุมตามรูปท่ามาแล้ว ห้ามขยับกล้องเข้าใกล้ (ทดสอบ 6 พ.ย. AI ซูมเข้าเองจนคนใหญ่กว่ารูปท่า)
+const scaleLine = (framed = false, roomAt: number | null = null) => 'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to '
   + `her: doors about 2 m tall${framed ? '' : ' with the top of the frame well above her head'}, ceilings about 2.7 m high, the seats of chairs and sofas at `
-  + 'about knee height, tables at about hip height and counters at about waist height. Never enlarge her against an unchanged background: '
-  + 'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer '
-  + 'and larger background objects and natural perspective.';
+  + 'about knee height, tables at about hip height and counters at about waist height. '
+  + (roomAt
+    ? `Never enlarge her against the background: her size comes only from her real height and the camera distance of image ${roomAt}.`
+    : 'Never enlarge her against an unchanged background: '
+      + 'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer '
+      + 'and larger background objects and natural perspective.');
 
 // ตำแหน่งในภาพ (ลอกทั้งช็อตใช้ตำแหน่งจากรูปต้นแบบแทน): ทดสอบ 21 ต.ค. สั่งกว้างๆ ว่า "ไม่ต้องอยู่กลาง" AI ยังวางกลางภาพทุกรูป (48–53%)
 // -> server สุ่มข้างให้ (placement) แล้วบอกเป็นตำแหน่งชัดๆ ในบรรทัดแรก + ย้ำท้ายคำสั่ง (แบบเดียวกับระยะ/มุมกล้อง)
@@ -112,6 +116,9 @@ export function buildPrompt({
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
   const shotScene = hasPose && poseMode === 'shot-scene';
+  // ฉากที่เลือก + รูปท่า ขั้น 2: รูปฉาก = ฉากของผู้ใช้ที่ถ่ายใหม่ตามรูปท่าแล้ว (buildRoomPrompt) -> คงกรอบภาพของฉาก ไม่ซูมเข้า ขนาดคนตามจริง
+  // (เพิ่มเฉพาะโหมดนี้ — คำสั่งโหมดอื่นต้องเหมือนเดิมทุกตัวอักษร)
+  const roomShot = hasPose && poseMode === 'shot-room' && hasSceneImage;
   const newScene = shotScene || hasSceneImage || sceneText;
   const place = Boolean(placement) && !shot && Boolean(newScene || hasPose || autoPose || posePlan);
   const at = place ? `, with her placed ${placedAt(placement!)}` : '';
@@ -214,7 +221,9 @@ export function buildPrompt({
       lines.push(`Image ${n} is a reference photo for the whole shot: recreate ${copy.slice(0, -1).join(', ')}, and ${copy.at(-1)}. `
         + `Use only the shot from image ${n}: do not copy that person's face, skin tone, hair, body shape, clothes or accessories.`
         + (look ? '' : ` Its lighting and color grading change the light on the model, never her skin tone, however pale the skin in image ${n} looks.`)
-        + ` Frame it exactly like image ${n}: show the same part of her body at the same size in the frame. If image ${n} is a close-up of `
+        + ` Frame it exactly like image ${n}: show the same part of her body at the same size in the frame.`
+        + (roomShot ? ` Image ${n + 1} already has this framing, so keep it as it is; she takes the place of the person in image ${n} at her real size.` : '')
+        + ` If image ${n} is a close-up of `
         + 'the head and shoulders, the result is the same close-up; never zoom out to show more of her body than image '
         + `${n} shows, and never crop in tighter.`
         + (shotScene
@@ -282,7 +291,11 @@ export function buildPrompt({
   if (shotScene) {
     // ฉากมาจากรูปต้นแบบ (บอกไว้แล้วด้านบน)
   } else if (hasSceneImage) {
-    lines.push(`Image ${n} is the location: place the model in this scene. Ignore any people in image ${n}.`);
+    lines.push(`Image ${n} is the location: place the model in this scene.`
+      + (roomShot ? ` Image ${n} was already photographed with the camera, framing and light of image ${n - 1}: keep its camera position, angle, `
+        + `framing and zoom exactly as they are, and do not crop in, zoom in or move the camera closer: the room stays framed exactly as in image ${n}. `
+        + `She takes the place of the person in image ${n - 1}, at her real size in this room.` : '')
+      + ` Ignore any people in image ${n}.`);
     // แสงในรูปฉากจริง: ไม่บอก AI ใส่แสง/เงาแบบช่างภาพเอง (เทียบกับรูป iPhone จริง 20 ต.ค. ห้องแสงนุ่ม แต่ AI ใส่เงาเข้ม)
     if (sceneLight) {
       lines.push(`The light in image ${n}: ${sceneLight} Light the model with this same light so she belongs in the scene; `
@@ -312,7 +325,7 @@ export function buildPrompt({
         ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its '
           + 'scale, depth of field, sharpness, color grading and grain. '
         : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ')
-      + scaleLine(shot)); // สีผิว: SKIN_TONE ต้นคำสั่ง (เดิม "only as affected by the scene lighting" เปิดช่องให้ฉากสว่างแล้วผิวขาวตาม)
+      + scaleLine(shot, roomShot ? n : null)); // สีผิว: SKIN_TONE ต้นคำสั่ง (เดิม "only as affected by the scene lighting" เปิดช่องให้ฉากสว่างแล้วผิวขาวตาม)
   }
   if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
   else if (look) lines.push(REALISM, look);
@@ -342,6 +355,45 @@ export function buildPrompt({
     + 'do not place required feet, toes, hands or head in them.');
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
+}
+
+// ---------- ฉากที่เลือก + รูปท่า ขั้น 1 (POSE_MODES 'shot-room'): ถ่ายฉากของผู้ใช้ใหม่ให้เหมือนรูปท่า ยังไม่มีคน ----------
+// รูปที่ส่ง: 1 = รูปฉากที่ผู้ใช้เลือก, 2 = รูปท่าที่ตัดเป็นสัดส่วนสุดท้ายแล้ว (route ตัดด้วย cropTo ไม่ใช้ AI)
+// ทดสอบ 5–6 พ.ย. (ผู้ใช้เลือกวิธีนี้): ทำฉากก่อนแล้วค่อยใส่คน แสงบนหน้าออกข้างถูก 4/4 (ทำขั้นเดียว 3/7) · ตัดรูปท่าเป็น 4:5 ก่อนส่ง = ขนาดคนที่ผู้ใช้รับได้
+// · ใช้ของในห้องจริงเท่านั้น (เดิมลอกผ้าห่ม/แผ่นเสียงจากรูปท่ามา) · คำทั่วไป เตียง/เก้าอี้/พื้น ไม่ผูกกับท่านอน (ลองท่านั่งในสวนแล้ว)
+// รู้ข้อจำกัด: มุมกล้องเปลี่ยนจากรูปห้องได้ไม่มาก, ห้องที่มีแดดแรงอยู่แล้วอาจไม่ย้ายทิศแดดตามรูปท่า
+export function roomCropLine(aspect: string) {
+  const [w, h] = aspect.split(':').map(Number);
+  return w / h > 2 / 3
+    ? `The top and bottom of this photo will be trimmed to make a ${aspect} frame, so keep everything important away from the top and bottom edges.`
+    : `The left and right edges of this photo will be trimmed to make a ${aspect} frame, so keep everything important away from the side edges.`;
+}
+
+export function buildRoomPrompt({ refLight = null, crop = null }: { refLight?: string | null; crop?: string | null }) {
+  return [
+    'Create one photograph of the room in image 1, taken exactly the way image 2 was taken: the same camera position, angle and height, '
+      + 'the same lens and framing, the same composition and exactly the same light.',
+    'There is no person in this photo.',
+    'Camera and composition: place the camera in the room of image 1 so that the photo is composed like image 2, with the same viewpoint and '
+      + 'the same kind of things in the same places in the frame (for example what is behind and beside the person in image 2), and the same amount of the room visible.',
+    'Image 2 already has the exact shape and framing this photo must have: frame it exactly like image 2. Camera distance: keep the camera as far '
+      + 'from the place where the person is in image 2 as in image 2, so that a person in that place would look exactly as large in the frame as the person in image 2. '
+      + 'Where the edges of image 2 cut the furniture or the room, cut this room at about the same places.',
+    'Everything in the photo comes from image 1: its furniture, bedding, cushions, rugs, curtains, lamps, plants, walls and floor, with their real look, '
+      + 'materials and colors, at their real size and in their real positions relative to each other. You may only move the camera, never the furniture.',
+    'Never add furniture or objects that are not in image 1, and never copy anything from image 2: not its furniture, bedding, cushions, blankets, props, '
+      + 'lamps, plants or decor. Image 2 is only a guide for the camera, the composition and the light.',
+    'The person in image 2 lies, sits or stands somewhere: use the matching place in this room (the bed if she lies or sits on a bed, a chair, sofa or bench '
+      + 'if she sits, open floor if she stands) and leave it empty and uncluttered, so a person can be placed there later. '
+      + 'Nobody is in the photo: no body, no clothing, no shadow of a person.',
+    'Light: relight the whole room with exactly the light of image 2' + (refLight ? ': ' + refLight : '.')
+      + ' Keep the same light direction in the frame, the same softness, brightness and contrast, the same white balance and color grading, '
+      + 'with shadows and highlights falling the same way as in image 2. Do not keep the light of image 1.',
+    'Image 1 and image 2 may be phone screenshots: ignore any app interface, text, icons or buttons in them.',
+    'It must look like an unretouched photo taken with a real camera in a real place, not a CGI render or an AI image: real textures, '
+      + 'natural light falloff, subtle grain, natural slightly muted color.',
+    ...(crop ? [crop] : []),
+  ].join(' ');
 }
 
 // ชุดภาพหลายมุม: รูปที่ 2 เป็นต้นไป — รูปที่ส่งเรียงเป็น: 1 รูปหลักของชุด, 2 นางแบบ, (ชุด), (ของเสริม...)

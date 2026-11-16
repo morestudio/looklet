@@ -41,7 +41,7 @@ export default function CreativeShot({ idea, onIdea, facts, onFacts, inspiration
           {/* ไอเดียที่เลือก: โชว์รายละเอียดเลย (เดิมซ่อนในปุ่มพับ) + ปุ่มสร้างรูปติดกับการ์ด */}
           {active && <div className="concept-detail">
             <dl className="preset-parts">{[['ฉาก', c.scene], ['พร็อพ', c.props], ['แสง', c.lighting], ['องค์ประกอบ', c.composition]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-            <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={onGenerate}>{generating ? 'กำลังสร้าง...' : 'สร้างรูปจากไอเดียนี้'}</button>
+            <button className="btn btn-primary gen-btn" disabled={!canGenerate} onClick={onGenerate}>{generating ? 'กำลังสร้างรูป…' : 'สร้างรูปจากไอเดียนี้'}</button>
           </div>}
         </Fragment>;
       })}</div>

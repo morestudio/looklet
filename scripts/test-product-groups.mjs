@@ -19,6 +19,7 @@ function load(file) {
   const customRequire = (id) => {
     if (id === 'server-only') return {};
     if (id === './storage-supabase') return { supabaseEnabled: false };
+    if (id === './images') return load('lib/images.ts'); // storage.ts ทำรูปย่อตอนเก็บ (เก็บในเครื่องไม่ใช้)
     if (id === './account') return load('lib/account.ts'); // ไม่มีบัญชี (null) = ทีม: เก็บลงเครื่องไม่กรอง
     if (id === '@/lib/route') return { post: (fn) => fn, json };
     if (id.startsWith('@/lib/')) return load(id.slice(2) + '.ts');

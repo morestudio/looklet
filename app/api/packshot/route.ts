@@ -12,6 +12,7 @@ import {
 import { readCreativeConcept } from '@/lib/creative';
 import { HANDSHOT_SET, buildCreativePackshotPrompt, buildHandshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
 import { json, post } from '@/lib/route';
+import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
 
@@ -58,6 +59,7 @@ export const POST = post(async (req) => {
   const setRef = image(req.set_ref);
   const setShot = setRef ? PRODUCT_SET_SHOTS.find((s) => s.id === req.set_shot) : undefined;
   if (setRef && !setShot) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
+  const recipe = storableRecipe(req.recipe); // every step's choices (lib/recipe.ts), stored with the image
   const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
     ? { id: req.set.id, index: req.set.index } : null;
   const finish = req.finish === 'phone' || req.finish === 'film' || req.finish === 'off' ? req.finish : null;
@@ -155,6 +157,9 @@ export const POST = post(async (req) => {
   const supportIndexes = inputs.flatMap((x, i) => x.role === 'product-detail' ? [i + 1] : []);
   if (supportIndexes.length) prompt += ` Images ${supportIndexes.join(', ')} are additional photographs of the SAME product, showing real sides and fine details. Use them as authoritative design evidence, never as styling or background references. Preserve the actual back, sides, base and features; do not invent details.`;
   const images = inputs.map((x) => jpeg(x.data));
+  // product photos actually sent, main first -> meta, shown on /gallery (recipe.pick.product is only the group id)
+  const productPhotos = inputs.filter((x) => x.role === 'product' || x.role === 'product-detail').map((x) => x.ref.src)
+    .filter((s): s is string => typeof s === 'string' && s.startsWith('/'));
 
   // ---------- log (lib/genlog.ts PackshotLog) ----------
   const readable = (src?: string) => {
@@ -224,7 +229,7 @@ export const POST = post(async (req) => {
     // เซฟทันที (เสียเงินไปแล้ว ห้ามหาย) — page = 'product' ให้แต่ละหน้าโชว์เฉพาะรูปของตัวเอง
     const src = await saveImage({ area: 'results' }, out.data, out.mime, {
       page: 'product', caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
-      ...(stylePlan ? { stylePlan } : {}),
+      ...(stylePlan ? { stylePlan } : {}), ...(recipe ? { recipe } : {}), ...(productPhotos.length ? { productPhotos } : {}),
     });
     const log = await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
     await recordUsage({ ...usage, status: 'ok', tokens, log });

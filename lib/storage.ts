@@ -10,12 +10,20 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { me, ownerMeta, visibleTo } from './account';
-import { sbDelete, sbList, sbMeta, sbRead, sbSave, sbUpdateMeta, supabaseEnabled } from './storage-supabase';
+import { thumbJpeg } from './images';
+import { GRID_THUMB, sbDelete, sbGetObject, sbList, sbMeta, sbPutObject, sbRead, sbReadThumb, sbSave, sbSaveThumb, sbUpdateMeta, supabaseEnabled, THUMB_WIDTHS } from './storage-supabase';
+
+export { THUMB_WIDTHS };
 import type { StoredPosePlan } from './photo-director';
+import type { SetTag, StylePlan } from './result-types';
+
+export type { SetTag, StylePlan };
 
 const ROOT = process.cwd();
 const RESULTS_DIR = path.join(ROOT, 'results');
 const UPLOADS_DIR = path.join(ROOT, 'images', 'uploads');
+// ภาพไฮไลต์สีแดงที่ส่งให้ AI ตอนแก้เฉพาะจุด (saveGuide) — เก็บในเครื่องไว้ใน logs/ (gitignore อยู่แล้ว)
+const GUIDES_DIR = path.join(ROOT, 'logs', 'guides');
 
 // หน้าสินค้าใช้คลังแยก: products = รูปสินค้า, product-refs = ช็อตต้นแบบ, product-scenes = รูปฉาก, product-props = พร็อพของฉัน (ไม่ปนกับฉากของหน้านางแบบ)
 // Supabase เก็บ kind เป็นข้อความ เพิ่มประเภทใหม่ได้โดยไม่ต้องแก้ตาราง
@@ -60,7 +68,10 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
   const name = stamp();
   const file = `${name}.${EXT[mime] ?? 'png'}`;
   if (supabaseEnabled) {
-    await sbSave(keyOf(where, file), where.area, where.area === 'uploads' ? where.kind : null, Buffer.from(dataB64, 'base64'), mime, meta);
+    const key = keyOf(where, file), data = Buffer.from(dataB64, 'base64');
+    await sbSave(key, where.area, where.area === 'uploads' ? where.kind : null, data, mime, meta);
+    // รูปย่อสำหรับตาราง/ประวัติรูปทำตอนเก็บเลย (มีรูปอยู่ในมือแล้ว ไม่ต้องดึงจาก Supabase) · ทำไม่ได้ = เปิดครั้งแรกค่อยทำ รูปที่เก็บแล้วห้ามพัง
+    await thumbJpeg(data, GRID_THUMB).then((t) => sbSaveThumb(key, GRID_THUMB, t)).catch(() => {});
     return urlOf(where, file);
   }
   const folder = folderOf(where);
@@ -70,16 +81,19 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
   return urlOf(where, file);
 }
 
-// set = ชุดภาพหลายมุม: id เดียวกันทั้งชุด + ลำดับในชุด (SET_SHOTS) ไว้จัดกลุ่มในประวัติรูป
-export type SetTag = { id: string; index: number };
 // page = 'product' -> รูปจากหน้าสินค้า (ไม่มี = หน้านางแบบ) แต่ละหน้าโชว์เฉพาะรูปของตัวเองในประวัติรูป
 // stylePlan = พร็อพที่ AI ตัววางแผนคิดให้ (หน้าสินค้า)
 export type Stored = {
   src: string; created: number; file: string; name?: string; caption?: string; type?: string; set?: SetTag; finish?: 'film' | 'phone' | 'off';
   productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string; productView?: string; productRemoved?: string;
   editedFrom?: string;
-  refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: { name: string; th: string };
+  refinedFrom?: string; posePlan?: StoredPosePlan; page?: 'product'; stylePlan?: StylePlan;
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
+  favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image
+  // two places for one result; the file is deleted when it is in neither (/api/delete)
+  inGallery?: boolean; addedToGalleryAt?: number; // ms
+  inHistory?: boolean; // absent = true
+  productPhotos?: string[]; // product page: product photos sent to the AI, main first (app/api/packshot)
 };
 
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
@@ -110,6 +124,7 @@ function resolveFile(parts: string[]) {
   let folder: string, file: string | undefined;
   if (parts[0] === 'results' && parts.length === 2) [folder, file] = [RESULTS_DIR, parts[1]];
   else if (parts[0] === 'uploads' && parts.length === 3 && isKind(parts[1])) [folder, file] = [path.join(UPLOADS_DIR, parts[1]), parts[2]];
+  else if (parts[0] === 'guides' && parts.length === 2) [folder, file] = [GUIDES_DIR, parts[1]];
   else return null;
   if (!file || file.startsWith('.') || /[\\/]/.test(file)) return null;
   const type = MIME[path.extname(file).slice(1).toLowerCase()];
@@ -122,32 +137,80 @@ export async function readImage(parts: string[]) {
   const f = resolveFile(parts);
   if (!f) return null;
   const auditor = me()?.role === 'superadmin';
+  if (f.key.startsWith('guides/')) return auditor ? readGuide(f) : null;
   const data = supabaseEnabled ? await sbRead(f.key, (meta) => auditor || visibleTo(meta)) : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
 }
 
-// แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ ที่มี .json อยู่แล้ว
-export async function updateMeta(src: string, meta: Record<string, string>) {
-  if (!src.startsWith(URL_PREFIX + 'uploads/')) return false;
-  const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
+// ---------- ภาพไฮไลต์สีแดงของแก้เฉพาะจุด (Image 2 ที่ส่งให้ AI) ----------
+// เดิมสร้างแล้วทิ้ง หน้าตรวจงานจึงไม่เห็นว่าระบายตรงไหน (ผู้ใช้ 10 พ.ย.: "ไม่เห็นสีแดง แปลว่าไม่ได้ส่งหรือเปล่า") -> เก็บ JPEG ย่อไว้
+// guides/<วันเวลา-สุ่ม>.jpg ไม่มีแถวในตาราง images (ไม่ขึ้นในคลัง) เปิดได้เฉพาะ superadmin (หน้าตรวจงาน) ลบผ่าน deleteImage ไม่ได้
+export async function saveGuide(jpeg: Buffer) {
+  const file = `${stamp()}.jpg`;
+  if (supabaseEnabled) await sbPutObject(`guides/${file}`, jpeg, 'image/jpeg');
+  else {
+    await fs.mkdir(GUIDES_DIR, { recursive: true });
+    await fs.writeFile(path.join(GUIDES_DIR, file), jpeg);
+  }
+  return `${URL_PREFIX}guides/${file}`;
+}
+async function readGuide(f: { full: string; key: string; type: string }) {
+  const data = supabaseEnabled ? await sbGetObject(f.key) : await fs.readFile(f.full).catch(() => null);
+  return data && { data, type: f.type };
+}
+
+// รูปย่อ (/api/files?w=, ตาราง/ประวัติรูป) สิทธิ์เหมือน readImage · Supabase = อ่านรูปย่อที่เก็บไว้ ไม่ดึงรูปเต็ม (ยังไม่มีค่อยทำครั้งเดียว)
+// เก็บในเครื่อง = ย่อสดทุกครั้ง (ไม่มีค่าโหลด)
+export async function readThumb(parts: string[], width: number) {
+  const f = resolveFile(parts);
+  if (!f) return null;
+  const auditor = me()?.role === 'superadmin';
+  if (f.key.startsWith('guides/')) return auditor ? readGuide(f) : null; // เก็บเป็นรูปย่ออยู่แล้ว (≤1024px)
+  const make = (full: Buffer) => thumbJpeg(full, width);
+  const data = supabaseEnabled
+    ? await sbReadThumb(f.key, width, (meta) => auditor || visibleTo(meta), make)
+    : await fs.readFile(f.full).then(make).catch(() => null);
+  return data && { data, type: 'image/jpeg' };
+}
+
+// results/ or uploads/ image by URL (never guides/); null = not ours
+function storedFile(src: string) {
+  if (!src.startsWith(URL_PREFIX + 'uploads/') && !src.startsWith(URL_PREFIX + 'results/')) return null;
+  return resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
+}
+const sidecar = (full: string) => full.slice(0, -path.extname(full).length) + '.json';
+
+// แก้ชื่อ/ประเภทของรูปที่เพิ่มเอง / ♡ ของรูปที่สร้าง (เขียนทับใน .json คู่กัน) แก้ได้เฉพาะรูปใน images/uploads/ และ results/ ที่มี .json อยู่แล้ว
+export async function updateMeta(src: string, meta: Record<string, string | boolean | number>) {
+  const f = storedFile(src);
   if (!f) return false;
   if (supabaseEnabled) return sbUpdateMeta(f.key, stripOwner(meta), (old) => visibleTo(old));
-  const file = f.full.slice(0, -path.extname(f.full).length) + '.json';
+  const file = sidecar(f.full);
   const old = await fs.readFile(file, 'utf8').then(JSON.parse, () => null);
   if (!old) return false;
   await fs.writeFile(file, JSON.stringify({ ...old, ...meta }));
   return true;
 }
 
+// visibleTo applies, null = missing or not visible
+export async function readMeta(src: string): Promise<Record<string, unknown> | null> {
+  const f = storedFile(src);
+  if (!f) return null;
+  if (supabaseEnabled) {
+    const meta = await sbMeta(f.key);
+    return meta && visibleTo(meta) ? meta : null;
+  }
+  return fs.readFile(sidecar(f.full), 'utf8').then(JSON.parse, () => null);
+}
+
 // ลบ = ย้ายไปถังขยะ (กู้คืนได้) ลบได้เฉพาะรูปใน results/ กับ images/uploads/ — บน Supabase ลบจริง
 export async function deleteImage(src: string) {
-  if (!src.startsWith(URL_PREFIX)) return false;
-  const f = resolveFile(src.slice(URL_PREFIX.length).split('/').map(decodeURIComponent));
+  const f = storedFile(src);
   if (!f) return false;
   if (supabaseEnabled) return visibleTo(await sbMeta(f.key)) && sbDelete(f.key);
   const trash = path.join(os.homedir(), '.Trash');
   const hasTrash = await fs.stat(trash).then((s) => s.isDirectory(), () => false);
-  for (const p of [f.full, f.full.slice(0, -path.extname(f.full).length) + '.json']) {
+  for (const p of [f.full, sidecar(f.full)]) {
     if (!(await fs.access(p).then(() => true, () => false))) continue;
     if (!hasTrash) {
       await fs.unlink(p);

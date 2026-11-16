@@ -1,5 +1,7 @@
 'use client';
 // Paper doll: stage before the first image. Croquis + one card per pick, placed by body row.
+import type { CSSProperties, ReactNode } from 'react';
+import { thumbSrc } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
 
 // item.src -> photo; item without src -> its name as text; keep -> "keep as is" text; neither -> dashed "+"
@@ -17,33 +19,36 @@ function DollCard({ slot, bare = false }: { slot: DollSlot; bare?: boolean }) {
     <button type="button" className={'doll-card' + (empty ? ' empty' : '') + (bare ? ' bare' : '') + (slot.changed ? ' changed' : '')} onClick={slot.onClick}
       title={empty ? `เลือก${label}` : `${label}: ${text}`} aria-label={empty ? `เลือก${label}` : `${label}: ${text}`}>
       <span className={'doll-pic' + (slot.fit === 'contain' ? ' contain' : '')}>
-        {item?.src ? <img src={item.src} alt="" /> : <span className="doll-text">{empty ? '+' : text}</span>}
+        {item?.src ? <img src={thumbSrc(item.src)} alt="" /> : <span className="doll-text">{empty ? '+' : text}</span>}
       </span>
       {!bare && <b>{label}</b>}
     </button>
   );
 }
 
-// >1 slot in a row (accessories): cards without labels, one shared label under the group
+// >1 slot in a row (accessories): one card frame holding unlabelled pictures + one label with the count, like a single card
 function DollRow({ slots, row }: { slots: DollSlot[]; row: number }) {
   if (!slots.length) return <div className="doll-row" style={{ gridRow: row + 1 }} />;
   if (slots.length === 1) return <div className="doll-row" style={{ gridRow: row + 1 }}><DollCard slot={slots[0]} /></div>;
   return (
     <div className="doll-row" style={{ gridRow: row + 1 }}>
-      <div className="doll-group">
-        <div className="doll-group-cards">{slots.map((s) => <DollCard key={s.id} slot={s} bare />)}</div>
-        <b className={slots.some((s) => s.changed) ? 'changed' : undefined}>{slots[0].label}</b>
+      <div className={'doll-group' + (slots.some((s) => s.changed) ? ' changed' : '')} style={{ '--n': slots.length } as CSSProperties}>
+        <div className="doll-group-cards">{slots.map((s) => <DollCard key={s.id} slot={{ ...s, changed: false }} bare />)}</div>
+        <b>{slots[0].label} {slots.length} ชิ้น</b>
       </div>
     </div>
   );
 }
 
-export function PaperDoll({ left, right, scene, chips, label }: {
-  left: Rows; right: Rows; scene: DollSlot; chips: DollChip[]; label: string;
+export function PaperDoll({ left, right, scene, chips, label, action }: {
+  left: Rows; right: Rows; scene: DollSlot; chips: DollChip[]; label: string; action?: ReactNode; // action: shown on its own line under the label
 }) {
   return (
     <div className="doll">
-      <div className="doll-label">{label}</div>
+      <div className="doll-head">
+        <div className="doll-label">{label}</div>
+        {action}
+      </div>
       <div className="doll-side left">
         {left.map((slots, i) => <DollRow key={i} slots={slots} row={i} />)}
         <div className="doll-scene"><DollCard slot={scene} /></div>

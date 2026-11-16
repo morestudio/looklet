@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react';
 import { authEnabled } from '@/lib/auth';
-import { USAGE_EVENT } from '@/lib/browser';
+import { thumbSrc, USAGE_EVENT } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
+import { IconBookmark } from './icons';
 
 // แถบเลื่อน (input range): Chrome/Safari ระบายส่วนที่เลือกเป็นสีหมึกไม่ได้เอง ต้องบอกเปอร์เซ็นต์ผ่าน --fill (globals.css)
 export function rangeFill(value: number, min: number, max: number): CSSProperties {
@@ -25,7 +26,7 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
         // รูปนางแบบเต็มตัว ซูมให้เห็นหน้า
         <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}>
           {/* cached img can complete before hydration attaches onLoad */}
-          <img src={item.src} alt={item.name} onLoad={done} onError={done}
+          <img src={thumbSrc(item.src)} alt={item.name} loading="lazy" decoding="async" onLoad={done} onError={done}
             ref={(img) => { if (img?.complete && loadedSrc !== item.src) done(); }} />
           {loading && <div className="pending-spin"><div className="spinner" /></div>}
         </div>
@@ -43,7 +44,7 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
 export function PendingCard({ src, label = 'AI กำลังดูว่าเป็นอะไร...' }: { src: string; label?: string }) {
   return (
     <div className="card pending">
-      <div className="pic"><img src={src} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
+      <div className="pic"><img src={thumbSrc(src)} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
       <span>{label}</span>
     </div>
   );
@@ -93,6 +94,34 @@ export function DeleteButton({ onClick, title = 'ลบรูปนี้ (ย�
   );
 }
 
+export function GalleryToggle({ inGallery, onClick }: { inGallery: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={'gallery-toggle' + (inGallery ? ' on' : '')} title={inGallery ? 'เอาออกจากแกลลอรี่' : 'บันทึกลงแกลลอรี่'} aria-label="บันทึกลงแกลลอรี่"
+      aria-pressed={inGallery} onClick={(e) => { e.stopPropagation(); onClick(); }}><IconBookmark filled={inGallery} /></button>
+  );
+}
+
+// a stored result's two places; removing it from its last place deletes the file (/api/delete)
+export type Place = 'history' | 'gallery';
+
+// inOtherPlace: /api/delete only takes it out of `from`; otherwise the file goes (Supabase: no trash)
+// copy: เอาออก = still in the other place, ลบ = gone · pageName: the result's studio page, for from="gallery"
+export function RemoveImageDialog({ from, inOtherPlace, pageName = 'นางแบบ', onCancel, onConfirm }: {
+  from: Place; inOtherPlace: boolean; pageName?: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  if (inOtherPlace) return <ConfirmDialog title={from === 'history' ? 'เอาออกจากรูปที่สร้างแล้ว?' : 'เอาออกจากแกลลอรี่?'}
+    body={from === 'history' ? 'รูปยังเก็บไว้ในแกลลอรี่' : `รูปยังอยู่ในหน้า${pageName}`} cancel="ยกเลิก" confirm="เอาออก"
+    onCancel={onCancel} onConfirm={onConfirm} />;
+  return <ConfirmDialog title="ลบรูปนี้ถาวร?"
+    body={(from === 'history' ? 'รูปนี้ไม่ได้บันทึกไว้ในแกลลอรี่' : `รูปนี้ไม่อยู่ในหน้า${pageName}แล้ว`) + ' ลบแล้วกู้คืนไม่ได้'}
+    cancel="ยกเลิก" confirm="ลบถาวร" onCancel={onCancel} onConfirm={onConfirm} />;
+}
+
+export function StartFromImageDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+    cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={onCancel} onConfirm={onConfirm} />;
+}
+
 // การ์ด "+ เพิ่มรูป"
 export function AddCard({ onFile }: { onFile: (f: File) => void }) {
   return (
@@ -135,13 +164,13 @@ export function Section({ title, note, children }: { title: string; note?: React
 
 // สลับหน้า นางแบบ (components/TryOn.tsx) / สินค้า (components/Packshot.tsx) อยู่ในหัวเว็บของทั้งสองหน้า
 // ปุ่ม "ถัดไป" เป็นพื้นหินขอบหมึก (.btn-ready) เมื่อผู้ใช้เลือกอะไรในขั้นนั้นแล้ว (คลิกตัวเลือก / พิมพ์ / อัปโหลด) — ค่าเริ่มต้นที่เลือกไว้ให้ไม่นับ
-// ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และปุ่มถัดไปเองไม่นับเป็นการเลือก
+// ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และแถบปุ่มล่าง (ถัดไป / สร้างรูป) ไม่นับเป็นการเลือก
 export function useChosenSteps<K extends string>(current: K) {
   const [chosen, setChosen] = useState<ReadonlySet<K>>(new Set());
   // markAs(key): a second panel showing another step at the same time (TryOn's right panel)
   const markAs = (key: K) => (e: SyntheticEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.next, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
+    if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
     setChosen((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   };
   return { chosen, mark: markAs(current), markAs, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
@@ -161,7 +190,8 @@ export function useMe() {
   return me;
 }
 
-export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' }) {
+// 'gallery' -> no active tab
+export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' | 'gallery' }) {
   const me = useMe();
   const tab = (id: 'model' | 'product' | 'admin', href: string, label: string) => (
     <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
@@ -169,6 +199,13 @@ export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin'
   return <nav className="page-switch" aria-label="เลือกหน้า">
     {tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}
     {me?.role === 'superadmin' && tab('admin', '/admin', 'แอดมิน')}
+  </nav>;
+}
+
+// PageSwitch markup, single tab -> /gallery
+export function GalleryLink({ active = false }: { active?: boolean }) {
+  return <nav className="page-switch" aria-label="แกลลอรี่">
+    <Link href="/gallery" className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>แกลลอรี่</Link>
   </nav>;
 }
 

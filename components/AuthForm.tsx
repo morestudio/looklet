@@ -50,7 +50,7 @@ export function LoginForm() {
 
   return (
     <div className="auth-card">
-      <div className="brand">SnapAds <span className="beta">Beta</span></div>
+      <div className="brand">Lolo <span className="beta">Beta</span></div>
       <form className="auth-form" onSubmit={(e) => void submitCode(e)}>
         <h1>เข้าใช้งาน</h1>
         <label>โค้ดเชิญ<input className="field auth-code" autoComplete="off" autoCapitalize="characters" spellCheck={false} required
@@ -92,7 +92,7 @@ export function ChangePasswordForm() {
 
   return (
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
-      <div className="brand">SnapAds <span className="beta">Beta</span></div>
+      <div className="brand">Lolo <span className="beta">Beta</span></div>
       <h1>เปลี่ยนรหัสผ่าน</h1>
       <label>รหัสผ่านใหม่<input className="field" type="password" autoComplete="new-password" required value={password}
         onChange={(e) => setPassword(e.target.value)} /></label>
@@ -100,12 +100,12 @@ export function ChangePasswordForm() {
         onChange={(e) => setConfirm(e.target.value)} /></label>
       {msg && <p className={msg.ok ? 'auth-ok' : 'auth-error'} role="alert">{msg.text}</p>}
       <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}</button>
-      <button className="btn btn-tertiary" type="button" onClick={() => go('/')}>← กลับไป SnapAds</button>
+      <button className="btn btn-tertiary" type="button" onClick={() => go('/')}>← กลับไป Lolo</button>
     </form>
   );
 }
 
-// ปุ่มออกจากระบบ (แถบบนของ SnapAds)
+// ปุ่มออกจากระบบ (แถบบนของ Lolo)
 export async function signOut() {
   await createClient().auth.signOut();
   go('/login');

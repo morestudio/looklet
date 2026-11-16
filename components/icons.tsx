@@ -1,9 +1,9 @@
 // icons.tsx — ไอคอนเส้น (stroke) ขนาด 24 ใช้สีตามตัวอักษร (currentColor)
 import type { ReactNode } from 'react';
 
-function Svg({ children, size = 22 }: { children: ReactNode; size?: number }) {
+function Svg({ children, size = 22, stroke = 1.5 }: { children: ReactNode; size?: number; stroke?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
@@ -31,6 +31,9 @@ export const IconRetouch = () => (
 );
 export const IconEdit = () => <Svg size={18}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m13 7 4 4" /></Svg>; // แต่งรูป button (Go list item 6)
 export const IconDownload = () => <Svg size={18}><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></Svg>;
+// circular arrow = start over (ล้าง under the paper doll label)
+// thicker stroke + full arrowhead: the 14px / 1.5 version was hard to read at text size
+export const IconReset = () => <Svg size={16} stroke={2.25}><path d="M3 12a9 9 0 1 0 2.8-6.5L3 8" /><path d="M3 3v5h5" /></Svg>;
 export const IconSearch = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5" /></Svg>;
 export const IconZoom = () => <Svg size={18}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5M11 8v6M8 11h6" /></Svg>;
 export const IconCompare = () => <Svg size={18}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M12 3v18" /></Svg>;
@@ -48,4 +51,16 @@ export const IconEraser = () => (
   <Svg size={20}><path d="M14.6 4.4a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10 19H6.2l-2.4-2.4a2 2 0 0 1 0-2.8z" /><path d="m9 10 5 5" /><path d="M10 19h10" /></Svg>
 );
 export const IconSignOut = () => <Svg size={18}><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3" /><path d="m16 17 5-5-5-5M21 12H9" /></Svg>;
-export const IconLeaf = () => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;
+// filled = in favorites (fill follows the text color)
+export const IconHeart = ({ filled = false }: { filled?: boolean }) => (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
+  </svg>
+);
+export const IconBookmark = ({ filled = false }: { filled?: boolean }) => (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinejoin="round" aria-hidden="true">
+    <path d="M6 3.5h12v17l-6-4.5-6 4.5z" />
+  </svg>
+);
+export const IconInfo = () => <Svg size={16}><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></Svg>;
+export const IconLeaf =() => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;

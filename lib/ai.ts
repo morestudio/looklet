@@ -168,7 +168,9 @@ export const describeProduct = (img: Img) => describeItem(img, PRODUCT_DESCRIBE)
 
 // ---------- อ่านแสงในรูปต้นแบบ (ลอกทั้งช็อต): บรรยายเป็นคำให้โมเดลเจนรูป ----------
 // สั่งแค่ "recreate its lighting" แล้ว AI ทำแสงนุ่ม/มืดลงเสมอ — คำบรรยายแบบช่างภาพ (แสงมาจากไหน แข็ง/นุ่ม เงาตกตรงไหน) ได้แสงตรงกว่า
-// โมเดลอ่านรูปตัวเล็ก ไม่ถึงสตางค์ต่อรูป เหมือน describeAccessory — พัง/ไม่มี key = null (ใช้คำสั่ง "recreate its lighting" อย่างเดียว)
+// คนอ่าน: GPT-6 Luna ก่อน -> Gemini Flash (ลำดับเดียวกับตัววางแผนท่า) · พัง/ไม่มี key = null (ใช้คำสั่ง "recreate its lighting" อย่างเดียว)
+// 5 พ.ย. (ผู้ใช้สั่งเปลี่ยน): เดิม Gemini Flash Lite -> gpt-4.1-mini ตอบไม่ตรงกันเองกับรูปเดิม (ทิศแสงบนหน้า 5/6 ตอบ "from the camera",
+// ถามซ้ำเปลี่ยนคำตอบ 2/5 รูป) · Luna และ Gemini Flash ตอบเหมือนเดิมทุกครั้ง (5/5 รูป x 2 รอบ)
 const LIGHT_PROMPT = 'You are a photography lighting expert. Describe only the lighting of this photo so another photographer can recreate it exactly, '
   + 'in 3 to 5 short, concrete English sentences: the main light source and where it comes from (for example a direct on-camera flash, '
   + 'a window on the left, overhead sun), whether it is hard or soft, where the shadows fall and how dark and sharp-edged they are, '
@@ -190,10 +192,10 @@ const SKIN_COLOR_WORDS = /\b(pale\w*|fair|porcelain|ivory|luminous|glow\w*|radia
 export const cleanSkinLight = (text: string) => text.split(/(?<=\.)\s+/).filter((s) => !SKIN_COLOR_WORDS.test(s)).join(' ').trim();
 
 async function lightWithGemini(img: Img, prompt: string) {
-  const d = await post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent', {
+  const d = await post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: img.mime, data: img.data } }] }] }),
-  }, 'Gemini', 30_000);
+  }, 'Gemini', 45_000);
   return (d.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
 }
 
@@ -201,18 +203,18 @@ async function lightWithOpenAI(img: Img, prompt: string) {
   const d = await post('https://api.openai.com/v1/chat/completions', {
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
     body: JSON.stringify({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-6-luna',
       messages: [{ role: 'user', content: [
         { type: 'text', text: prompt },
         { type: 'image_url', image_url: { url: `data:${img.mime};base64,${img.data}` } },
       ] }],
     }),
-  }, 'OpenAI', 30_000);
+  }, 'OpenAI', 45_000);
   return d.choices?.[0]?.message?.content ?? '';
 }
 
 async function describeLight(img: Img, prompt: string, what: string, clean = (t: string) => t): Promise<string | null> {
-  const tries = [process.env.GEMINI_API_KEY && lightWithGemini, process.env.OPENAI_API_KEY && lightWithOpenAI];
+  const tries = [process.env.OPENAI_API_KEY && lightWithOpenAI, process.env.GEMINI_API_KEY && lightWithGemini];
   for (const describe of tries) {
     if (!describe) continue;
     try {

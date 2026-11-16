@@ -8,7 +8,7 @@ const thai = IBM_Plex_Sans_Thai({ subsets: ['thai'], weight: ['400', '500', '600
 const serif = Instrument_Serif({ subsets: ['latin'], weight: '400', variable: '--font-serif' });
 
 export const metadata: Metadata = {
-  title: 'SnapAds',
+  title: 'Lolo',
   description: 'เลือกนางแบบ ชุด ของเสริม และฉาก ให้ AI สร้างรูป แล้วแต่งรูปต่อได้ในเครื่อง',
 };
 

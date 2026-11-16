@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/browser';
 import { SignOutButton } from './AuthForm';
-import { AdminTabs, PageSwitch } from './ui';
+import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
 type Tally = { ok: number; error: number; cost: number; tokens: number; measured: number; measuredTokens: number; model: number; product: number; last: string | null };
 type InviteRow = Tally & { code: string; label: string; tokenQuota: number; disabled: boolean; created: string };
@@ -53,10 +53,10 @@ export default function AdminPage() {
 
   return <div className="admin-page">
     <header className="topbar">
-      <div className="brand">SnapAds <span className="beta">Beta</span></div>
+      <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{status}</div>
-      <div className="top-actions"><SignOutButton /></div>
+      <div className="top-actions"><GalleryLink /><SignOutButton /></div>
     </header>
     <main className="admin-main">
       <AdminTabs current="overview" />
