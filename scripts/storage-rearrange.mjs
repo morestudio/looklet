@@ -1,10 +1,11 @@
-// storage-rearrange.mjs — จัดไฟล์เดิมใน bucket images เข้าโฟลเดอร์ตามบัญชี (team/... , customers/<id บัญชี>/...) ตาม objectKey ใน lib/storage-supabase.ts
+// storage-rearrange.mjs — จัดไฟล์ใน bucket images เข้าโฟลเดอร์ตามบัญชี (team/... , accounts/<id บัญชี>/...) ตาม objectKey ใน lib/storage-supabase.ts
+// 16 Nov: also moves rows already filed somewhere else (customers/<id>/ -> accounts/<id>/), not only rows with object = null
 // ลิงก์รูป (/api/files/...) และคอลัมน์ path ไม่เปลี่ยน: ย้ายแค่ไฟล์ แล้วเขียนที่อยู่ใหม่ในคอลัมน์ object (ต้องรัน scripts/db-apply.mjs ก่อน)
-// ทำทีละรูป: copy ไปที่ใหม่ (ใน Supabase ไม่ดาวน์โหลด = ไม่กิน egress) -> แก้แถว -> ลบที่เดิม  ระหว่างทางรูปเปิดได้ตลอด
+// ทำทีละรูป: copy จากที่อยู่ปัจจุบัน (object หรือ path) ไปที่ใหม่ (ใน Supabase ไม่ดาวน์โหลด = ไม่กิน egress) -> แก้แถว -> ลบที่เดิม  ระหว่างทางรูปเปิดได้ตลอด
 //   node --env-file=.env.local scripts/storage-rearrange.mjs                ดูอย่างเดียว: จะย้ายอะไรไปไหน (ไม่แตะอะไร)
 //   node --env-file=.env.local scripts/storage-rearrange.mjs --apply        ย้ายจริง เขียน log ทุกไฟล์ที่ logs/storage-rearrange-<เวลา>.jsonl
-//   node --env-file=.env.local scripts/storage-rearrange.mjs --undo <log>   ย้ายกลับตาม log (คืน object = null)
-// รันซ้ำได้: ข้ามแถวที่ย้ายแล้ว (object ไม่ว่าง) และต่อจากที่ค้างได้
+//   node --env-file=.env.local scripts/storage-rearrange.mjs --undo <log>   ย้ายกลับตาม log (คืน object เป็นค่าเดิม prev · log เก่าไม่มี prev = null)
+// รันซ้ำได้: ข้ามแถวที่อยู่ตรงที่แล้ว และต่อจากที่ค้างได้
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -43,7 +44,7 @@ if (mode === '--undo') {
   await pool(moves, 4, async (m) => {
     const back = await bucket.copy(m.to, m.from);
     if (back.error && !/exists/i.test(back.error.message)) { console.log('ย้ายกลับไม่ได้', m.from, back.error.message); return; }
-    const { error } = await sb.from('images').update({ object: null }).eq('path', m.path);
+    const { error } = await sb.from('images').update({ object: m.prev ?? null }).eq('path', m.path);
     if (error) { console.log('แก้แถวไม่ได้', m.path, error.message); return; }
     await bucket.remove([m.to]);
     ok++;
@@ -53,7 +54,9 @@ if (mode === '--undo') {
 }
 
 const rows = await allRows();
-const todo = rows.filter((r) => !r.object).map((r) => ({ path: r.path, to: objectKey(r.path, r.area, r.kind, r.meta ?? {}) }));
+const todo = rows
+  .map((r) => ({ path: r.path, prev: r.object ?? null, from: r.object || r.path, to: objectKey(r.path, r.area, r.kind, r.meta ?? {}) }))
+  .filter((t) => t.from !== t.to);
 const folderOf = (k) => k.split('/').slice(0, -1).join('/');
 const counts = {};
 for (const t of todo) counts[folderOf(t.to)] = (counts[folderOf(t.to)] ?? 0) + 1;
@@ -63,7 +66,7 @@ const clash = todo.length - new Set(todo.map((t) => t.to)).size;
 if (clash) { console.error(`มีที่อยู่ใหม่ซ้ำกัน ${clash} ไฟล์ — หยุด ไม่ย้าย`); process.exit(1); }
 if (mode !== '--apply') {
   console.log('\nตัวอย่าง:');
-  for (const t of todo.slice(0, 5)) console.log(`  ${t.path}  ->  ${t.to}`);
+  for (const t of todo.slice(0, 5)) console.log(`  ${t.from}  ->  ${t.to}`);
   console.log('\nยังไม่ได้ย้ายอะไร (ดูอย่างเดียว) · ย้ายจริง: --apply');
   process.exit(0);
 }
@@ -75,23 +78,24 @@ const write = (entry) => fs.writeSync(log, JSON.stringify({ ...entry, time: new 
 const result = { moved: 0, missing: 0, failed: 0 };
 await pool(todo, 4, async (t, k) => {
   // 1) copy ไปที่ใหม่ (ค้างจากรอบก่อน = มีอยู่แล้ว ใช้ต่อได้)
-  const copy = await bucket.copy(t.path, t.to);
+  const copy = await bucket.copy(t.from, t.to);
   if (copy.error && !/exists/i.test(copy.error.message)) {
     const missing = /not.?found/i.test(copy.error.message);
     result[missing ? 'missing' : 'failed']++;
-    write({ status: missing ? 'missing' : 'copy-failed', path: t.path, from: t.path, to: t.to, error: copy.error.message });
+    write({ status: missing ? 'missing' : 'copy-failed', path: t.path, prev: t.prev, from: t.from, to: t.to, error: copy.error.message });
     return;
   }
-  // 2) แก้แถว (เฉพาะที่ยังไม่ได้ย้าย) -> รูปเปิดจากที่ใหม่ทันที
-  const { error } = await sb.from('images').update({ object: t.to }).eq('path', t.path).is('object', null);
-  if (error) { result.failed++; write({ status: 'row-failed', path: t.path, from: t.path, to: t.to, error: error.message }); return; }
+  // 2) แก้แถว (เฉพาะที่ยังอยู่ที่เดิม) -> รูปเปิดจากที่ใหม่ทันที
+  const q = sb.from('images').update({ object: t.to }).eq('path', t.path);
+  const { error } = await (t.prev ? q.eq('object', t.prev) : q.is('object', null));
+  if (error) { result.failed++; write({ status: 'row-failed', path: t.path, prev: t.prev, from: t.from, to: t.to, error: error.message }); return; }
   // 3) ลบที่เดิม
-  const rm = await bucket.remove([t.path]);
-  write({ status: 'moved', path: t.path, from: t.path, to: t.to, ...(rm.error ? { removeError: rm.error.message } : {}) });
+  const rm = await bucket.remove([t.from]);
+  write({ status: 'moved', path: t.path, prev: t.prev, from: t.from, to: t.to, ...(rm.error ? { removeError: rm.error.message } : {}) });
   result.moved++;
   if ((k + 1) % 50 === 0) console.log(`  ... ${k + 1}/${todo.length}`);
 });
 fs.closeSync(log);
 console.log(`ย้ายแล้ว ${result.moved} · ไม่มีไฟล์ที่เดิม ${result.missing} · ไม่สำเร็จ ${result.failed} · log: ${logFile}`);
-const left = (await allRows()).filter((r) => !r.object).length;
+const left = (await allRows()).filter((r) => (r.object || r.path) !== objectKey(r.path, r.area, r.kind, r.meta ?? {})).length;
 console.log(`แถวที่ยังไม่ได้ย้าย: ${left}`);

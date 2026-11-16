@@ -21,14 +21,15 @@ export const serviceClient = sb;
 export type Row = { path: string; meta: Record<string, unknown>; created: string };
 
 // ---------- ที่อยู่ไฟล์ใน bucket (จัดโฟลเดอร์ 10 พ.ย. ผู้ใช้เลือก) ----------
-// team/                  คลังร่วมของทีม (รูปไม่มีเจ้าของ รวมทุกรูปก่อนมีบัญชีลูกค้า 27 ต.ค.)
-// customers/<id บัญชี>/   ลูกค้าแต่ละคน (meta.owner) — ใช้ id บัญชี ไม่ใช้รหัสเชิญ เพราะรหัสเชิญคือรหัสผ่าน และนักพัฒนาเห็นแดชบอร์ด Supabase
+// team/                  old shared team library (owner-less rows, all images before 16 Nov's per-account change); hidden from every account
+// accounts/<account id>/ every account, email or invite code (meta.owner; was customers/<id>/ until 16 Nov, moved by scripts/storage-rearrange.mjs)
+//                        account id, never the invite code: the code is a password and developers see the Supabase dashboard
 //   ข้างในเหมือนกัน: results/model | results/product = รูปที่สร้างจากหน้านางแบบ / หน้าสินค้า, uploads/<ประเภท> = รูปที่เพิ่มเอง
 // ลิงก์รูป (/api/files/...) และคอลัมน์ path ไม่เปลี่ยน (ประวัติ กลุ่มสินค้า editedFrom log หน้าตรวจงาน อ้างด้วย path) ที่อยู่จริงอยู่ในคอลัมน์ object
 // แถวที่ object = null = ไฟล์ยังอยู่ที่ path เดิม (ก่อนย้ายด้วย scripts/storage-rearrange.mjs) อ่านได้ทั้งสองแบบ
 // thumbs/ (รูปย่อ) กับ guides/ (ภาพไฮไลต์ของแก้เฉพาะจุด) ตั้งชื่อตาม path อยู่แล้ว ไม่ต้องย้าย
 export function objectKey(path: string, area: string, kind: string | null, meta: Record<string, unknown>) {
-  const owner = typeof meta.owner === 'string' && meta.owner ? `customers/${meta.owner.replace(/[^\w-]/g, '_')}` : 'team';
+  const owner = typeof meta.owner === 'string' && meta.owner ? `accounts/${meta.owner.replace(/[^\w-]/g, '_')}` : 'team';
   const folder = area === 'results' ? `results/${meta.page === 'product' ? 'product' : 'model'}` : `uploads/${kind}`;
   return `${owner}/${folder}/${path.slice(path.lastIndexOf('/') + 1)}`;
 }
@@ -52,6 +53,13 @@ export async function sbList(area: string, kind: string | null): Promise<Row[]> 
   const { data, error } = await q.order('created', { ascending: false }).limit(1000);
   if (error) throw new Error('อ่านคลังรูปจาก Supabase ไม่สำเร็จ: ' + error.message);
   return data as Row[];
+}
+
+// uploads owned by one account, every kind (MAX_UPLOADS in lib/usage.ts); thumbs/guides have no row so they don't count
+export async function sbCountUploads(owner: string) {
+  const { count, error } = await sb().from('images').select('path', { count: 'exact', head: true }).eq('area', 'uploads').eq('meta->>owner', owner);
+  if (error) throw new Error('นับรูปที่อัปโหลดไม่สำเร็จ: ' + error.message);
+  return count ?? 0;
 }
 
 // เช็กแถวในตารางก่อน: CDN ของ Supabase เก็บไฟล์ไว้ 1 ชม. ลบแล้วยังโหลดได้ (แผนฟรีไม่ล้าง cache ตอนลบ) — ไม่มีแถว = ลบแล้ว

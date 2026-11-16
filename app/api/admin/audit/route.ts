@@ -49,9 +49,11 @@ export const GET = get(async (req: Request) => {
   if (res.error) throw new Error(res.error.message);
   const rows = (res.data ?? []) as unknown as Row[];
 
-  const invites = await sb.from('invites').select('user_id, code, label');
-  if (invites.error) throw new Error(invites.error.message);
-  const labelOf = new Map((invites.data as { user_id: string; code: string; label: string }[]).map((i) => [i.user_id, i.label || i.code]));
+  const accounts = await sb.from('accounts').select('user_id, code, label');
+  if (accounts.error) throw new Error(accounts.error.message);
+  const accountRows = accounts.data as { user_id: string; code: string | null; label: string }[];
+  const labelOf = new Map(accountRows.map((i) => [i.user_id, i.label || i.code || '']));
+  const codeUsers = new Set(accountRows.filter((i) => i.code).map((i) => i.user_id));
 
   // รูปผลลัพธ์ + caption/แผนของ AI จากตาราง images: แถวใหม่ตาม path ที่เก็บไว้ · แถวเก่าตามเวลาที่ใกล้กัน
   const paths = rows.flatMap((r) => (r.result?.startsWith(URL_PREFIX) ? [r.result.slice(URL_PREFIX.length)] : []));
@@ -69,8 +71,8 @@ export const GET = get(async (req: Request) => {
   const matched = new Map<number, ImageRow>();
   for (const r of old) {
     const t = Date.parse(r.created);
-    // รูปของลูกค้าติด owner · รูปของทีมไม่ติด
-    const mine = (i: ImageRow) => (i.meta?.owner ? i.meta.owner === r.user_id : !labelOf.has(r.user_id ?? ''));
+    // pre-2-Nov rows: code accounts' images carry owner, email accounts' were owner-less then
+    const mine = (i: ImageRow) => (i.meta?.owner ? i.meta.owner === r.user_id : !codeUsers.has(r.user_id ?? ''));
     const near = free.filter((i) => mine(i) && Date.parse(i.created) >= t - MATCH_BEFORE && Date.parse(i.created) <= t + MATCH_AFTER)
       .sort((a, b) => Math.abs(Date.parse(a.created) - t) - Math.abs(Date.parse(b.created) - t))[0];
     if (near) {

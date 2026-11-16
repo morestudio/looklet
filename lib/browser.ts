@@ -98,6 +98,19 @@ export async function uploadImage(file: File, maxBytes = 1_500_000, maxSide = 20
   }
 }
 
+// /api/upload for both studio pages (TryOn, Packshot): the stored src, or, when saving fails on the network / server side (5xx),
+// a temporary blob copy (gone on refresh) + a warning so the pick isn't lost
+// throws on any 4xx (upload cap 409, disabled account 403, bad file 400/413): retrying can't help, so no temporary copy that would look saved; the caller shows the message
+export async function storeUpload(body: Record<string, unknown>, file: File): Promise<{ src: string; warning?: string }> {
+  try {
+    return { src: (await api('/api/upload', { ...body, ...(await uploadImage(file)) })).src };
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 0;
+    if (status >= 400 && status < 500) throw err;
+    return { src: URL.createObjectURL(file), warning: `เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง` };
+  }
+}
+
 // เปิดรูปนี้ได้ไหม (ชนิดไฟล์ที่ browser ไม่รู้จัก -> การ์ดจะเป็นรูปเสีย ดูเหมือนรูปหาย)
 export async function canOpenImage(file: File) {
   const url = URL.createObjectURL(file);

@@ -1,12 +1,12 @@
 'use client';
-// AdminPage.tsx — หน้า /admin (superadmin): การใช้งานต่อบัญชี + ออก/แก้โค้ดเชิญลูกค้า — ข้อมูลจาก app/api/admin
+// AdminPage.tsx — หน้า /admin (superadmin): การใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี (โค้ดและอีเมล) — ข้อมูลจาก app/api/admin
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/browser';
 import { SignOutButton } from './AuthForm';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
 type Tally = { ok: number; error: number; cost: number; tokens: number; measured: number; measuredTokens: number; model: number; product: number; last: string | null };
-type InviteRow = Tally & { code: string; label: string; tokenQuota: number; disabled: boolean; created: string };
+type InviteRow = Tally & { userId: string; code: string | null; label: string; tokenQuota: number; disabled: boolean; created: string };
 type Data = {
   total: Tally; invites: InviteRow[]; team: (Tally & { email: string })[];
   recent: { created: string; who: string; page: string; action: string; status: string; cost: number; tokens: number | null }[];
@@ -67,33 +67,33 @@ export default function AdminPage() {
           <div><span>โทเคนที่ใช้</span><b>{num(data.total.tokens)}</b><small>{data.total.measured ? `เฉลี่ย ${num(data.total.measuredTokens / data.total.measured)} ต่อรูป (วัดจริง ${data.total.measured} รูป)` : 'ยังไม่มีรูปที่วัดโทเคนจริง'}</small></div>
           <div><span>ค่า AI โดยประมาณ</span><b>{baht(data.total.cost)}</b><small>คิดจากรูปที่สำเร็จ</small></div>
           <div><span>สร้างไม่สำเร็จ</span><b>{data.total.error.toLocaleString('th-TH')}</b><small>ไม่นับโควตา</small></div>
-          <div><span>โค้ดที่เปิดใช้</span><b>{active.length}</b><small>จากทั้งหมด {data.invites.length}</small></div>
+          <div><span>บัญชีที่เปิดใช้</span><b>{active.length}</b><small>จากทั้งหมด {data.invites.length}</small></div>
         </section>
 
         <section className="admin-card">
           <div className="admin-card-head">
-            <h2>โค้ดเชิญลูกค้า</h2>
-            {active.length > 0 && <button className="btn btn-secondary" onClick={() => copy(active.map((i) => `${i.label || 'ลูกค้า'}: ${i.code}`).join('\n'), 'โค้ดที่เปิดใช้ทั้งหมด')}>คัดลอกทุกโค้ด</button>}
+            <h2>บัญชี</h2>
+            {active.some((i) => i.code) && <button className="btn btn-secondary" onClick={() => copy(active.filter((i) => i.code).map((i) => `${i.label || 'ลูกค้า'}: ${i.code}`).join('\n'), 'โค้ดที่เปิดใช้ทั้งหมด')}>คัดลอกทุกโค้ด</button>}
           </div>
-          <p className="muted-text">ลูกค้าพิมพ์โค้ดที่หน้าเข้าใช้งานได้เลย · 1 โค้ด = 1 บัญชี เห็นเฉพาะรูปของตัวเอง · ปิดโค้ดแล้วสร้างรูปไม่ได้ทันที · โควตานับโทเคนของรูปที่สร้างสำเร็จ (300,000 ≈ รูปสินค้า 50–60 รูป หรือรูปนางแบบ ~30 รูป)</p>
+          <p className="muted-text">ทุกบัญชีเห็นเฉพาะรูปของตัวเอง เข้าได้ 2 แบบ: พิมพ์โค้ดที่หน้าเข้าใช้งาน (1 โค้ด = 1 บัญชี) หรืออีเมล + รหัสผ่าน (เพิ่มด้วย scripts/add-user.mjs ขึ้นในตารางนี้หลังเข้าใช้ครั้งแรก) · ปิดบัญชีแล้วสร้างรูปไม่ได้ทันที · โควตานับโทเคนของรูปที่สร้างสำเร็จ (300,000 ≈ รูปสินค้า 50–60 รูป หรือรูปนางแบบ ~30 รูป)</p>
           <div className="admin-table-wrap"><table className="admin-table">
-            <thead><tr><th>โค้ด</th><th>ลูกค้า</th><th>โทเคน ใช้ไป / โควตา</th><th>นางแบบ · สินค้า</th><th>พัง</th><th>ค่า AI</th><th>ใช้ล่าสุด</th><th>สถานะ</th></tr></thead>
-            <tbody>{data.invites.map((i) => <tr key={i.code} className={(i.disabled ? 'off' : '') + (fresh.includes(i.code) ? ' fresh' : '')}>
-              <td><button className="admin-code" title="คัดลอก" onClick={() => copy(i.code, `โค้ด ${i.code}`)}>{i.code}</button></td>
-              <td><input className="text-input" defaultValue={i.label} placeholder="ชื่อลูกค้า" maxLength={80} disabled={busy}
-                onBlur={(e) => { if (e.target.value.trim() !== i.label) void run({ action: 'update', code: i.code, label: e.target.value }); }} /></td>
+            <thead><tr><th>เข้าด้วย</th><th>ชื่อ</th><th>โทเคน ใช้ไป / โควตา</th><th>นางแบบ · สินค้า</th><th>พัง</th><th>ค่า AI</th><th>ใช้ล่าสุด</th><th>สถานะ</th></tr></thead>
+            <tbody>{data.invites.map((i) => <tr key={i.userId} className={(i.disabled ? 'off' : '') + (i.code && fresh.includes(i.code) ? ' fresh' : '')}>
+              <td>{i.code ? <button className="admin-code" title="คัดลอก" onClick={() => copy(i.code!, `โค้ด ${i.code}`)}>{i.code}</button> : 'อีเมล'}</td>
+              <td><input className="text-input" defaultValue={i.label} placeholder="ชื่อบัญชี" maxLength={80} disabled={busy}
+                onBlur={(e) => { if (e.target.value.trim() !== i.label) void run({ action: 'update', userId: i.userId, label: e.target.value }); }} /></td>
               <td className="admin-quota">{num(i.tokens)} / <input className="text-input" type="number" min={0} max={100000000} step={10000} defaultValue={i.tokenQuota} disabled={busy}
-                onBlur={(e) => { if (Number(e.target.value) !== i.tokenQuota) void run({ action: 'update', code: i.code, tokenQuota: Number(e.target.value) }); }} />
+                onBlur={(e) => { if (Number(e.target.value) !== i.tokenQuota) void run({ action: 'update', userId: i.userId, tokenQuota: Number(e.target.value) }); }} />
                 {i.tokens >= i.tokenQuota && <small> ครบแล้ว</small>}</td>
               <td>{i.model} · {i.product}</td>
               <td>{i.error}</td>
               <td>{baht(i.cost)}</td>
               <td>{when(i.last)}</td>
               <td><button className={'btn ' + (i.disabled ? 'btn-secondary' : 'btn-tertiary')} disabled={busy}
-                onClick={() => void run({ action: 'update', code: i.code, disabled: !i.disabled })}>{i.disabled ? 'ปิดอยู่ · เปิด' : 'เปิดอยู่ · ปิด'}</button></td>
+                onClick={() => void run({ action: 'update', userId: i.userId, disabled: !i.disabled })}>{i.disabled ? 'ปิดอยู่ · เปิด' : 'เปิดอยู่ · ปิด'}</button></td>
             </tr>)}</tbody>
           </table></div>
-          {!data.invites.length && <p className="note">ยังไม่มีโค้ด สร้างด้านล่างได้เลย</p>}
+          {!data.invites.length && <p className="note">ยังไม่มีบัญชี สร้างโค้ดด้านล่างได้เลย</p>}
           <form className="admin-create" onSubmit={(e) => { e.preventDefault(); void run({ action: 'create', count, tokenQuota }, (out) => setFresh(out.codes ?? [])); }}>
             <label>จำนวนโค้ด<input className="text-input" type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} /></label>
             <label>โควตาต่อโค้ด (โทเคน)<input className="text-input" type="number" min={0} max={100000000} step={10000} value={tokenQuota} onChange={(e) => setTokenQuota(Number(e.target.value))} /></label>
@@ -102,7 +102,7 @@ export default function AdminPage() {
         </section>
 
         {data.team.length > 0 && <section className="admin-card">
-          <h2>บัญชีทีม</h2>
+          <h2>บัญชีที่ไม่มีโควตา (superadmin)</h2>
           <div className="admin-table-wrap"><table className="admin-table">
             <thead><tr><th>บัญชี</th><th>สำเร็จ</th><th>นางแบบ · สินค้า</th><th>พัง</th><th>โทเคน</th><th>ค่า AI</th><th>ใช้ล่าสุด</th></tr></thead>
             <tbody>{data.team.map((t) => <tr key={t.email}><td>{t.email}</td><td>{t.ok}</td><td>{t.model} · {t.product}</td><td>{t.error}</td><td>{num(t.tokens)}</td><td>{baht(t.cost)}</td><td>{when(t.last)}</td></tr>)}</tbody>

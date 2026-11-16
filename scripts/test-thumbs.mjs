@@ -95,22 +95,22 @@ assert.equal(uploads.length, 1, 'No thumbnail for an unreadable file, but the fi
 await storage.deleteImage(src);
 assert.deepEqual(removed, [`team/results/model/${file}`, `thumbs/400/${key}.jpg`, `thumbs/512/${key}.jpg`]);
 
-// 6a) โฟลเดอร์ตามบัญชี: ลูกค้า -> customers/<id>/, หน้าสินค้า -> results/product, รูปที่เพิ่มเอง -> uploads/<ประเภท> · เปิดรูปอ่านจาก object
+// 6a) โฟลเดอร์ตามบัญชี: every account -> accounts/<id>/, หน้าสินค้า -> results/product, รูปที่เพิ่มเอง -> uploads/<ประเภท> · เปิดรูปอ่านจาก object
 const { objectKey } = app('lib/storage-supabase.ts');
 assert.equal(objectKey('results/a.png', 'results', null, {}), 'team/results/model/a.png');
-assert.equal(objectKey('results/a.png', 'results', null, { page: 'product', owner: 'u-1' }), 'customers/u-1/results/product/a.png');
-assert.equal(objectKey('uploads/poses/b.jpg', 'uploads', 'poses', { owner: 'u-1' }), 'customers/u-1/uploads/poses/b.jpg');
-assert.equal(objectKey('results/c.png', 'results', null, { owner: '../x y' }), 'customers/___x_y/results/model/c.png', 'Odd owner ids cannot escape the folder');
+assert.equal(objectKey('results/a.png', 'results', null, { page: 'product', owner: 'u-1' }), 'accounts/u-1/results/product/a.png');
+assert.equal(objectKey('uploads/poses/b.jpg', 'uploads', 'poses', { owner: 'u-1' }), 'accounts/u-1/uploads/poses/b.jpg');
+assert.equal(objectKey('results/c.png', 'results', null, { owner: '../x y' }), 'accounts/___x_y/results/model/c.png', 'Odd owner ids cannot escape the folder');
 owner = 'cust-9';
 const mine = await storage.saveImage({ area: 'uploads', kind: 'products' }, photo.toString('base64'), 'image/jpeg', { name: 'bag', page: 'product' });
 const mineFile = mine.split('/').pop();
 assert.equal(mine, `/api/files/uploads/products/${mineFile}`, 'Links keep the old shape');
-assert.equal(rows.at(-1).object, `customers/cust-9/uploads/products/${mineFile}`);
+assert.equal(rows.at(-1).object, `accounts/cust-9/uploads/products/${mineFile}`);
 const productResult = await storage.saveImage({ area: 'results' }, photo.toString('base64'), 'image/jpeg', { page: 'product' });
-assert.equal(rows.at(-1).object, `customers/cust-9/results/product/${productResult.split('/').pop()}`);
+assert.equal(rows.at(-1).object, `accounts/cust-9/results/product/${productResult.split('/').pop()}`);
 downloads.length = 0;
 assert(await storage.readImage(parts(mine)));
-assert.deepEqual(downloads, [`customers/cust-9/uploads/products/${mineFile}`], 'Full photos are read from their new folder');
+assert.deepEqual(downloads, [`accounts/cust-9/uploads/products/${mineFile}`], 'Full photos are read from their new folder');
 owner = null;
 assert.equal(await storage.readImage(parts(mine)), null, 'Team accounts still cannot open a customer photo');
 
@@ -149,4 +149,4 @@ await route.GET(new Request('http://localhost/api/files/results/a.png?w=999'), {
 assert.deepEqual(calls, [['full']]);
 
 Module._load = realLoad;
-console.log('Storage passed: new photos filed under team/ or customers/<id>/ (results/model, results/product, uploads/<type>) with unchanged links, read from either place; red highlight images saved outside the library and readable only by the superadmin; saved with each new image, read without downloading the full photo, old images thumbnailed once then reused, same privacy as full photos, broken files never break saving, deleted with the photo, and the route only reads thumbnails for ?w=.');
+console.log('Storage passed: new photos filed under team/ or accounts/<id>/ (results/model, results/product, uploads/<type>) with unchanged links, read from either place; red highlight images saved outside the library and readable only by the superadmin; saved with each new image, read without downloading the full photo, old images thumbnailed once then reused, same privacy as full photos, broken files never break saving, deleted with the photo, and the route only reads thumbnails for ?w=.');

@@ -1,6 +1,6 @@
 'use client';
 // AuthForm.tsx — หน้าเข้าสู่ระบบ (โค้ดเชิญ / อีเมล + รหัสผ่าน) และหน้าเปลี่ยนรหัสผ่าน ใช้กรอบเดียวกัน
-// ไม่มีสมัครเอง: ลูกค้าใช้โค้ดเชิญที่ superadmin ออกให้ (/admin) ทีมงานใช้อีเมลที่ admin เพิ่มให้ (scripts/add-user.mjs)
+// ไม่มีสมัครเอง: โค้ดเชิญที่ superadmin ออกให้ (/admin) หรืออีเมลที่ admin เพิ่มให้ (scripts/add-user.mjs) — two equal tabs since 16 Nov (same kind of account, only the sign-in differs)
 // บัญชีที่ไม่มีสิทธิ์ (isMember) เข้าไม่ได้แม้รหัสถูก
 import { useState, type FormEvent } from 'react';
 import { noteLogin } from '@/lib/analytics';
@@ -17,8 +17,10 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [method, setMethod] = useState<'code' | 'email'>('code'); // most sign-ins are invite codes
+  const pick = (m: 'code' | 'email') => { setMethod(m); setError(''); };
 
-  // ลูกค้า: พิมพ์แค่โค้ดเชิญ server เข้าระบบให้ (app/api/invite-login)
+  // พิมพ์แค่โค้ดเชิญ server เข้าระบบให้ (app/api/invite-login)
   async function submitCode(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -53,22 +55,28 @@ export function LoginForm() {
   return (
     <div className="auth-card">
       <div className="brand">Lolo <span className="beta">Beta</span></div>
-      <form className="auth-form" onSubmit={(e) => void submitCode(e)}>
-        <h1>เข้าใช้งาน</h1>
-        <label>โค้ดเชิญ<input className="field auth-code" autoComplete="off" autoCapitalize="characters" spellCheck={false} required
-          placeholder="ABCD-2345" value={code} onChange={(e) => setCode(e.target.value)} /></label>
-        <button className="btn btn-primary" type="submit" disabled={busy || !code.trim()}>{busy ? 'กำลังเข้าใช้...' : 'เข้าใช้งาน'}</button>
-      </form>
-      {error && <p className="auth-error" role="alert">{error}</p>}
-      <details className="auth-team">
-        <summary>ทีมงาน: เข้าสู่ระบบด้วยอีเมล</summary>
-        <form className="auth-form" onSubmit={(e) => void submit(e)}>
+      <h1>เข้าใช้งาน</h1>
+      <div className="page-switch auth-tabs" role="tablist" aria-label="วิธีเข้าใช้งาน">
+        {([['code', 'โค้ดเชิญ'], ['email', 'อีเมล']] as const).map(([m, label]) => (
+          <button key={m} type="button" role="tab" id={`login-tab-${m}`} aria-controls={`login-${m}`} aria-selected={method === m}
+            className={method === m ? 'active' : undefined} onClick={() => pick(m)}>{label}</button>
+        ))}
+      </div>
+      {method === 'code' ? (
+        <form className="auth-form" id="login-code" role="tabpanel" aria-labelledby="login-tab-code" onSubmit={(e) => void submitCode(e)}>
+          <label>โค้ดเชิญ<input className="field auth-code" autoComplete="off" autoCapitalize="characters" spellCheck={false} required
+            placeholder="ABCD-2345" value={code} onChange={(e) => setCode(e.target.value)} /></label>
+          <button className="btn btn-primary" type="submit" disabled={busy || !code.trim()}>{busy ? 'กำลังเข้าใช้...' : 'เข้าใช้งาน'}</button>
+        </form>
+      ) : (
+        <form className="auth-form" id="login-email" role="tabpanel" aria-labelledby="login-tab-email" onSubmit={(e) => void submit(e)}>
           <label>อีเมล<input className="field" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
           <label>รหัสผ่าน<input className="field" type="password" autoComplete="current-password" required value={password}
             onChange={(e) => setPassword(e.target.value)} /></label>
-          <button className="btn btn-secondary" type="submit" disabled={busy}>{busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</button>
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าใช้งาน'}</button>
         </form>
-      </details>
+      )}
+      {error && <p className="auth-error" role="alert">{error}</p>}
     </div>
   );
 }

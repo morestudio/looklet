@@ -1,7 +1,8 @@
 import { createHmac } from 'node:crypto';
-import { me } from '@/lib/account';
 import { get, json } from '@/lib/route';
-import { inviteOf, usedTokens } from '@/lib/usage';
+import { isLimited, me } from '@/lib/account';
+import { supabaseEnabled } from '@/lib/storage-supabase';
+import { accountOf, usedTokens } from '@/lib/usage';
 
 // GA user_id (components/Analytics.tsx): keyed hash (HMAC) of the account id, never the id, email or invite code
 // no ANALYTICS_SALT -> no aid (an unkeyed hash of a known id is reversible by anyone holding the id list)
@@ -14,7 +15,8 @@ const analyticsId = (id: string | undefined) => {
 export const GET = get(async () => {
   const account = me();
   const aid = analyticsId(account?.id);
-  if (account?.role !== 'customer') return json(200, { role: account?.role ?? 'team', aid });
-  const invite = await inviteOf(account.id);
-  return json(200, { role: 'customer', aid, label: invite?.label ?? '', tokenQuota: invite?.token_quota ?? 0, tokens: await usedTokens(account.id) });
+  if (!isLimited(account) || !supabaseEnabled) return json(200, { role: account?.role ?? 'team', aid });
+  // every limited account (email or code) gets its token bar; first call makes an email account's row
+  const row = await accountOf(account!);
+  return json(200, { role: account!.role, aid, label: row?.label ?? '', tokenQuota: row?.token_quota ?? 0, tokens: await usedTokens(account!.id) });
 });
