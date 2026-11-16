@@ -1242,6 +1242,7 @@ export default function TryOn() {
             const i = STEPS.indexOf(s);
             return <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}
               disabled={Boolean(unusedWhy[s.key])} title={unusedWhy[s.key]}>
+              <span className="n">{i + 1}</span>
               <s.Icon />
               <span>{s.label}</span>
               {!unusedWhy[s.key] && stepDone[s.key] && s.key !== 'model' && <i className="dot" />}
@@ -1252,7 +1253,7 @@ export default function TryOn() {
         <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark} inert={editing}>
           <div className="panel-body">
           <div className="panel-head">
-            <span className="num">{railSteps.indexOf(cur) + 1}</span>
+            <span className="num">{step + 1}</span>
             <h2>{cur.title}</h2>
             {cur.key === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{accLimit} ชิ้น</span>}
           </div>
@@ -1276,6 +1277,7 @@ export default function TryOn() {
             {RIGHT_STEPS.map((s) => (
               <button key={s.key} className={'rail-btn' + (wearStep === s.key ? ' active' : '')} onClick={() => goStep(STEPS.indexOf(s))}
                 aria-current={wearStep === s.key ? 'step' : undefined}>
+                <span className="n">{STEPS.indexOf(s) + 1}</span>
                 <s.Icon />
                 <span>{s.label}</span>
                 {stepDone[s.key] && <i className="dot" />}
@@ -1285,6 +1287,7 @@ export default function TryOn() {
           <aside className={'panel wear-panel' + (wearNext >= 0 ? ' has-bar' : '')} aria-label={wearCur.title} onClickCapture={markAs(wearStep)} onInputCapture={markAs(wearStep)} inert={editing}>
             <div className="panel-body">
             <div className="panel-head">
+              <span className="num">{STEPS.indexOf(wearCur) + 1}</span>
               <h2>{wearCur.title}</h2>
               {wearStep === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{accLimit} ชิ้น</span>}
             </div>
