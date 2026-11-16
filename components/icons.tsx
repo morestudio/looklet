@@ -62,6 +62,5 @@ export const IconBookmark = ({ filled = false }: { filled?: boolean }) => (
     <path d="M6 3.5h12v17l-6-4.5-6 4.5z" />
   </svg>
 );
-export const IconTrash = () => <Svg size={18}><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5" /></Svg>;
 export const IconInfo = () => <Svg size={16}><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></Svg>;
 export const IconLeaf =() => <Svg><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z" /><path d="M5 19 13 11" /></Svg>;
