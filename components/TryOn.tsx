@@ -21,7 +21,7 @@ import {
   IconShirt, IconSparkle, IconZoom,
 } from './icons';
 import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, rangeFill, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, StartFromImageDialog, TokenUsage, useChosenSteps } from './ui';
-import { useHistoryPlaces } from './useHistoryPlaces';
+import { useHistoryKeys, useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import { recipeKey } from '@/lib/recipe';
 import type { ResultBase, StoredResultBase } from '@/lib/result-types';
@@ -1165,19 +1165,21 @@ export default function TryOn() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => askRemove(results[i].src)} />
+      <DeleteButton title={results[i].inGallery ? 'เอาออกจากรูปที่สร้างแล้ว' : 'ลบรูปนี้ถาวร'} onClick={() => askRemove(results[i].src)} />
       <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
   const historyItems: ReactNode[] = [];
+  const historyOrder: number[] = []; // results indices as drawn, for ← →
   const seenSets = new Set<string>();
   results.forEach((r, i) => {
-    if (!r.set) return void historyItems.push(thumb(i));
+    if (!r.set) { historyOrder.push(i); return void historyItems.push(thumb(i)); }
     const id = r.set.id;
     if (seenSets.has(id)) return; // กลุ่มนี้วาดไปแล้วตอนเจอรูปแรกของชุด
     seenSets.add(id);
     const members = results.map((x, j) => ({ x, j })).filter(({ x }) => x.set?.id === id).sort((a, b) => a.x.set!.index - b.x.set!.index);
+    historyOrder.push(...members.map(({ j }) => j));
     const left = pendingSet?.id === id ? pendingSet.left : 0;
     historyItems.push(
       <div className="set-group" key={'set-' + id}>
@@ -1189,6 +1191,7 @@ export default function TryOn() {
       </div>,
     );
   });
+  useHistoryKeys(historyOrder, setCurrent);
 
   return (
     <div className="app">

@@ -324,6 +324,7 @@ button, select, input, textarea { font-family: inherit; }
 .history-head { display: flex; gap: var(--space-6); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 700; }
 .history-head span { color: var(--ash); font-weight: 500; }
 .history { flex: 0 0 auto; display: flex; gap: var(--space-8); min-height: 40px; overflow-x: auto; padding-bottom: var(--space-4); }
+.history button:not(.del, .gallery-toggle):focus-visible { outline: none; } /* the ✓ already follows the selection (click and ← →) */
 .history .deletable { flex: 0 0 auto; }
 .history .del { top: 4px; left: 4px; width: 20px; height: 20px; font-size: 13px; }
 .history .gallery-toggle { position: absolute; top: 4px; right: 4px; z-index: 1; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--float-bg); color: var(--ink); cursor: pointer; }
