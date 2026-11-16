@@ -99,11 +99,10 @@ export const POST = post(async (req) => {
     if (typeof req.disabled === 'boolean' && req.disabled !== invite.disabled) {
       patch.disabled = req.disabled;
       // ปิด = ถอดสิทธิ์ + แบนไม่ให้ต่ออายุ session (token เดิมยังใช้ได้จนหมดอายุ ~1 ชม. แต่สร้างรูปไม่ได้ทันที: quotaBlock เช็ก disabled)
-      // keep the stored role: hard-coding 'customer' would turn an email account into a code account (no /account)
-      const { data: found, error: readError } = await sb.auth.admin.getUserById(invite.user_id);
-      if (readError || !found.user) return json(500, { error: 'อ่านบัญชีไม่สำเร็จ: ' + readError?.message });
+      // only looklet: Supabase merges app_metadata keys, so the stored role stays (checked on local Supabase 16 Nov);
+      // sending role: 'customer' would turn an email account into a code account (no /account)
       const { error } = await sb.auth.admin.updateUserById(invite.user_id, {
-        app_metadata: { ...found.user.app_metadata, looklet: !req.disabled }, ban_duration: req.disabled ? '876000h' : 'none',
+        app_metadata: { looklet: !req.disabled }, ban_duration: req.disabled ? '876000h' : 'none',
       });
       if (error) return json(500, { error: 'เปลี่ยนสถานะบัญชีไม่สำเร็จ: ' + error.message });
     }

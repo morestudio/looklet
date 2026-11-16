@@ -24,7 +24,8 @@ export const tokensOf = (r: { status: string; tokens?: number | null }) => (r.st
 // quota = old image-count column, unused · token_quota = the real quota
 export type AccountRow = { user_id: string; code: string | null; label: string; quota: number; token_quota: number; disabled: boolean; created: string };
 
-// an email account gets its row on first use (same defaults as a new invite code); a code account without a row stays disabled
+// email accounts: rows for existing ones come from the backfill in schema.sql; one added later gets its row on first use
+// (same defaults as a new invite code); a code account without a row stays disabled
 export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | null> {
   const read = async () => {
     const { data, error } = await serviceClient().from('accounts').select('*').eq('user_id', a.id).maybeSingle();
@@ -40,11 +41,18 @@ export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | n
 
 const DISABLED = () => Response.json({ error: 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล' }, { status: 403 });
 
-// โทเคนของรูปที่สร้างสำเร็จ (นับโควตา) — รูปที่พังไม่นับ · Supabase ส่งได้ครั้งละ 1,000 แถว พอสำหรับโควตาหลักแสนถึงไม่กี่ล้าน
+// โทเคนของรูปที่สร้างสำเร็จ (นับโควตา) — รูปที่พังไม่นับ
+// PostgREST returns at most 1,000 rows per request: page by id (email accounts can have long histories)
+const PAGE = 1000;
 export async function usedTokens(userId: string) {
-  const { data, error } = await serviceClient().from('usage').select('status, tokens').eq('user_id', userId).eq('status', 'ok');
-  if (error) throw new Error('อ่านการใช้งานไม่สำเร็จ: ' + error.message);
-  return (data ?? []).reduce((sum, r) => sum + tokensOf(r), 0);
+  let sum = 0;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await serviceClient().from('usage').select('status, tokens').eq('user_id', userId).eq('status', 'ok')
+      .order('id', { ascending: true }).range(from, from + PAGE - 1);
+    if (error) throw new Error('อ่านการใช้งานไม่สำเร็จ: ' + error.message);
+    for (const r of data ?? []) sum += tokensOf(r);
+    if ((data ?? []).length < PAGE) return sum;
+  }
 }
 
 // บัญชีที่ถูกปิด / ใช้ครบโควตา -> ตอบ error ก่อนเสียเงินเรียก AI · superadmin ไม่มีโควตา
@@ -67,9 +75,9 @@ export const MAX_UPLOADS = 100;
 export async function uploadBlock(): Promise<Response | null> {
   const account = me();
   if (!isLimited(account) || !supabaseEnabled) return null;
-  const row = await accountOf(account!);
+  const [row, uploads] = await Promise.all([accountOf(account!), sbCountUploads(account!.id)]);
   if (!row || row.disabled) return DISABLED();
-  if ((await sbCountUploads(account!.id)) >= MAX_UPLOADS) {
+  if (uploads >= MAX_UPLOADS) {
     return Response.json({ error: `อัปโหลดครบ ${MAX_UPLOADS} รูปแล้ว ลบรูปที่ไม่ใช้ก่อนเพิ่มใหม่` }, { status: 409 });
   }
   return null;

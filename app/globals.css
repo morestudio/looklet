@@ -475,7 +475,7 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 .auth-form { display: flex; flex-direction: column; gap: var(--space-14); }
 .auth-code { font-size: var(--text-xl); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
 .auth-tabs { align-self: stretch; }
-.auth-tabs button { flex: 1; justify-content: center; border: 0; background: none; font: inherit; cursor: pointer; }
+.auth-tabs button { flex: 1; justify-content: center; border: 0; background: none; font-family: inherit; cursor: pointer; }
 input.field { height: var(--control-height-field); padding: 0 var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--canvas); color: var(--ink); font-size: var(--text-md); }
 .auth-error, .auth-ok { margin: 0; padding: var(--space-8) var(--space-12); border-radius: var(--r-md); font-size: var(--text-sm); }
 .auth-error { background: var(--danger-soft); color: var(--danger); }

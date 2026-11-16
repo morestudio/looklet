@@ -15,7 +15,7 @@ let noAuditColumns = false; // จำลองฐานข้อมูลที�
 const missing = { message: "Could not find the 'log' column of 'usage' in the schema cache" };
 function table(name) {
   const filters = [];
-  let patch = null, del = false, head = false, single = false, cols = null, sort = null, lim = Infinity;
+  let patch = null, del = false, head = false, single = false, cols = null, sort = null, lim = Infinity, off = 0;
   const rows = () => db[name].filter((r) => filters.every((f) => f(r)));
   // select('a, b, alias:col->>key') แบบ PostgREST
   const pick = (r) => (!cols || cols.includes('*') ? r : Object.fromEntries(cols.map((c) => {
@@ -33,6 +33,7 @@ function table(name) {
     in: (k, vs) => { filters.push((r) => vs.includes(r[k])); return b; },
     order: (k, opts) => { const dir = opts?.ascending === false ? -1 : 1; sort = (x, y) => (x[k] < y[k] ? -dir : x[k] > y[k] ? dir : 0); return b; },
     limit: (n) => { lim = n; return b; },
+    range: (a, z) => { off = a; lim = z - a + 1; return b; },
     insert: (row) => {
       if (noAuditColumns && name === 'usage' && ('log' in row || 'result' in row)) return Promise.resolve({ error: missing });
       if (name === 'accounts' && db.accounts.some((a) => a.user_id === row.user_id)) return Promise.resolve({ error: { code: '23505', message: 'duplicate key' } });
@@ -47,7 +48,7 @@ function table(name) {
       const all = rows();
       if (patch) all.forEach((r) => Object.assign(r, patch));
       if (del) db[name] = db[name].filter((r) => !all.includes(r));
-      const found = (sort ? [...all].sort(sort) : all).slice(0, lim).map(pick);
+      const found = (sort ? [...all].sort(sort) : all).slice(off, off + lim).map(pick);
       return Promise.resolve(single ? { data: found[0] ?? null, error: null } : { data: head ? null : found, count: found.length, error: null }).then(ok);
     },
   };
@@ -62,7 +63,13 @@ const serviceClient = () => ({
       users.set(user.id, user);
       return { data: { user }, error: null };
     },
-    updateUserById: async (id, attrs) => { Object.assign(users.get(id), attrs); return { error: null }; },
+    // like Supabase: app_metadata keys are merged, other attributes replaced
+    updateUserById: async (id, { app_metadata, ...attrs }) => {
+      const u = users.get(id);
+      Object.assign(u, attrs);
+      if (app_metadata) u.app_metadata = { ...u.app_metadata, ...app_metadata };
+      return { error: null };
+    },
     deleteUser: async (id) => { users.delete(id); return { error: null }; },
   } },
 });
@@ -229,6 +236,10 @@ assert(!db.accounts.some((a) => a.user_id === 'bob'));
 assert.equal(await withAccount(boss, () => quotaBlock()), null); // superadmin: no quota, no row
 assert(!db.accounts.some((a) => a.user_id === 'boss'));
 db.usage = db.usage.filter((u) => u.user_id !== 'team');
+// long history: more rows than one PostgREST page (1,000) are all counted
+for (let i = 0; i < 2500; i++) db.usage.push({ id: 10_000 + i, user_id: 'long', status: i % 5 ? 'ok' : 'error', tokens: 10 });
+assert.equal(await usedTokens('long'), 2000 * 10);
+db.usage = db.usage.filter((u) => u.user_id !== 'long');
 
 // ---------- upload cap ----------
 assert.equal(MAX_UPLOADS, 100);

@@ -422,7 +422,7 @@ export default function Packshot() {
   async function addUpload(key: Key, file: File, name: string, type?: string, supporting = false, groupId?: string) {
     const targetGroupId = key === 'product' ? groupId ?? (supporting ? selectedGroup?.id : undefined) : undefined;
     const groupMeta = key === 'product' ? targetGroupId ? { productGroup: targetGroupId } : { productGroupName: name, productGroupType: type || 'other' } : {};
-    // throws at the upload cap (storeUpload), same as TryOn's addUpload; every caller shows the message
+    // throws on a refused upload (storeUpload: cap, disabled account, bad file), same as TryOn's addUpload; every caller shows the message
     const preview = URL.createObjectURL(file);
     setSaving((s) => [...s, { key, url: preview }]);
     let stored: Awaited<ReturnType<typeof storeUpload>>;
@@ -527,8 +527,9 @@ export default function Packshot() {
         } catch (err) {
           failed++;
           lastError = (err as Error).message;
-          // upload cap reached: the rest would be refused too
-          if ((err as { status?: number }).status === 409) { failed += files.length - 1 - i; break; }
+          // upload cap (409) / disabled account (403): the rest would be refused too
+          const status = (err as { status?: number }).status;
+          if (status === 409 || status === 403) { failed += files.length - 1 - i; break; }
         }
       }
       if (failed) setStatus(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);

@@ -339,7 +339,7 @@ export default function TryOn() {
     update((r) => ({ pick: { ...r.pick, ...wearPatch(slot, id) } }));
   }
 
-  // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย · throws at the upload cap (storeUpload), same as Packshot's addUpload
+  // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย · throws on a refused upload (storeUpload: cap, disabled account, bad file), same as Packshot's addUpload
   async function addUpload(key: Key, file: File, name: string, type?: string) {
     const preview = URL.createObjectURL(file);
     setSaving((s) => [...s, { key, url: preview }]);
@@ -384,7 +384,7 @@ export default function TryOn() {
       if (key === 'outfit') return await addUpload('outfit', file, name, slot === 'top' || slot === 'bottom' ? slot : undefined);
       if (key !== 'accessory') return await addUpload(key, file, name);
       await addAccessory(file);
-    } catch (err) { setStatus((err as Error).message); } // upload cap reached
+    } catch (err) { setStatus((err as Error).message); } // refused upload (cap, disabled, bad file)
   }
 
   // ของเสริม: ให้ AI ดูว่าเป็นอะไร + ตั้งชื่อ แล้วเพิ่มให้เลย ไม่ต้องกดยืนยัน
@@ -407,7 +407,7 @@ export default function TryOn() {
     if (d.mode === 'add') {
       URL.revokeObjectURL(d.url);
       if (!info) return;
-      try { await addUpload('accessory', d.file, info.name, info.type); } catch (err) { return setStatus((err as Error).message); } // upload cap reached
+      try { await addUpload('accessory', d.file, info.name, info.type); } catch (err) { return setStatus((err as Error).message); } // refused upload (cap, disabled, bad file)
       if (info.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
       return;
     }

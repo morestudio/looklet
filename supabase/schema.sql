@@ -31,6 +31,12 @@ begin
     alter table public.accounts add constraint accounts_code_key unique (code);
     alter table public.accounts add primary key (user_id);
     alter table public.accounts drop constraint if exists invites_user_id_key;
+    -- temporary: the old name as a view so the still-deployed code keeps working between db-apply and the deploy.
+    -- made only here (once, at the rename), so dropping it after the deploy sticks: drop view public.invites;
+    -- security_invoker: callers' own rights apply; anon/authenticated get none
+    create view public.invites with (security_invoker = on) as select * from public.accounts;
+    revoke all on public.invites from anon, authenticated;
+    grant select, insert, update, delete on public.invites to service_role;
   end if;
 end $$;
 
@@ -61,6 +67,13 @@ create index if not exists usage_user_created on public.usage (user_id, created 
 -- โควตาเป็นโทเคน (28 ต.ค.): accounts.quota (จำนวนรูป) ไม่ใช้แล้ว · ค่าเริ่มต้นตรงกับ DEFAULT_TOKEN_QUOTA ใน lib/usage.ts
 alter table public.accounts add column if not exists token_quota int not null default 300000 check (token_quota >= 0);
 alter table public.accounts alter column token_quota set default 300000; -- เพิ่มจาก 200,000 (28 ต.ค.) · แอปส่งค่าเองทุกครั้งที่สร้างโค้ด
+
+-- 16 Nov: every existing email (team) account gets its row now, so /admin can see it and raise its quota before the deploy
+-- (its earlier token use counts); members only, not code accounts or superadmin; accounts added later get a row on first use
+insert into public.accounts (user_id, code, label, token_quota)
+select u.id, null, left(coalesce(u.email, ''), 80), 300000 from auth.users u
+where u.raw_app_meta_data->>'looklet' = 'true' and coalesce(u.raw_app_meta_data->>'role', '') not in ('customer', 'superadmin')
+on conflict (user_id) do nothing;
 alter table public.usage add column if not exists tokens int;  -- โทเคนที่ AI คิดจริง (null = ไม่รู้ นับแบบประมาณ)
 
 -- เหมือนตาราง images: เปิด RLS ไม่มี policy + ไม่ให้สิทธิ์ anon/authenticated -> เข้าได้เฉพาะ server (secret key)
@@ -70,12 +83,6 @@ alter table public.usage enable row level security;
 revoke all on public.accounts, public.usage from anon, authenticated;
 grant select, insert, update, delete on public.accounts, public.usage to service_role;
 grant usage, select on sequence public.usage_id_seq to service_role;
-
--- temporary (16 Nov): the old name as a view so the still-deployed code keeps working between db-apply and the deploy
--- security_invoker: callers' own rights apply (anon/authenticated have none); drop it once the new code is live
-create or replace view public.invites with (security_invoker = on) as select * from public.accounts;
-revoke all on public.invites from anon, authenticated;
-grant select, insert, update, delete on public.invites to service_role;
 
 -- หน้าตรวจงาน /admin/audit (2 พ.ย.): เก็บสิ่งที่ส่งให้ AI ของทุกการสร้างรูปไว้กับแถวการใช้งาน
 -- (log เดียวกับไฟล์ logs/ ในเครื่อง ซึ่งบน Vercel หายไปเมื่อ function จบ) · แถวก่อนหน้านี้ไม่มี 2 คอลัมน์นี้
