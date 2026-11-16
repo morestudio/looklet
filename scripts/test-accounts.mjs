@@ -76,6 +76,7 @@ const supabaseMock = {
   sbRead: async (key, allowed) => { const r = db.images.find((x) => x.path === key); return r && allowed(r.meta) ? files.get(key) ?? Buffer.from('x') : null; },
   sbMeta: async (key) => db.images.find((x) => x.path === key)?.meta ?? null,
   sbUpdateMeta: async (key, meta, allowed) => { const r = db.images.find((x) => x.path === key); if (!r || !allowed(r.meta)) return false; r.meta = { ...r.meta, ...meta }; return true; },
+  sbCountUploads: async (owner) => db.images.filter((x) => x.area === 'uploads' && x.meta?.owner === owner).length,
   sbDelete: async (key) => { db.images = db.images.filter((x) => x.path !== key); return true; },
   THUMB_WIDTHS: [400, 512], GRID_THUMB: 512, sbSaveThumb: async () => {},
   sbReadThumb: async (key, _w, allowed) => { const r = db.images.find((x) => x.path === key); return r && allowed(r.meta) ? Buffer.from('thumb') : null; },
@@ -118,7 +119,7 @@ const { withAccount, visibleTo } = load('lib/account.ts');
 const storage = load('lib/storage.ts');
 const { normalizeInviteCode, newInviteCode, invitePassword } = load('lib/invites.ts');
 const { post } = load('lib/route.ts');
-const { quotaBlock, recordUsage } = load('lib/usage.ts');
+const { quotaBlock, recordUsage, uploadBlock, MAX_UPLOADS } = load('lib/usage.ts');
 const meRoute = load('app/api/me/route.ts');
 const inviteLogin = load('app/api/invite-login/route.ts');
 const admin = load('app/api/admin/route.ts');
@@ -229,6 +230,26 @@ assert.equal(await withAccount(boss, () => quotaBlock()), null); // superadmin: 
 assert(!db.accounts.some((a) => a.user_id === 'boss'));
 db.usage = db.usage.filter((u) => u.user_id !== 'team');
 
+// ---------- upload cap ----------
+assert.equal(MAX_UPLOADS, 100);
+const fill = (owner, n) => { for (let i = 0; i < n; i++) db.images.push({ path: `uploads/models/${owner}-${i}.jpg`, area: 'uploads', kind: 'models', meta: { owner }, created: '2026-11-01T00:00:00.000Z' }); };
+const before = db.images.length;
+fill('team', MAX_UPLOADS - 1);
+assert.equal(await withAccount(team, () => uploadBlock()), null);
+fill('team', 1);
+let blocked = await withAccount(team, () => uploadBlock());
+assert.equal(blocked.status, 409);
+assert.match((await blocked.json()).error, /100/);
+const uploadRoute = load('app/api/upload/route.ts');
+caller = team;
+assert.equal((await uploadRoute.POST(request({ kind: 'models', data: 'AA==', mime: 'image/png' }))).status, 409);
+assert.equal(db.images.length, before + MAX_UPLOADS); // nothing saved
+fill('boss', MAX_UPLOADS);
+assert.equal(await withAccount(boss, () => uploadBlock()), null); // superadmin exempt
+assert.equal((await withAccount(alice, () => uploadBlock())).status, 403); // disabled account
+db.images = db.images.filter((x) => !/^uploads\/models\/(team|boss)-/.test(x.path)); // other owners' uploads don't count
+assert.equal(await withAccount(team, () => uploadBlock()), null);
+
 // ---------- /api/me: every limited account gets its token bar ----------
 caller = team;
 let mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
@@ -336,4 +357,4 @@ assert.equal(list.rows.length, 4);
 assert(list.rows.every((x) => !x.hasLog));
 noAuditColumns = false;
 
-console.log('Accounts passed: invite codes, code login, per-account image privacy for email and code accounts (legacy team library hidden), owner cannot be forged, email-account rows on first use, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');
+console.log('Accounts passed: invite codes, code login, per-account image privacy for email and code accounts (legacy team library hidden), owner cannot be forged, email-account rows on first use, upload cap, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');

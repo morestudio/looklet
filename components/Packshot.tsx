@@ -28,7 +28,7 @@ import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors'
 import { NO_FILM } from '@/lib/film';
 import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, thumbSrc, toWebImage, uploadImage,
+  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, storeUpload, thumbSrc, toWebImage,
 } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
@@ -422,19 +422,19 @@ export default function Packshot() {
   async function addUpload(key: Key, file: File, name: string, type?: string, supporting = false, groupId?: string) {
     const targetGroupId = key === 'product' ? groupId ?? (supporting ? selectedGroup?.id : undefined) : undefined;
     const groupMeta = key === 'product' ? targetGroupId ? { productGroup: targetGroupId } : { productGroupName: name, productGroupType: type || 'other' } : {};
-    let src: string;
+    // throws at the upload cap (storeUpload), same as TryOn's addUpload; every caller shows the message
     const preview = URL.createObjectURL(file);
     setSaving((s) => [...s, { key, url: preview }]);
+    let stored: Awaited<ReturnType<typeof storeUpload>>;
     try {
-      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...groupMeta, ...(await uploadImage(file)) }));
-      track('upload', { page: 'product', kind: KIND[key], extra_photo: Boolean(targetGroupId) });
-    } catch (err) {
-      src = URL.createObjectURL(file); // เก็บไม่ได้ -> ใช้ชั่วคราวไปก่อน
-      setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง`);
+      stored = await storeUpload({ kind: KIND[key], name, type, ...groupMeta }, file);
     } finally {
       setSaving((s) => s.filter((x) => x.url !== preview));
       URL.revokeObjectURL(preview);
     }
+    const { src, warning } = stored;
+    if (warning) setStatus(warning);
+    else track('upload', { page: 'product', kind: KIND[key], extra_photo: Boolean(targetGroupId) });
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, ...groupMeta, productView: 'unspecified', uploaded: true }] }));
     if (!targetGroupId) select(key, src);
     return src;
@@ -506,7 +506,7 @@ export default function Packshot() {
     let failed = 0;
     let lastError = '';
     try {
-      for (const picked of files) {
+      for (const [i, picked] of files.entries()) {
         try {
           const file = isHeic(picked) ? await toWebImage(picked) : picked;
           if (!(await canOpenImage(file))) throw new Error('เปิดรูปไม่ได้ ลองใช้ JPG หรือ PNG');
@@ -527,6 +527,8 @@ export default function Packshot() {
         } catch (err) {
           failed++;
           lastError = (err as Error).message;
+          // upload cap reached: the rest would be refused too
+          if ((err as { status?: number }).status === 409) { failed += files.length - 1 - i; break; }
         }
       }
       if (failed) setStatus(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);

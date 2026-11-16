@@ -3,7 +3,7 @@
 import 'server-only';
 import { isLimited, me, type Account } from './account';
 import type { GenerateLog, PackshotLog } from './genlog';
-import { serviceClient, supabaseEnabled } from './storage-supabase';
+import { sbCountUploads, serviceClient, supabaseEnabled } from './storage-supabase';
 
 // ค่า AI โดยประมาณต่อรูป (บาท): GPT Image 2.5 คุณภาพสูง ~฿2 ต่อรูป (ทดสอบจริง 27 ต.ค.) ต่ำกว่านั้นถูกลงตามสัดส่วน
 const COST_THB: Record<string, Record<string, number>> = {
@@ -57,6 +57,20 @@ export async function quotaBlock(pendingTokens = 0): Promise<Response | null> {
   const used = await usedTokens(account!.id);
   if (used + Math.max(0, pendingTokens) >= row.token_quota) {
     return Response.json({ error: `ใช้โทเคนครบ ${row.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
+  }
+  return null;
+}
+
+// upload cap per account, all kinds together (incl. removed product photos: they still use storage; deleting the product frees them)
+// 409, not 403/429: api() reports those as quota_blocked; parallel uploads can pass the cap by a few, like the token quota
+export const MAX_UPLOADS = 100;
+export async function uploadBlock(): Promise<Response | null> {
+  const account = me();
+  if (!isLimited(account) || !supabaseEnabled) return null;
+  const row = await accountOf(account!);
+  if (!row || row.disabled) return DISABLED();
+  if ((await sbCountUploads(account!.id)) >= MAX_UPLOADS) {
+    return Response.json({ error: `อัปโหลดครบ ${MAX_UPLOADS} รูปแล้ว ลบรูปที่ไม่ใช้ก่อนเพิ่มใหม่` }, { status: 409 });
   }
   return null;
 }

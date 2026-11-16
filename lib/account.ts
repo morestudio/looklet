@@ -13,7 +13,7 @@ export const me = (): Account => store.getStore() ?? null;
 export const isCustomer = (a: Account = me()) => a?.role === 'customer'; // signs in with an invite code
 export const isSuperadmin = (a: Account = me()) => !a || a.role === 'superadmin'; // ไม่มีระบบ login (ในเครื่อง) = เปิดหน้า admin ได้
 
-// token quota applies to every signed-in account except superadmin
+// quota + upload cap apply to every signed-in account except superadmin
 export const isLimited = (a: Account = me()) => !!a && a.role !== 'superadmin';
 
 // every signed-in account sees only its own images (meta.owner = id); email and code accounts alike (16 Nov)

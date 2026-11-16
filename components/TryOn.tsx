@@ -32,7 +32,7 @@ import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as K
 import { SKIN_MODEL } from '@/lib/skin';
 import {
   api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
-  saveImageFile, thumbSrc, toWebImage, uploadImage,
+  saveImageFile, storeUpload, thumbSrc, toWebImage,
 } from '@/lib/browser';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
@@ -339,21 +339,20 @@ export default function TryOn() {
     update((r) => ({ pick: { ...r.pick, ...wearPatch(slot, id) } }));
   }
 
-  // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย
+  // อัปโหลดแล้วเซฟไว้ใน images/uploads/ แล้วเลือกให้เลย · throws at the upload cap (storeUpload), same as Packshot's addUpload
   async function addUpload(key: Key, file: File, name: string, type?: string) {
-    let src: string;
     const preview = URL.createObjectURL(file);
     setSaving((s) => [...s, { key, url: preview }]);
+    let stored: Awaited<ReturnType<typeof storeUpload>>;
     try {
-      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...(await uploadImage(file)) }));
-      track('upload', { page: 'model', kind: KIND[key] });
-    } catch (err) {
-      src = URL.createObjectURL(file); // เซฟไม่ได้ -> ใช้ชั่วคราวไปก่อน
-      setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง`);
+      stored = await storeUpload({ kind: KIND[key], name, type }, file);
     } finally {
       setSaving((s) => s.filter((x) => x.url !== preview));
       URL.revokeObjectURL(preview);
     }
+    const { src, warning } = stored;
+    if (warning) setStatus(warning);
+    else track('upload', { page: 'model', kind: KIND[key] });
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, uploaded: true }] }));
     // ของเสริม: ไม่ใช้ toggleAccessory เพราะระหว่างรอ AI ผู้ใช้อาจเลือก/เอาออกชิ้นอื่นไปแล้ว ต้องนับจากค่าล่าสุด
     // เลือกครบแล้ว -> เพิ่มเข้ารายการเฉยๆ ไม่เลือกให้
@@ -380,10 +379,12 @@ export default function TryOn() {
     }
     if (!(await canOpenImage(file))) return setStatus('เปิดรูปนี้ไม่ได้ (ชนิดไฟล์ไม่รองรับ) — ลองใช้รูป JPG หรือ PNG');
     const name = file.name.replace(/\.[^.]+$/, '');
-    if (slot === 'shoes') return void addUpload('accessory', file, name, 'shoes');
-    if (key === 'outfit') return void addUpload('outfit', file, name, slot === 'top' || slot === 'bottom' ? slot : undefined);
-    if (key !== 'accessory') return void addUpload(key, file, name);
-    void addAccessory(file);
+    try {
+      if (slot === 'shoes') return await addUpload('accessory', file, name, 'shoes');
+      if (key === 'outfit') return await addUpload('outfit', file, name, slot === 'top' || slot === 'bottom' ? slot : undefined);
+      if (key !== 'accessory') return await addUpload(key, file, name);
+      await addAccessory(file);
+    } catch (err) { setStatus((err as Error).message); } // upload cap reached
   }
 
   // ของเสริม: ให้ AI ดูว่าเป็นอะไร + ตั้งชื่อ แล้วเพิ่มให้เลย ไม่ต้องกดยืนยัน
@@ -405,8 +406,9 @@ export default function TryOn() {
     if (!d) return;
     if (d.mode === 'add') {
       URL.revokeObjectURL(d.url);
-      if (info) await addUpload('accessory', d.file, info.name, info.type);
-      if (info?.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
+      if (!info) return;
+      try { await addUpload('accessory', d.file, info.name, info.type); } catch (err) { return setStatus((err as Error).message); } // upload cap reached
+      if (info.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
       return;
     }
     if (!info) return;

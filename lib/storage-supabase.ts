@@ -55,6 +55,13 @@ export async function sbList(area: string, kind: string | null): Promise<Row[]> 
   return data as Row[];
 }
 
+// uploads owned by one account, every kind (MAX_UPLOADS in lib/usage.ts); thumbs/guides have no row so they don't count
+export async function sbCountUploads(owner: string) {
+  const { count, error } = await sb().from('images').select('path', { count: 'exact', head: true }).eq('area', 'uploads').eq('meta->>owner', owner);
+  if (error) throw new Error('นับรูปที่อัปโหลดไม่สำเร็จ: ' + error.message);
+  return count ?? 0;
+}
+
 // เช็กแถวในตารางก่อน: CDN ของ Supabase เก็บไฟล์ไว้ 1 ชม. ลบแล้วยังโหลดได้ (แผนฟรีไม่ล้าง cache ตอนลบ) — ไม่มีแถว = ลบแล้ว
 // คืน meta ด้วย ให้ lib/storage.ts เช็กว่าบัญชีที่เรียกเห็นรูปนี้ได้ไหม (meta.owner)
 export async function sbRead(key: string, allowed: (meta: Record<string, unknown>) => boolean) {
