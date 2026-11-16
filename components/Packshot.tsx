@@ -72,6 +72,10 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   { key: 'settings', label: 'ตั้งค่า', title: 'ตั้งค่าและสร้างรูป', Icon: IconSettings },
 ] as const).filter((s) => REF_SHOT || s.key !== 'ref');
 
+// ขั้นสูง (คุณภาพ) — เอาออก 16 พ.ย. (ผู้ใช้ขอ เหมือนหน้านางแบบ): คุณภาพตามโมเดลเสมอ (GPT 2.5 = high) รวมรูปเก่าที่เปิดมา · เปิดใหม่ = true
+const ADVANCED = false;
+const plainRecipe = (r: Recipe, model: string): Recipe => (ADVANCED ? r : { ...r, quality: defaultQuality(model) });
+
 // สัดส่วน "อัตโนมัติ": 4:5 (ฟีด IG) · ลอกทั้งช็อต = สัดส่วนที่ใกล้รูปต้นแบบที่สุด
 const nearestAspect = (w: number, h: number) => PRODUCT_ASPECTS.map((a) => a.id).reduce((best, a) => {
   const diff = (id: string) => {
@@ -791,13 +795,17 @@ export default function Packshot() {
   const recipe: Recipe = { ...choices, concept: shotType === 'creative' ? creativeConcept ?? null : null };
   useEffect(() => { creativeScopeRef.current = creativeScope; });
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, aiModel, groups) : null), [shown, lists, aiModel, groups]);
+  const shownRecipe = useMemo(() => {
+    if (!shown?.recipe) return null;
+    const out = readRecipe(shown.recipe, lists, aiModel, groups);
+    return { ...out, recipe: plainRecipe(out.recipe, aiModel) };
+  }, [shown, lists, aiModel, groups]);
   const sync = useRecipeSync({
     recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
     ready: aiModels !== null && libReady, // quality is set when models load, product when the library loads
     apply: applyRecipe, keep: () => conceptState, restore: setConceptState, close: () => setCurrent(null),
     revalidate: (r) => {
-      const back = readRecipe(r, lists, aiModel, groups).recipe;
+      const back = plainRecipe(readRecipe(r, lists, aiModel, groups).recipe, aiModel);
       if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
       return back;
     },
@@ -1070,16 +1078,16 @@ export default function Packshot() {
       <Section title="สั่งเพิ่มเติม">
         <textarea className="text-input" value={extra} maxLength={EXTRA_MAX} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
       </Section>
-      <details className="advanced">
+      {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
+      {ADVANCED && <details className="advanced">
         <summary>ขั้นสูง <small>คุณภาพ</small></summary>
         {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
-        {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
         {aiModel.startsWith('openai:') && (
           <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
             <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
           </Section>
         )}
-      </details>
+      </details>}
       {genButtons}
     </>;
   }

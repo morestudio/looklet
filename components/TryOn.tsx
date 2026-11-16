@@ -81,6 +81,11 @@ const POSE_PRESET_PICKER = false;
 
 // ชุดภาพ 4 มุม (SET_SHOTS) — ปุ่มเป็นสีเทากดไม่ได้ไว้ก่อน บอก "เร็วๆ นี้" (29 ต.ค. ผู้ใช้ขอ) · โค้ดสร้างชุดภาพยังอยู่ครบ เปิดใหม่ = true
 const SET_SHOOT = false;
+// ขั้นสูง (คุณภาพ · การมอง · พร็อพในมือ) — เอาออกทั้งส่วน 16 พ.ย. (ผู้ใช้ขอ): พับซ่อนไว้ เลือกครั้งเดียวแล้วติดไปทุกรูปโดยไม่รู้ตัว
+// (MAISON 2.11: การมอง "มองไปทางอื่น" ติดไปทั้ง 5 รูป) · ปิดอยู่ = คุณภาพตามโมเดลเสมอ (GPT 2.5 = high) การมองอัตโนมัติ ไม่มีพร็อพในมือ
+// รวมรูปเก่าที่เปิดมา (plainRecipe) · โค้ดยังอยู่ เปิดใหม่ = true
+const ADVANCED = false;
+const plainRecipe = (r: Recipe, model: string): Recipe => (ADVANCED ? r : { ...r, quality: defaultQuality(model), gaze: '', props: [] });
 
 // การ์ด "ตามสไตล์" ในขั้นมุมมอง: วาดระยะ/มุมที่สไตล์นั้นใช้ (เดาจากชื่อไทยของสไตล์ ใช้แค่รูปประกอบ ไม่ได้ส่งให้ AI)
 const presetFraming = (p: Preset) => (p.fullBody ? 'full' : 'waist');
@@ -238,8 +243,8 @@ export default function TryOn() {
   // ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด) = คนอยู่ที่เดิม server ไม่สั่งตำแหน่ง (lib/prompts.ts)
   const keepsPlace = !pose && !posePreset && !scene;
   const placementChoice = shot || keepsPlace || isDirector ? undefined : PLACEMENTS.find((p) => p.id === placementId);
-  const gaze = shot || isDirector ? undefined : GAZES.find((c) => c.id === gazeId);
-  const propChoices = isDirector ? [] : PROPS.filter((p) => heldProps.includes(p.id));
+  const gaze = !ADVANCED || shot || isDirector ? undefined : GAZES.find((c) => c.id === gazeId);
+  const propChoices = !ADVANCED || isDirector ? [] : PROPS.filter((p) => heldProps.includes(p.id));
   const accs = pick.accessory.map((id) => find(lists.accessory, id)).filter((a): a is Item => a !== undefined);
   const shown = current === null ? null : results[current];
   const finishLook: FilmLook = finish === 'auto' ? shown?.finish ?? 'film' : finish; // รูปเก่าที่ไม่ได้เก็บลุคไว้ = ฟิล์ม
@@ -797,12 +802,16 @@ export default function TryOn() {
   // ---------- past image <-> panel (components/useRecipeSync.ts) ----------
   const recipe = choices; // stored / compared form
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, aiModel) : null), [shown, lists, aiModel]);
+  const shownRecipe = useMemo(() => {
+    if (!shown?.recipe) return null;
+    const out = readRecipe(shown.recipe, lists, aiModel);
+    return { ...out, recipe: plainRecipe(out.recipe, aiModel) };
+  }, [shown, lists, aiModel]);
   const sync = useRecipeSync({
     recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
     ready: aiModels !== null, // quality is set when models load
     apply: applyRecipe, keep: () => base, restore: setBase, onStart: setBase, close: () => setCurrent(null),
-    revalidate: (r) => readRecipe(r, lists, aiModel).recipe, // missing upload = empty, model = first
+    revalidate: (r) => plainRecipe(readRecipe(r, lists, aiModel).recipe, aiModel), // missing upload = empty, model = first
   });
   const liveKey = sync.liveKey;
   const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
@@ -1093,10 +1102,10 @@ export default function TryOn() {
           {isDirector && <p className="muted-text">AI จัดท่าและองค์ประกอบให้ทั้งหมด เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์หากต้องการสั่งเอง</p>}
           <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
         </Section>
-        <details className="advanced">
+        {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
+        {ADVANCED && <details className="advanced">
           <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>
           {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
-          {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
           {aiModel.startsWith('openai:') && (
             <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
               <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
@@ -1119,7 +1128,7 @@ export default function TryOn() {
             <input type="checkbox" checked={harmonize} onChange={(e) => update({ harmonize: e.target.checked })} />
             <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
           </label>}
-        </details>
+        </details>}
         {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
         {SET_SHOOT && <div className="gen-row single">
           <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
