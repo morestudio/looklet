@@ -167,12 +167,13 @@ export function Section({ title, note, children }: { title: string; note?: React
 // ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และแถบปุ่มล่าง (ถัดไป / สร้างรูป) ไม่นับเป็นการเลือก
 export function useChosenSteps<K extends string>(current: K) {
   const [chosen, setChosen] = useState<ReadonlySet<K>>(new Set());
-  const mark = (e: SyntheticEvent) => {
+  // markAs(key): a second panel showing another step at the same time (TryOn's right panel)
+  const markAs = (key: K) => (e: SyntheticEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
-    setChosen((prev) => (prev.has(current) ? prev : new Set(prev).add(current)));
+    setChosen((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   };
-  return { chosen, mark, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
+  return { chosen, mark: markAs(current), markAs, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
 }
 
 // บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นแท็บแอดมิน · ลูกค้าเห็นแถบโทเคน (TokenUsage มุมขวาบน)

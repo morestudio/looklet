@@ -2,7 +2,7 @@
 // Lolo (เดิมชื่อ Looklet แล้ว SnapAds; เปลี่ยนเป็น Lolo 12 พ.ย.): เลือกนางแบบ + ชุด + ของเสริม + ฉาก -> AI สร้างรูป -> แต่งรูป (ฟรี) -> บันทึก
 // การสร้างรูปเรียกผ่าน API ของเรา (app/api/*) ซึ่งถือ API key ไว้ หน้าเว็บไม่เห็น key
 // การแต่งรูปใช้อัลกอริทึมใน lib/vision.js + lib/beauty.js ทำในเครื่อง ไม่เสียเงิน
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
@@ -40,6 +40,16 @@ import {
   presetLightPrompt, presetPrompt, type AccessoryInfo, type Item, type LightSource, type PoseMode, type Preset,
 } from '@/lib/catalog';
 
+// ปรับแสงรอบสอง (harmonize) — เอาออก 12 พ.ย. (ผู้ใช้ขอ): ส่งรูปที่ได้ให้ AI ทำซ้ำอีกรอบ = จ่าย 2 เท่า (฿6.6 high / ฿10.4 xhigh ต่อรูป เทียบ ~฿3)
+// ซ่อนช่องติ๊กในขั้นสูง และไม่ส่งไป server แม้รูปเก่าที่เปิดมาเคยติ๊กไว้ (recipe.harmonize ยังเก็บ/อ่านได้ แต่ไม่ใช้) · server ก็ไม่ทำรอบสอง (HARMONIZE ใน app/api/generate)
+// โค้ด UI/พรอมต์ยังอยู่ เปิดใหม่ = true ทั้งสองที่
+const HARMONIZE = false;
+
+// ปรับผิวสมจริง (AI ทำรูปใหม่ 1664×2496 ผิวละเอียดขึ้น ~฿2.8 ต่อครั้ง, /api/refine-skin) — เอาออก 12 พ.ย. (ผู้ใช้ขอ)
+// ซ่อนส่วน "ผิวสมจริงด้วย AI" ในแผงแต่งรูปและปุ่มใต้รูป · รูปที่ปรับผิวไว้แล้วยังเทียบกับ "ต้นฉบับก่อนปรับผิว" ได้เหมือนเดิม
+// route /api/refine-skin และโค้ดยังอยู่ (ไม่มีอะไรในหน้าเว็บเรียกแล้ว) เปิดใหม่ = true
+const REFINE_SKIN = false;
+
 const KIND = { model: 'models', outfit: 'outfits', accessory: 'accessories', pose: 'poses', scene: 'scenes' } as const;
 const CATALOG: Record<Key, Item[]> = { model: MODELS, outfit: OUTFITS, accessory: ACCESSORIES, pose: POSES, scene: SCENES };
 
@@ -71,16 +81,6 @@ const POSE_PRESET_PICKER = false;
 // ชุดภาพ 4 มุม (SET_SHOTS) — ปุ่มเป็นสีเทากดไม่ได้ไว้ก่อน บอก "เร็วๆ นี้" (29 ต.ค. ผู้ใช้ขอ) · โค้ดสร้างชุดภาพยังอยู่ครบ เปิดใหม่ = true
 const SET_SHOOT = false;
 
-// ปรับแสงรอบสอง (harmonize) — เอาออก 12 พ.ย. (ผู้ใช้ขอ): ส่งรูปที่ได้ให้ AI ทำซ้ำอีกรอบ = จ่าย 2 เท่า (฿6.6 high / ฿10.4 xhigh ต่อรูป เทียบ ~฿3)
-// ซ่อนช่องติ๊กในขั้นสูง และไม่ส่งไป server แม้รูปเก่าที่เปิดมาเคยติ๊กไว้ (recipe.harmonize ยังเก็บ/อ่านได้ แต่ไม่ใช้) · server ก็ไม่ทำรอบสอง (HARMONIZE ใน app/api/generate)
-// โค้ด UI/พรอมต์ยังอยู่ เปิดใหม่ = true ทั้งสองที่
-const HARMONIZE = false;
-
-// ปรับผิวสมจริง (AI ทำรูปใหม่ 1664×2496 ผิวละเอียดขึ้น ~฿2.8 ต่อครั้ง, /api/refine-skin) — เอาออก 12 พ.ย. (ผู้ใช้ขอ)
-// ซ่อนส่วน "ผิวสมจริงด้วย AI" ในแผงแต่งรูปและปุ่มใต้รูป · รูปที่ปรับผิวไว้แล้วยังเทียบกับ "ต้นฉบับก่อนปรับผิว" ได้เหมือนเดิม
-// route /api/refine-skin และโค้ดยังอยู่ (ไม่มีอะไรในหน้าเว็บเรียกแล้ว) เปิดใหม่ = true
-const REFINE_SKIN = false;
-
 // การ์ด "ตามสไตล์" ในขั้นมุมมอง: วาดระยะ/มุมที่สไตล์นั้นใช้ (เดาจากชื่อไทยของสไตล์ ใช้แค่รูปประกอบ ไม่ได้ส่งให้ AI)
 const presetFraming = (p: Preset) => (p.fullBody ? 'full' : 'waist');
 const presetAngle = (p: Preset) => {
@@ -111,11 +111,11 @@ const newSetId = () => crypto.randomUUID().slice(0, 13); // id ชุดภา�
 type Stored = StoredResultBase<Recipe> & { finish?: FilmLook; refinedFrom?: string; posePlan?: PosePlan };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 
-// ขั้นตอน (เมนูซ้าย): แต่ละขั้นมีแผงเลือก (ซ้าย) รูปอยู่ขวาตลอด (ไม่มีแผงขวาแล้ว 28 ต.ค.)
-const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = [
+// steps: left rail + left panel; side 'right' = right rail + right panel (wardrobe: outfit, accessory), both panels always open
+const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode; side?: 'right' }[] = [
   { key: 'model', label: 'นางแบบ', title: 'เลือกนางแบบ', Icon: IconModel },
-  { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt },
-  { key: 'accessory', label: 'ของเสริม', title: 'ของเสริม', Icon: IconBag },
+  { key: 'outfit', label: 'เสื้อผ้า', title: 'เลือกเสื้อผ้า', Icon: IconShirt, side: 'right' },
+  { key: 'accessory', label: 'ของเสริม', title: 'ของเสริม', Icon: IconBag, side: 'right' },
   { key: 'pose', label: 'ท่าโพสต์', title: 'ท่าโพสต์', Icon: IconPose },
   { key: 'scene', label: 'ฉากหลัง', title: 'ฉากหลัง', Icon: IconScene },
   { key: 'settings', label: 'สไตล์ถ่ายภาพ', title: 'เลือกสไตล์ถ่ายภาพ', Icon: IconPalette },
@@ -126,6 +126,13 @@ const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode
   // ตั้งค่า (แบบหน้าสินค้า 29 ต.ค.): ใช้ภาพที่ไหน + สั่งเพิ่มเติม + ขั้นสูง + ปุ่มสร้างรูปท้ายเส้นทาง
   { key: 'output', label: 'ตั้งค่า', title: 'ตั้งค่า', Icon: IconSettings },
 ];
+const LEFT_STEPS = STEPS.filter((s) => !s.side);
+const RIGHT_STEPS = STEPS.filter((s) => s.side === 'right');
+type Search = { query: string; setQuery: (v: string) => void; filter: string; setFilter: (v: string) => void };
+// phone (same breakpoint as globals.css): one rail + one panel with every step in STEPS order, no right side
+const NARROW = '(max-width: 860px)';
+const onNarrow = (cb: () => void) => { const m = matchMedia(NARROW); m.addEventListener('change', cb); return () => m.removeEventListener('change', cb); };
+const useNarrow = () => useSyncExternalStore(onNarrow, () => matchMedia(NARROW).matches, () => false);
 // ตัวกรองในแผงเลือก (ของเสริมกรองตามประเภทแทน)
 const SOURCE_FILTERS = [{ id: 'all', name: 'ทั้งหมด' }, { id: 'catalog', name: 'ตัวอย่าง' }, { id: 'uploaded', name: 'อัปโหลดเอง' }];
 
@@ -192,9 +199,16 @@ export default function TryOn() {
   const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
   const editCloseRef = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);
-  const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS)
+  const [step, setStep] = useState(0); // อยู่ขั้นไหน (ตำแหน่งใน STEPS) — left side only
   const [query, setQuery] = useState(''); // ค้นหาตามชื่อในแผงเลือก
   const [filter, setFilter] = useState('all'); // ตัวกรองในแผงเลือก (SOURCE_FILTERS หรือ id ประเภทของเสริม)
+  const [wearStep, setWearStep] = useState<StepKey>(RIGHT_STEPS[0].key); // right panel's step
+  const [wearQuery, setWearQuery] = useState(''); // right panel's own search / filter
+  const [wearFilter, setWearFilter] = useState('all');
+  const narrow = useNarrow();
+  const railSteps = narrow ? STEPS : LEFT_STEPS;
+  // phone -> desktop while on a wardrobe step: hand it to the right panel, left goes back to the first step
+  if (!narrow && STEPS[step].side) { setWearStep(STEPS[step].key); setStep(0); }
 
   const model = find(lists.model, pick.model) ?? lists.model[0];
   const outfit = find(lists.outfit, pick.outfit); // ทั้งชุด
@@ -724,13 +738,20 @@ export default function TryOn() {
 
 
   function goStep(i: number) {
+    if (STEPS[i].side === 'right' && !narrow) {
+      setWearStep(STEPS[i].key);
+      setWearQuery('');
+      setWearFilter('all');
+      return;
+    }
     setStep(i);
     setQuery('');
     setFilter('all');
   }
 
   const cur = STEPS[step];
-  const { chosen, mark, setChosen } = useChosenSteps(cur.key);
+  const wearCur = STEPS.find((s) => s.key === wearStep)!;
+  const { chosen, mark, markAs, setChosen } = useChosenSteps(cur.key);
 
   // edit panel focus: open -> its close button, close -> back to แต่งรูป (the button that had focus unmounts); Esc closes
   useEffect(() => {
@@ -800,7 +821,8 @@ export default function TryOn() {
     ...(shot && !shotPresetLight ? { settings: 'ใช้แสงและโทนสีจากรูปท่าโพสต์' } : {}),
     ...(shot ? { view: 'ระยะ มุมกล้อง และตำแหน่งตามรูปท่าโพสต์' } : {}),
   };
-  const nextStep = STEPS.findIndex((s, i) => i > step && !unusedWhy[s.key]);
+  const nextStep = STEPS.findIndex((s, i) => i > step && (narrow || !s.side) && !unusedWhy[s.key]);
+  const wearNext = STEPS.findIndex((s, i) => i > STEPS.indexOf(wearCur) && s.side === 'right');
   const barNext = nextStep; // sticky bar (Go list item 5): step 8 is the last step -> generate only
   const genLabel = busy !== null ? 'กำลังสร้างรูป…' : isDirector ? 'คิด 3 ไอเดียให้เลือก' : 'สร้างรูปทันที';
 
@@ -845,264 +867,269 @@ export default function TryOn() {
   ];
 
   // ---------- แผงเลือก (ซ้าย) ----------
-  const q = query.trim().toLowerCase();
-  const visible = (key: Key) => lists[key].filter((i) => (!q || i.name.toLowerCase().includes(q)) && (
-    filter === 'all' || (filter === 'catalog' && !i.uploaded) || (filter === 'uploaded' && Boolean(i.uploaded))
-    || (key === 'accessory' && accessoryType(i).id === filter)));
-  const showSpecial = filter === 'all' && !q; // การ์ด "ชุดเดิม" / "ไม่ใส่" / "AI เลือกท่าให้" โชว์เฉพาะตอนไม่ได้กรอง
-  const uploadedCard = (key: Key, item: Item, active: boolean, onClick: () => void, zoom = false) => (
-    <Card key={idOf(item)} item={item} active={active} onClick={onClick} zoom={zoom}
-      onDelete={item.uploaded ? () => setDeletingUpload({ key, item }) : undefined} />
-  );
-  const accTypeFilters = [
-    { id: 'all', name: 'ทั้งหมด' },
-    ...ACCESSORY_TYPES.filter((t) => t.id !== 'shoes' && lists.accessory.some((a) => accessoryType(a).id === t.id)).map((t) => ({ id: t.id, name: t.name })),
-  ];
-  const picker = (key: Key, kind: string, cards: ReactNode, { special, filters = SOURCE_FILTERS, note, muted = false }: {
-    special?: ReactNode; filters?: { id: string; name: string }[]; note?: ReactNode; muted?: boolean;
-  } = {}) => (
-    <>
-      <label className="search">
-        <IconSearch />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${cur.label}...`} />
-      </label>
-      <ChipGroup options={filters} value={filter} onChange={setFilter} />
-      {note && <p className="note">{note}</p>}
-      <div className={'grid ' + kind + (muted ? ' muted' : '')}>
-        {showSpecial && special}
-        {cards}
-        {saving.filter((x) => x.key === key).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
-        <AddCard onFile={(f) => onFile(key, f)} />
-      </div>
-    </>
-  );
-
-  let panel: ReactNode;
-  if (cur.key === 'model') {
-    panel = picker('model', 'models', visible('model').map((m) => uploadedCard('model', m, idOf(m) === pick.model, () => select('model', idOf(m)), true)));
-  } else if (cur.key === 'outfit') {
-    // เสื้อผ้าแยกชิ้น (29 ต.ค.): ช่องสรุป เสื้อ / ท่อนล่าง / รองเท้า (กดเพื่อไปแท็บนั้น) -> แท็บ -> ตารางของแท็บ (เดิม + ตัวอย่าง + ของที่อัปโหลด)
-    // แท็บเสื้อ/ท่อนล่างมีรูปทั้งชุดด้วย (เอาแค่ส่วนนั้นจากรูป) · รองเท้ามาจากของเสริมประเภท shoes
-    const tab = WEAR_TABS.find((t) => t.id === outfitTab) ?? WEAR_TABS[0];
-    const chosenId = { top: pick.top, bottom: pick.bottom, shoes: pick.shoes, set: pick.outfit }[tab.id];
-    const listKey: Key = tab.id === 'shoes' ? 'accessory' : 'outfit';
-    const items = (tab.id === 'shoes' ? lists.accessory.filter(isShoes)
-      : lists.outfit.filter((o) => wearPart(o) === tab.id || (tab.id !== 'set' && wearPart(o) === 'set')))
-      .filter((i) => !q || i.name.toLowerCase().includes(q));
-    const worn = { top: top ?? outfit, bottom: bottom ?? outfit, shoes };
-    panel = <>
-      <div className="wear-summary" aria-label="ชุดที่ใส่">
-        {(['top', 'bottom', 'shoes'] as const).map((slot) => {
-          const item = worn[slot];
-          const goTab: WearSlot = slot !== 'shoes' && outfit ? 'set' : slot;
-          return <button key={slot} type="button" className={'wear-slot' + (outfitTab === goTab ? ' active' : '')} onClick={() => { setOutfitTab(goTab); setQuery(''); }}>
-            <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={thumbSrc(item.src)} alt="" />}</span>
-            <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
-            <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
-          </button>;
-        })}
-      </div>
-      <ChipGroup options={WEAR_TABS} value={tab.id} onChange={(v) => { setOutfitTab(v as WearSlot); setQuery(''); }} />
-      <label className="search">
-        <IconSearch />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${tab.name}...`} />
-      </label>
-      <p className="muted-text wear-hint">{tab.hint}</p>
-      <div className={'grid ' + (tab.id === 'shoes' ? 'accessories' : 'outfits')}>
-        {!q && <Card item={{ name: tab.keep }} active={!chosenId} onClick={() => wear(tab.id, null)} />}
-        {items.map((o) => uploadedCard(listKey, o, idOf(o) === chosenId, () => wear(tab.id, idOf(o))))}
-        {saving.filter((x) => x.key === listKey).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
-        <AddCard onFile={(f) => onFile('outfit', f, tab.id)} />
-      </div>
-    </>;
-  } else if (cur.key === 'accessory') {
-    panel = picker('accessory', 'accessories', <>
-      {visible('accessory').filter((a) => !isShoes(a)).map((a) => (
-        <Card key={idOf(a)} item={a} active={pick.accessory.includes(idOf(a))} onClick={() => toggleAccessory(idOf(a))}
-          onDelete={a.uploaded ? () => setDeletingUpload({ key: 'accessory', item: a }) : undefined}
-          footer={a.uploaded && (
-            <button className="acc-type" title="แก้ชื่อ/ประเภท" onClick={() => setDialog({ mode: 'edit', item: a })}>
-              {accessoryType(a).name} ✎
-            </button>
-          )} />
-      ))}
-      {analyzing.map((url) => <PendingCard key={url} src={url} />)}
-    </>, {
-      special: <Card item={{ name: 'ไม่ใส่' }} active={!accs.length} onClick={() => toggleAccessory(null)} />,
-      filters: accTypeFilters,
-    });
-  } else if (cur.key === 'pose') {
-    // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป, ซ่อนอยู่ POSE_PRESET_PICKER) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
-    const fixedMode = FIXED_POSE_MODE && POSE_MODES.find((m) => m.id === FIXED_POSE_MODE)!;
-    panel = <>
-      {POSE_PRESET_PICKER && <Section title="ท่าสำเร็จรูป">
-        {/* การ์ดมีภาพวาดท่า (PoseView) แบบการ์ดมุมมอง/สไตล์ถ่ายภาพ (29 ต.ค.) */}
-        <div className="options view-options pose-presets">
-          <button type="button" className={'option view-option' + (!pose && !posePreset ? ' active' : '')} aria-pressed={!pose && !posePreset} onClick={() => select('pose', null)}>
-            <PoseView id="keep" /><b>ท่าเดิม</b><small>ท่าเดียวกับรูปนางแบบ</small>
-          </button>
-          {POSE_CHOICES.map((p) => (
-            <button key={p.id} type="button" className={'option view-option' + (posePreset?.id === p.id ? ' active' : '')} aria-pressed={posePreset?.id === p.id}
-              onClick={() => select('pose', PRESET_POSE + p.id)}>
-              <PoseView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
-            </button>
-          ))}
-        </div>
-        {isDirector ? <div className="director-settings">
-          <p className="muted-text">AI ดูนางแบบ ชุด และฉาก คิด 3 ไอเดียให้เลือก สร้างเฉพาะไอเดียที่คุณเลือก แล้วตรวจภาพให้</p>
-          <p className="sub">ใช้ฉากแบบไหน</p>
-          <ChipGroup options={[{ id: 'explore', name: 'สำรวจมุมใหม่' }, { id: 'keep', name: 'คงมุมฉากเดิม' }]} value={backgroundMode} onChange={(v) => update({ background: v as BackgroundMode })} />
-          <p className="muted-text">{backgroundMode === 'explore' ? 'เปลี่ยนมุมกล้องได้ เช่น มุมสูงเหนือเตียง ส่วนที่มองไม่เห็นในรูปฉากจะให้ AI คาดคะเน' : 'ใช้มุมกล้องและตำแหน่งเฟอร์นิเจอร์ตามรูปฉาก จัดท่าภายในพื้นที่ที่เห็น'}</p>
-          <p className="sub">เป้าหมายของภาพ</p>
-          <ChipGroup options={[{ id: 'lifestyle', name: 'ไลฟ์สไตล์' }, { id: 'outfit', name: 'โชว์ชุดชัด' }, { id: 'editorial', name: 'แฟชั่นสร้างสรรค์' }]} value={photoGoal} onChange={(v) => update({ goal: v as PhotoGoal })} />
-          <label><input type="checkbox" checked={autoRepair} onChange={(e) => update({ autoRepair: e.target.checked })} /> แก้ภาพอัตโนมัติได้ 1 ครั้งเมื่อพบปัญหาร้ายแรง (หน้า ชุด มือ/แขนขา หรือส่วนที่ต้องเห็นหลุดกรอบ)</label>
-          <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · AI จัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด</p>
-        </div> : posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้</p>}
-        {shown?.posePlan && <ShotPlanView plan={shown.posePlan} />}
-      </Section>}
-      {MOOD_PICKER && <Section title="สีหน้า">
-        <ChipGroup options={FACE_MOODS} value={isDirector ? 'auto' : faceMood} disabled={isDirector} onChange={(v) => update({ mood: v })} />
-        <p className="muted-text">{mood.hint}</p>
-      </Section>}
-      <Section title={POSE_PRESET_PICKER ? 'ใช้รูปท่าของฉัน' : 'รูปท่าโพสต์'} note="อัปโหลด หรือเลือกจากตัวอย่าง">
-        {/* วิธีใช้รูปท่าอยู่เหนือรายการรูปเสมอ (ยังไม่เลือกรูป = กดไม่ได้) รายการรูปไม่กระโดดตอนกดเลือก */}
-        {!fixedMode ? <>
-          <p className="sub">ใช้รูปท่าแบบไหน</p>
-          <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => update({ poseMode: v as PoseMode })} />
-          <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
-        </> : fixedMode.id === 'shot-scene'
-          ? <p className="muted-text">{shotRoom
-            ? 'AI ลอกท่า มุมกล้อง ระยะ การมอง แสง และโทนสีจากรูปท่า แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือกลงในฉากที่เลือกไว้ในขั้นฉากหลัง · ไม่เลือกรูป = ท่าเดิมของนางแบบ'
-            : 'AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ · อยากใช้ฉากของคุณเอง เลือกได้ในขั้นฉากหลัง'}</p>
-          : <p className="muted-text">{fixedMode.hint}</p>}
-        {shot && !fixedMode && <>
-          <p className="sub">แสง</p>
-          <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => update({ light: v as LightSource })} />
-          <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
-        </>}
-        {/* ไม่มีท่าสำเร็จรูป = การ์ด "ท่าเดิม" อยู่หน้ารายการรูปแบบ ชุดเดิม/ฉากเดิม ใช้ยกเลิกรูปท่าที่เลือกไว้ */}
-        {picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))), POSE_PRESET_PICKER ? {} : {
-          special: <Card item={{ name: 'ท่าเดิม' }} active={!pose} onClick={() => select('pose', null)} />,
-        })}
-      </Section>
-    </>;
-  } else if (cur.key === 'scene') {
-    panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
-      special: <Card item={{ name: sceneWithPose ? 'ฉากจากรูปท่า' : 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
-      note: shotScene && !FIXED_POSE_MODE ? 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้'
-        : sceneWithPose && 'มีรูปท่าโพสต์อยู่: ไม่เลือก = ใช้ฉากจากรูปท่า · เลือกฉาก = AI ถ่ายฉากนี้ใหม่ให้มุมกล้องและแสงเหมือนรูปท่าก่อน แล้วใส่นางแบบ (สร้าง 2 รูป ใช้โทเคนประมาณ 1.6 เท่า รอนานขึ้น) · ได้ผลดีเมื่อรูปฉากถ่ายจากมุมใกล้เคียงรูปท่า และมีที่แบบเดียวกัน (เตียง เก้าอี้ โซฟา)',
-      muted: shotScene && !FIXED_POSE_MODE,
-    });
-  } else if (cur.key === 'view') {
-    // 3 ส่วน การ์ดมีภาพวาดเหมือนขั้นมุมกล้อง/ระยะของหน้าสินค้า · "ตามสไตล์" วาดระยะ/มุมที่สไตล์ที่เลือกใช้
-    const card = (key: string, active: boolean, disabled: boolean, choose: () => void, art: ReactNode, title: string, hint: string) => (
-      <button key={key} type="button" className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={disabled} onClick={choose}>
-        {art}<b>{title}</b><small>{hint}</small>
-      </button>
+  // panel content for a step; left and right panels each pass their own search/filter
+  const panelFor = (stepKey: StepKey, { query, setQuery, filter, setFilter }: Search): ReactNode => {
+    const label = STEPS.find((s) => s.key === stepKey)!.label;
+    const q = query.trim().toLowerCase();
+    const visible = (key: Key) => lists[key].filter((i) => (!q || i.name.toLowerCase().includes(q)) && (
+      filter === 'all' || (filter === 'catalog' && !i.uploaded) || (filter === 'uploaded' && Boolean(i.uploaded))
+      || (key === 'accessory' && accessoryType(i).id === filter)));
+    const showSpecial = filter === 'all' && !q; // การ์ด "ชุดเดิม" / "ไม่ใส่" / "AI เลือกท่าให้" โชว์เฉพาะตอนไม่ได้กรอง
+    const uploadedCard = (key: Key, item: Item, active: boolean, onClick: () => void, zoom = false) => (
+      <Card key={idOf(item)} item={item} active={active} onClick={onClick} zoom={zoom}
+        onDelete={item.uploaded ? () => setDeletingUpload({ key, item }) : undefined} />
     );
-    const framingValue = framingChoice?.id ?? 'auto', angleValue = angleChoice?.id ?? 'auto'; // เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์
-    panel = <>
-      {isDirector && <p className="note">AI จะจัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด หากต้องการเลือกเอง ให้เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์</p>}
-      {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ระยะ มุมกล้อง และตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
-      <Section title="ระยะ">
-        <div className="options view-options">
-          {card('auto', framingValue === 'auto', shot || isDirector, () => update({ framing: 'auto' }), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
-          {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot || isDirector, () => update({ framing: f.id }), <PersonView framing={f.id} />, f.name, f.hint))}
+    const accTypeFilters = [
+      { id: 'all', name: 'ทั้งหมด' },
+      ...ACCESSORY_TYPES.filter((t) => t.id !== 'shoes' && lists.accessory.some((a) => accessoryType(a).id === t.id)).map((t) => ({ id: t.id, name: t.name })),
+    ];
+    const picker = (key: Key, kind: string, cards: ReactNode, { special, filters = SOURCE_FILTERS, note, muted = false }: {
+      special?: ReactNode; filters?: { id: string; name: string }[]; note?: ReactNode; muted?: boolean;
+    } = {}) => (
+      <>
+        <label className="search">
+          <IconSearch />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${label}...`} />
+        </label>
+        <ChipGroup options={filters} value={filter} onChange={setFilter} />
+        {note && <p className="note">{note}</p>}
+        <div className={'grid ' + kind + (muted ? ' muted' : '')}>
+          {showSpecial && special}
+          {cards}
+          {saving.filter((x) => x.key === key).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
+          <AddCard onFile={(f) => onFile(key, f)} />
         </div>
-      </Section>
-      <Section title="มุมกล้อง">
-        <div className="options view-options">
-          {card('auto', angleValue === 'auto', shot || isDirector, () => update({ angle: 'auto' }), <PersonView angle={presetAngle(preset)} />, isDirector && backgroundMode === 'keep' ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
-          {ANGLES.map((a) => card(a.id, angleValue === a.id, shot || isDirector, () => update({ angle: a.id }), <PersonView angle={a.id} />, a.name, a.hint))}
+      </>
+    );
+
+    let panel: ReactNode;
+    if (stepKey === 'model') {
+      panel = picker('model', 'models', visible('model').map((m) => uploadedCard('model', m, idOf(m) === pick.model, () => select('model', idOf(m)), true)));
+    } else if (stepKey === 'outfit') {
+      // เสื้อผ้าแยกชิ้น (29 ต.ค.): ช่องสรุป เสื้อ / ท่อนล่าง / รองเท้า (กดเพื่อไปแท็บนั้น) -> แท็บ -> ตารางของแท็บ (เดิม + ตัวอย่าง + ของที่อัปโหลด)
+      // แท็บเสื้อ/ท่อนล่างมีรูปทั้งชุดด้วย (เอาแค่ส่วนนั้นจากรูป) · รองเท้ามาจากของเสริมประเภท shoes
+      const tab = WEAR_TABS.find((t) => t.id === outfitTab) ?? WEAR_TABS[0];
+      const chosenId = { top: pick.top, bottom: pick.bottom, shoes: pick.shoes, set: pick.outfit }[tab.id];
+      const listKey: Key = tab.id === 'shoes' ? 'accessory' : 'outfit';
+      const items = (tab.id === 'shoes' ? lists.accessory.filter(isShoes)
+        : lists.outfit.filter((o) => wearPart(o) === tab.id || (tab.id !== 'set' && wearPart(o) === 'set')))
+        .filter((i) => !q || i.name.toLowerCase().includes(q));
+      const worn = { top: top ?? outfit, bottom: bottom ?? outfit, shoes };
+      panel = <>
+        <div className="wear-summary" aria-label="ชุดที่ใส่">
+          {(['top', 'bottom', 'shoes'] as const).map((slot) => {
+            const item = worn[slot];
+            const goTab: WearSlot = slot !== 'shoes' && outfit ? 'set' : slot;
+            return <button key={slot} type="button" className={'wear-slot' + (outfitTab === goTab ? ' active' : '')} onClick={() => { setOutfitTab(goTab); setQuery(''); }}>
+              <span className={'wear-thumb' + (item ? '' : ' empty')}>{item && <img src={thumbSrc(item.src)} alt="" />}</span>
+              <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
+              <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
+            </button>;
+          })}
         </div>
-      </Section>
-      <Section title="ตำแหน่งในภาพ">
-        {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
-        <div className="options view-options">
-          {card('auto', !placementChoice, shot || keepsPlace || isDirector, () => update({ placement: 'auto' }), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
-          {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace || isDirector, () => update({ placement: p.id }), <PersonView placement={p.id} />, p.name, p.hint))}
+        <ChipGroup options={WEAR_TABS} value={tab.id} onChange={(v) => { setOutfitTab(v as WearSlot); setQuery(''); }} />
+        <label className="search">
+          <IconSearch />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`ค้นหา${tab.name}...`} />
+        </label>
+        <p className="muted-text wear-hint">{tab.hint}</p>
+        <div className={'grid ' + (tab.id === 'shoes' ? 'accessories' : 'outfits')}>
+          {!q && <Card item={{ name: tab.keep }} active={!chosenId} onClick={() => wear(tab.id, null)} />}
+          {items.map((o) => uploadedCard(listKey, o, idOf(o) === chosenId, () => wear(tab.id, idOf(o))))}
+          {saving.filter((x) => x.key === listKey).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
+          <AddCard onFile={(f) => onFile('outfit', f, tab.id)} />
         </div>
-      </Section>
-    </>;
-  } else if (cur.key === 'output') {
-    // ตั้งค่า (29 ต.ค. แบบหน้าสินค้า): ใช้ภาพที่ไหน -> สั่งเพิ่มเติม -> ขั้นสูง -> ปุ่มสร้างรูปท้ายเส้นทาง
-    // ใช้ภาพที่ไหน: เลือกตามที่จะโพสต์แทนตัวเลขสัดส่วน (lib/aspects.ts) 4:5 / 9:16 server ทำ 2:3 แล้วตัด
-    panel = <>
-      <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect}`}>
-        <div className="options aspect-options">{PLATFORM_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
-          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => update({ aspect: a.id })}>
-          <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
-          <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
-        </button>)}</div>
-      </Section>
-      <Section title="สั่งเพิ่มเติม">
-        {isDirector && <p className="muted-text">AI จัดท่าและองค์ประกอบให้ทั้งหมด เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์หากต้องการสั่งเอง</p>}
-        <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
-      </Section>
-      <details className="advanced">
-        <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>
-        {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
-        {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
-        {aiModel.startsWith('openai:') && (
-          <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
-          </Section>
-        )}
-        <Section title="การมอง" note={isDirector ? 'AI เลือกให้ หน้าและสายตาหลากหลาย' : shot ? 'ใช้จากรูปต้นแบบ' : 'อัตโนมัติ = สุ่มมุมหน้าและสายตาต่อรูป'}>
-          <ChipGroup options={[{ id: '', name: 'อัตโนมัติ' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={(v) => update({ gaze: v })} />
+      </>;
+    } else if (stepKey === 'accessory') {
+      panel = picker('accessory', 'accessories', <>
+        {visible('accessory').filter((a) => !isShoes(a)).map((a) => (
+          <Card key={idOf(a)} item={a} active={pick.accessory.includes(idOf(a))} onClick={() => toggleAccessory(idOf(a))}
+            onDelete={a.uploaded ? () => setDeletingUpload({ key: 'accessory', item: a }) : undefined}
+            footer={a.uploaded && (
+              <button className="acc-type" title="แก้ชื่อ/ประเภท" onClick={() => setDialog({ mode: 'edit', item: a })}>
+                {accessoryType(a).name} ✎
+              </button>
+            )} />
+        ))}
+        {analyzing.map((url) => <PendingCard key={url} src={url} />)}
+      </>, {
+        special: <Card item={{ name: 'ไม่ใส่' }} active={!accs.length} onClick={() => toggleAccessory(null)} />,
+        filters: accTypeFilters,
+      });
+    } else if (stepKey === 'pose') {
+      // 2 ส่วน: ท่าสำเร็จรูป (AI คิดท่าจากฉาก ไม่ต้องมีรูป, ซ่อนอยู่ POSE_PRESET_PICKER) / ใช้รูปท่าของฉัน (อัปโหลด หรือรูปตัวอย่าง)
+      const fixedMode = FIXED_POSE_MODE && POSE_MODES.find((m) => m.id === FIXED_POSE_MODE)!;
+      panel = <>
+        {POSE_PRESET_PICKER && <Section title="ท่าสำเร็จรูป">
+          {/* การ์ดมีภาพวาดท่า (PoseView) แบบการ์ดมุมมอง/สไตล์ถ่ายภาพ (29 ต.ค.) */}
+          <div className="options view-options pose-presets">
+            <button type="button" className={'option view-option' + (!pose && !posePreset ? ' active' : '')} aria-pressed={!pose && !posePreset} onClick={() => select('pose', null)}>
+              <PoseView id="keep" /><b>ท่าเดิม</b><small>ท่าเดียวกับรูปนางแบบ</small>
+            </button>
+            {POSE_CHOICES.map((p) => (
+              <button key={p.id} type="button" className={'option view-option' + (posePreset?.id === p.id ? ' active' : '')} aria-pressed={posePreset?.id === p.id}
+                onClick={() => select('pose', PRESET_POSE + p.id)}>
+                <PoseView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
+              </button>
+            ))}
+          </div>
+          {isDirector ? <div className="director-settings">
+            <p className="muted-text">AI ดูนางแบบ ชุด และฉาก คิด 3 ไอเดียให้เลือก สร้างเฉพาะไอเดียที่คุณเลือก แล้วตรวจภาพให้</p>
+            <p className="sub">ใช้ฉากแบบไหน</p>
+            <ChipGroup options={[{ id: 'explore', name: 'สำรวจมุมใหม่' }, { id: 'keep', name: 'คงมุมฉากเดิม' }]} value={backgroundMode} onChange={(v) => update({ background: v as BackgroundMode })} />
+            <p className="muted-text">{backgroundMode === 'explore' ? 'เปลี่ยนมุมกล้องได้ เช่น มุมสูงเหนือเตียง ส่วนที่มองไม่เห็นในรูปฉากจะให้ AI คาดคะเน' : 'ใช้มุมกล้องและตำแหน่งเฟอร์นิเจอร์ตามรูปฉาก จัดท่าภายในพื้นที่ที่เห็น'}</p>
+            <p className="sub">เป้าหมายของภาพ</p>
+            <ChipGroup options={[{ id: 'lifestyle', name: 'ไลฟ์สไตล์' }, { id: 'outfit', name: 'โชว์ชุดชัด' }, { id: 'editorial', name: 'แฟชั่นสร้างสรรค์' }]} value={photoGoal} onChange={(v) => update({ goal: v as PhotoGoal })} />
+            <label><input type="checkbox" checked={autoRepair} onChange={(e) => update({ autoRepair: e.target.checked })} /> แก้ภาพอัตโนมัติได้ 1 ครั้งเมื่อพบปัญหาร้ายแรง (หน้า ชุด มือ/แขนขา หรือส่วนที่ต้องเห็นหลุดกรอบ)</label>
+            <p className="muted-text">การแก้ภาพใช้โควตาสร้างรูปเพิ่ม และเก็บภาพแรกไว้ด้วย · AI จัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด</p>
+          </div> : posePreset && <p className="muted-text">AI ดูรูปฉาก ชุด และของเสริม แล้วคิดท่าที่เข้ากับฉากนั้นให้</p>}
+          {shown?.posePlan && <ShotPlanView plan={shown.posePlan} />}
+        </Section>}
+        {MOOD_PICKER && <Section title="สีหน้า">
+          <ChipGroup options={FACE_MOODS} value={isDirector ? 'auto' : faceMood} disabled={isDirector} onChange={(v) => update({ mood: v })} />
+          <p className="muted-text">{mood.hint}</p>
+        </Section>}
+        <Section title={POSE_PRESET_PICKER ? 'ใช้รูปท่าของฉัน' : 'รูปท่าโพสต์'} note="อัปโหลด หรือเลือกจากตัวอย่าง">
+          {/* วิธีใช้รูปท่าอยู่เหนือรายการรูปเสมอ (ยังไม่เลือกรูป = กดไม่ได้) รายการรูปไม่กระโดดตอนกดเลือก */}
+          {!fixedMode ? <>
+            <p className="sub">ใช้รูปท่าแบบไหน</p>
+            <ChipGroup options={[...POSE_MODES]} value={poseMode} disabled={!pose} onChange={(v) => update({ poseMode: v as PoseMode })} />
+            <p className="muted-text">{pose ? POSE_MODES.find((m) => m.id === poseMode)!.hint : 'เลือกรูปท่าด้านล่างก่อน'}</p>
+          </> : fixedMode.id === 'shot-scene'
+            ? <p className="muted-text">{shotRoom
+              ? 'AI ลอกท่า มุมกล้อง ระยะ การมอง แสง และโทนสีจากรูปท่า แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือกลงในฉากที่เลือกไว้ในขั้นฉากหลัง · ไม่เลือกรูป = ท่าเดิมของนางแบบ'
+              : 'AI ลอกทั้งช็อตจากรูปท่า: ท่า มุมกล้อง ระยะ การมอง แสง โทนสี และฉาก แล้วใส่นางแบบ ชุด และของเสริมที่คุณเลือก · ไม่เลือกรูป = ท่าเดิมของนางแบบ · อยากใช้ฉากของคุณเอง เลือกได้ในขั้นฉากหลัง'}</p>
+            : <p className="muted-text">{fixedMode.hint}</p>}
+          {shot && !fixedMode && <>
+            <p className="sub">แสง</p>
+            <ChipGroup options={[...LIGHT_SOURCES]} value={lightSource} onChange={(v) => update({ light: v as LightSource })} />
+            <p className="muted-text">{LIGHT_SOURCES.find((l) => l.id === lightSource)!.hint}</p>
+          </>}
+          {/* ไม่มีท่าสำเร็จรูป = การ์ด "ท่าเดิม" อยู่หน้ารายการรูปแบบ ชุดเดิม/ฉากเดิม ใช้ยกเลิกรูปท่าที่เลือกไว้ */}
+          {picker('pose', 'poses', visible('pose').map((p) => uploadedCard('pose', p, idOf(p) === pick.pose, () => select('pose', idOf(p)))), POSE_PRESET_PICKER ? {} : {
+            special: <Card item={{ name: 'ท่าเดิม' }} active={!pose} onClick={() => select('pose', null)} />,
+          })}
         </Section>
-        <Section title="พร็อพในมือ" note={isDirector ? 'AI จัดท่าและการใช้สิ่งของในฉากให้' : 'เลือกได้หลายอย่าง'}>
-          <div className="chips">
-            {PROPS.map((p) => (
-              <button key={p.id} type="button" disabled={isDirector} className={'chip' + (!isDirector && heldProps.includes(p.id) ? ' active' : '')}
-                onClick={() => update((r) => ({ props: r.props.includes(p.id) ? r.props.filter((x) => x !== p.id) : [...r.props, p.id] }))}>
-                {p.name}
+      </>;
+    } else if (stepKey === 'scene') {
+      panel = picker('scene', 'scenes', visible('scene').map((s) => uploadedCard('scene', s, idOf(s) === pick.scene, () => select('scene', idOf(s)))), {
+        special: <Card item={{ name: sceneWithPose ? 'ฉากจากรูปท่า' : 'ฉากเดิม' }} active={!scene} onClick={() => select('scene', null)} />,
+        note: shotScene && !FIXED_POSE_MODE ? 'ใช้ฉากจากรูปท่าโพสต์อยู่ (ลอกทั้งช็อต + ฉาก) ฉากที่เลือกตรงนี้จะไม่ถูกใช้'
+          : sceneWithPose && 'มีรูปท่าโพสต์อยู่: ไม่เลือก = ใช้ฉากจากรูปท่า · เลือกฉาก = AI ถ่ายฉากนี้ใหม่ให้มุมกล้องและแสงเหมือนรูปท่าก่อน แล้วใส่นางแบบ (สร้าง 2 รูป ใช้โทเคนประมาณ 1.6 เท่า รอนานขึ้น) · ได้ผลดีเมื่อรูปฉากถ่ายจากมุมใกล้เคียงรูปท่า และมีที่แบบเดียวกัน (เตียง เก้าอี้ โซฟา)',
+        muted: shotScene && !FIXED_POSE_MODE,
+      });
+    } else if (stepKey === 'view') {
+      // 3 ส่วน การ์ดมีภาพวาดเหมือนขั้นมุมกล้อง/ระยะของหน้าสินค้า · "ตามสไตล์" วาดระยะ/มุมที่สไตล์ที่เลือกใช้
+      const card = (key: string, active: boolean, disabled: boolean, choose: () => void, art: ReactNode, title: string, hint: string) => (
+        <button key={key} type="button" className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={disabled} onClick={choose}>
+          {art}<b>{title}</b><small>{hint}</small>
+        </button>
+      );
+      const framingValue = framingChoice?.id ?? 'auto', angleValue = angleChoice?.id ?? 'auto'; // เลือกไว้แต่ใช้ไม่ได้ = ตามสไตล์
+      panel = <>
+        {isDirector && <p className="note">AI จะจัดท่า ระยะ มุมกล้อง และตำแหน่งให้ทั้งหมด หากต้องการเลือกเอง ให้เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์</p>}
+        {shot && <p className="note">ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ระยะ มุมกล้อง และตำแหน่งตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>}
+        <Section title="ระยะ">
+          <div className="options view-options">
+            {card('auto', framingValue === 'auto', shot || isDirector, () => update({ framing: 'auto' }), <PersonView framing={presetFraming(preset)} />, isDirector ? 'AI เลือกระยะให้' : 'ตามสไตล์', isDirector ? 'เลือกกรอบภาพให้เข้ากับท่าและรายละเอียดชุด' : `${preset.name}: ${preset.framing.label}`)}
+            {FRAMINGS.map((f) => card(f.id, framingValue === f.id, shot || isDirector, () => update({ framing: f.id }), <PersonView framing={f.id} />, f.name, f.hint))}
+          </div>
+        </Section>
+        <Section title="มุมกล้อง">
+          <div className="options view-options">
+            {card('auto', angleValue === 'auto', shot || isDirector, () => update({ angle: 'auto' }), <PersonView angle={presetAngle(preset)} />, isDirector && backgroundMode === 'keep' ? 'ตามมุมฉากเดิม' : isDirector ? 'AI เลือกมุมให้' : 'ตามสไตล์', isDirector ? 'เลือกมุมกล้องร่วมกับท่าและการใช้พื้นที่' : `${preset.name}: ${preset.angle.label}`)}
+            {ANGLES.map((a) => card(a.id, angleValue === a.id, shot || isDirector, () => update({ angle: a.id }), <PersonView angle={a.id} />, a.name, a.hint))}
+          </div>
+        </Section>
+        <Section title="ตำแหน่งในภาพ">
+          {!shot && keepsPlace && <p className="note">ท่าเดิม + ฉากเดิม (เปลี่ยนแค่ชุด): คนอยู่ที่เดิมในรูปนางแบบ เลือกท่าหรือฉากใหม่ก่อนถึงจะย้ายตำแหน่งได้</p>}
+          <div className="options view-options">
+            {card('auto', !placementChoice, shot || keepsPlace || isDirector, () => update({ placement: 'auto' }), <PersonView placement="auto" />, 'อัตโนมัติ', isDirector ? 'AI เลือกตำแหน่งให้เหมาะกับฉากและท่า' : 'สุ่มซ้าย / ขวา / กลาง ให้แต่ละรูป ได้ภาพหลากหลาย')}
+            {PLACEMENTS.map((p) => card(p.id, placementChoice?.id === p.id, shot || keepsPlace || isDirector, () => update({ placement: p.id }), <PersonView placement={p.id} />, p.name, p.hint))}
+          </div>
+        </Section>
+      </>;
+    } else if (stepKey === 'output') {
+      // ตั้งค่า (29 ต.ค. แบบหน้าสินค้า): ใช้ภาพที่ไหน -> สั่งเพิ่มเติม -> ขั้นสูง -> ปุ่มสร้างรูปท้ายเส้นทาง
+      // ใช้ภาพที่ไหน: เลือกตามที่จะโพสต์แทนตัวเลขสัดส่วน (lib/aspects.ts) 4:5 / 9:16 server ทำ 2:3 แล้วตัด
+      panel = <>
+        <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect}`}>
+          <div className="options aspect-options">{PLATFORM_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
+            className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => update({ aspect: a.id })}>
+            <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
+            <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
+          </button>)}</div>
+        </Section>
+        <Section title="สั่งเพิ่มเติม">
+          {isDirector && <p className="muted-text">AI จัดท่าและองค์ประกอบให้ทั้งหมด เปลี่ยนจากโหมด AI ในขั้นท่าโพสต์หากต้องการสั่งเอง</p>}
+          <textarea className="text-input" disabled={isDirector} value={isDirector ? '' : extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder={isDirector ? 'AI จัดท่าและองค์ประกอบให้อัตโนมัติ' : 'เช่น ให้ยิ้ม, ใส่รองเท้าผ้าใบสีขาว'} />
+        </Section>
+        <details className="advanced">
+          <summary>ขั้นสูง <small>คุณภาพ · การมอง · พร็อพ · ปรับแสงรอบสอง</small></summary>
+          {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
+          {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
+          {aiModel.startsWith('openai:') && (
+            <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = เนื้อผ้า/ผิวสมจริงขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+              <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
+            </Section>
+          )}
+          <Section title="การมอง" note={isDirector ? 'AI เลือกให้ หน้าและสายตาหลากหลาย' : shot ? 'ใช้จากรูปต้นแบบ' : 'อัตโนมัติ = สุ่มมุมหน้าและสายตาต่อรูป'}>
+            <ChipGroup options={[{ id: '', name: 'อัตโนมัติ' }, ...GAZES]} value={shot || isDirector ? '' : gazeId} disabled={shot || isDirector} onChange={(v) => update({ gaze: v })} />
+          </Section>
+          <Section title="พร็อพในมือ" note={isDirector ? 'AI จัดท่าและการใช้สิ่งของในฉากให้' : 'เลือกได้หลายอย่าง'}>
+            <div className="chips">
+              {PROPS.map((p) => (
+                <button key={p.id} type="button" disabled={isDirector} className={'chip' + (!isDirector && heldProps.includes(p.id) ? ' active' : '')}
+                  onClick={() => update((r) => ({ props: r.props.includes(p.id) ? r.props.filter((x) => x !== p.id) : [...r.props, p.id] }))}>
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </Section>
+          {HARMONIZE && <label className="check">
+            <input type="checkbox" checked={harmonize} onChange={(e) => update({ harmonize: e.target.checked })} />
+            <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
+          </label>}
+        </details>
+        {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
+        {SET_SHOOT && <div className="gen-row single">
+          <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
+            title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
+            ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
+          </button>
+        </div>}
+      </>;
+    } else if (stepKey === 'settings') {
+      // การ์ดมีภาพวาด (StyleView): ฉาก ไฟ เงา โทนสีของแต่ละสไตล์ ให้เห็นความต่างโดยไม่ต้องจินตนาการ (29 ต.ค.)
+      // รายละเอียดของสไตล์ที่เลือกอยู่ใต้การ์ด (ไม่ปักไว้ล่างแผงแล้ว การ์ดได้ที่เต็มแผง)
+      panel = <>
+        {shot && (
+          <p className="note">{shotPresetLight
+            ? 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ใช้แค่แสงและโทนสีของสไตล์ที่เลือก มุมกล้องและระยะตามรูปต้นแบบ'
+            : 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: แสงและกล้องตามรูปต้นแบบ — อยากใช้แสงของสไตล์ด้านล่าง เลือก "ใช้แสงของสไตล์ถ่ายภาพ" ในขั้นท่าโพสต์'}</p>
+        )}
+        <Section title="สไตล์ถ่ายภาพ">
+          <div className="options view-options">
+            {PRESETS.map((p) => (
+              <button key={p.id} type="button" className={'option view-option' + (preset.id === p.id ? ' active' : '')} aria-pressed={preset.id === p.id}
+                disabled={shot && !shotPresetLight} onClick={() => update({ preset: p.id })}>
+                <StyleView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
               </button>
             ))}
           </div>
         </Section>
-        {HARMONIZE && <label className="check">
-          <input type="checkbox" checked={harmonize} onChange={(e) => update({ harmonize: e.target.checked })} />
-          <span>ปรับแสงรอบสอง ให้กลมกลืนกับฉากขึ้นอีก<small>AI จะเกลี่ยแสง เงา และสีอีกรอบ (เสียเงิน 2 เท่า ใช้เวลานานขึ้น)</small></span>
-        </label>}
-      </details>
-      {/* generate lives in the sticky bar; only the set button here, hidden until SET_SHOOT (Go list item 11) */}
-      {SET_SHOOT && <div className="gen-row single">
-        <button className="btn btn-secondary gen-btn set-btn" disabled={busy !== null || !aiModels?.length} onClick={() => void generate(true)}
-          title={`${SET_SHOTS.map((s) => s.name).join(' · ')} — ค่า AI ${SET_SHOTS.length} เท่า`}>
-          ชุดภาพ {SET_SHOTS.length} มุม<small>ค่า AI {SET_SHOTS.length} เท่า</small>
-        </button>
-      </div>}
-    </>;
-  } else if (cur.key === 'settings') {
-    // การ์ดมีภาพวาด (StyleView): ฉาก ไฟ เงา โทนสีของแต่ละสไตล์ ให้เห็นความต่างโดยไม่ต้องจินตนาการ (29 ต.ค.)
-    // รายละเอียดของสไตล์ที่เลือกอยู่ใต้การ์ด (ไม่ปักไว้ล่างแผงแล้ว การ์ดได้ที่เต็มแผง)
-    panel = <>
-      {shot && (
-        <p className="note">{shotPresetLight
-          ? 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: ใช้แค่แสงและโทนสีของสไตล์ที่เลือก มุมกล้องและระยะตามรูปต้นแบบ'
-          : 'ลอกทั้งช็อตจากรูปท่าโพสต์อยู่: แสงและกล้องตามรูปต้นแบบ — อยากใช้แสงของสไตล์ด้านล่าง เลือก "ใช้แสงของสไตล์ถ่ายภาพ" ในขั้นท่าโพสต์'}</p>
-      )}
-      <Section title="สไตล์ถ่ายภาพ">
-        <div className="options view-options">
-          {PRESETS.map((p) => (
-            <button key={p.id} type="button" className={'option view-option' + (preset.id === p.id ? ' active' : '')} aria-pressed={preset.id === p.id}
-              disabled={shot && !shotPresetLight} onClick={() => update({ preset: p.id })}>
-              <StyleView id={p.id} /><b>{p.name}</b><small>{p.hint}</small>
-            </button>
-          ))}
-        </div>
-      </Section>
-      {(!shot || shotPresetLight) && (
-        <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
-          <dl className="preset-parts">
-            {PRESET_PARTS.map(({ key, name }) => preset[key] && <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
-          </dl>
-          <p className="muted-text">ระยะและมุมกล้องเลือกต่อได้ในขั้นมุมมอง (ไม่เลือก = {preset.framing.label} · {preset.angle.label})</p>
-        </Section>
-      )}
-    </>;
-  }
+        {(!shot || shotPresetLight) && (
+          <Section title={`ใน ${preset.name} มีอะไรบ้าง`}>
+            <dl className="preset-parts">
+              {PRESET_PARTS.map(({ key, name }) => preset[key] && <div key={key}><dt>{name}</dt><dd>{preset[key].label}</dd></div>)}
+            </dl>
+            <p className="muted-text">ระยะและมุมกล้องเลือกต่อได้ในขั้นมุมมอง (ไม่เลือก = {preset.framing.label} · {preset.angle.label})</p>
+          </Section>
+        )}
+      </>;
+    }
+    return panel;
+  };
   // edit panel content = production step-9 panel unchanged (Go list item 7)
   const editPanel = <>
     {REFINE_SKIN && <Section title="ผิวสมจริงด้วย AI" note="ใช้ AI เพิ่ม 1 ครั้ง ~฿2.8">
@@ -1209,17 +1236,18 @@ export default function TryOn() {
         </div>
       </header>
 
-      <div className={'workspace' + (editing ? ' editing' : '')}>
+      <div className={'workspace has-wear' + (editing ? ' editing' : '')}>
         <nav className="rail" aria-label="ขั้นตอน" inert={editing}>
-          {STEPS.map((s, i) => (
-            <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}
+          {railSteps.map((s) => {
+            const i = STEPS.indexOf(s);
+            return <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}
               disabled={Boolean(unusedWhy[s.key])} title={unusedWhy[s.key]}>
               <span className="n">{i + 1}</span>
               <s.Icon />
               <span>{s.label}</span>
               {!unusedWhy[s.key] && stepDone[s.key] && s.key !== 'model' && <i className="dot" />}
-            </button>
-          ))}
+            </button>;
+          })}
         </nav>
 
         <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark} inert={editing}>
@@ -1234,7 +1262,7 @@ export default function TryOn() {
             {missingNames.length > 0 && <>ถูกลบไปแล้ว: {missingNames.join(', ')} ·{' '}</>}
             <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
           </p>}
-          {panel}
+          {panelFor(cur.key, { query, setQuery, filter, setFilter })}
           </div>
           <div className="sticky-bar">
             {barNext >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
@@ -1242,6 +1270,39 @@ export default function TryOn() {
             <button className="btn btn-primary" disabled={busy !== null || !aiModels?.length} onClick={() => void generate()}>{genLabel}</button>
           </div>
         </aside>
+
+        {/* right side: wardrobe steps (outfit, accessory) — own rail + panel, open alongside the left panel; phones: in the left rail */}
+        {!narrow && <>
+          <nav className="rail wear-rail" aria-label="เสื้อผ้าและของเสริม" inert={editing}>
+            {RIGHT_STEPS.map((s) => (
+              <button key={s.key} className={'rail-btn' + (wearStep === s.key ? ' active' : '')} onClick={() => goStep(STEPS.indexOf(s))}
+                aria-current={wearStep === s.key ? 'step' : undefined}>
+                <span className="n">{STEPS.indexOf(s) + 1}</span>
+                <s.Icon />
+                <span>{s.label}</span>
+                {stepDone[s.key] && <i className="dot" />}
+              </button>
+            ))}
+          </nav>
+          <aside className="panel wear-panel has-bar" aria-label={wearCur.title} onClickCapture={markAs(wearStep)} onInputCapture={markAs(wearStep)} inert={editing}>
+            <div className="panel-body">
+            <div className="panel-head">
+              <span className="num">{STEPS.indexOf(wearCur) + 1}</span>
+              <h2>{wearCur.title}</h2>
+              {wearStep === 'accessory' && <span className="hint">เลือกแล้ว {accs.length}/{accLimit} ชิ้น</span>}
+            </div>
+            {panelFor(wearStep, { query: wearQuery, setQuery: setWearQuery, filter: wearFilter, setFilter: setWearFilter })}
+            </div>
+            {/* same bottom bar as the left panel; .sticky-bar clicks don't count as a choice (useChosenSteps) */}
+            {/* last right step: no next step, point to the left panel's generate button instead */}
+            <div className="sticky-bar">
+              {wearNext >= 0
+                ? <button className={'btn bar-next ' + (chosen.has(wearStep) ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
+                  onClick={() => goStep(wearNext)}>ถัดไป: {STEPS[wearNext].label} →</button>
+                : <p className="bar-note">{"กด 'สร้างรูปทันที' ที่ล่างซ้าย เมื่อเพิ่มข้อมูลครบแล้ว"}</p>}
+            </div>
+          </aside>
+        </>}
 
         <section className="stage">
           <div className={'frame' + (busy !== null && !pendingSet ? ' busy' : '') + (compare ? ' compare' : '')} ref={frameRef}>

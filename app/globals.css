@@ -92,7 +92,7 @@ button, select, input, textarea { font-family: inherit; }
 .status-x { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); cursor: pointer; }
 .top-actions { display: flex; align-items: center; gap: var(--space-8); margin-left: auto; }
 
-/* ไม่มีแผงขวาแล้วทั้ง 2 หน้า (เอาออก 28 ต.ค.): เมนูขั้นตอน | แผงเลือก | รูป */
+/* rail | panel | stage (+ 0px edit column). Model page adds a right wardrobe panel + rail: .workspace.has-wear */
 .workspace { --side: var(--panel-width); flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--side) minmax(0, 1fr) 0px; grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage edit"; overflow: clip; transition: grid-template-columns .35s ease; } /* clip, not hidden: hidden is a scroll container and breaks the phone sticky rail / bar */
 .rail { grid-area: rail; }
 .panel { grid-area: panel; }
@@ -103,6 +103,16 @@ button, select, input, textarea { font-family: inherit; }
 .workspace > .rail { width: var(--rail-width); justify-self: end; }
 .workspace > .panel { width: var(--side); justify-self: end; }
 .workspace > .edit-panel { grid-area: edit; justify-self: start; border-right: 0; border-left: 1px solid var(--hairline-soft); }
+/* right wardrobe panel + rail (TryOn): mirror of the left; in edit mode they shrink to 0 hugging the left edge and the
+   edit panel (later in the DOM, painted on top) slides in over them */
+.workspace.has-wear { grid-template-columns: var(--rail-width) var(--side) minmax(0, 1fr) var(--side) var(--rail-width) 0px; grid-template-areas: "rail panel stage wear wrail edit"; }
+.workspace.has-wear.editing { grid-template-columns: 0px 0px minmax(0, 1fr) 0px 0px var(--side); }
+.workspace > .wear-panel { grid-area: wear; justify-self: start; border-right: 0; border-left: 1px solid var(--hairline-soft); }
+.workspace > .wear-rail { grid-area: wrail; justify-self: start; border-right: 0; border-left: 1px solid var(--hairline-soft); }
+/* edit panel needs its own layer: without one, the wear panel's text/images (painted after all block backgrounds)
+   show through it; hide the wear side once the slide ends */
+.workspace.has-wear > .edit-panel { position: relative; z-index: 4; }
+.workspace.has-wear.editing > .wear-panel, .workspace.has-wear.editing > .wear-rail { visibility: hidden; transition: visibility 0s .35s; }
 @media (prefers-reduced-motion: reduce) { .workspace { transition: none; } }
 
 /* เมนูขั้นตอน (ซ้ายสุด) */
@@ -442,6 +452,7 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 .sticky-bar { position: sticky; bottom: calc(-1 * var(--space-24)); z-index: 3; display: flex; gap: var(--space-8); margin: var(--space-18) calc(-1 * var(--space-16)) calc(-1 * var(--space-24)); padding: var(--space-12) var(--space-16); border-top: 1px solid var(--hairline-soft); background: var(--canvas); box-shadow: var(--shadow-pinned); }
 .sticky-bar .btn { flex: 1 1 0; min-width: 0; transition: background .25s ease, color .25s ease; }
 .sticky-bar .bar-next { flex-grow: 1.3; }
+.sticky-bar .bar-note { flex: 1; margin: 0; padding: var(--space-8) 0; color: var(--mute); font-size: var(--text-sm); text-align: center; }
 @media (max-width: 860px) { /* page scrolls: stick to the viewport edge */
   .sticky-bar { bottom: 0; padding-bottom: calc(var(--space-12) + env(safe-area-inset-bottom, 0px)); }
 }
