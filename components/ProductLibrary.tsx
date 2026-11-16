@@ -8,11 +8,13 @@ import { DeleteButton, PendingCard } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
 
-export default function ProductLibrary({ groups, selected, busy, analyzing, saving, onSelect, onUpload, onRename, onRemovePhoto, onRestorePhoto, onDelete }: {
+export default function ProductLibrary({ groups, selected, busy, analyzing, saving, onSelect, onUpload, onRename, onSetMain, pickingMain, onRemovePhoto, onRestorePhoto, onDelete }: {
   groups: ProductGroup[]; selected?: ProductGroup; busy: boolean;
   analyzing: string[]; saving: { url: string }[];
   onSelect: (id: string) => void; onUpload: (files: File[], append?: boolean) => Promise<void>;
   onRename: (group: ProductGroup, name: string) => Promise<void>;
+  onSetMain: (group: ProductGroup, src: string) => Promise<void>;
+  pickingMain: boolean; // AI กำลังเลือกรูปหลักของสินค้าที่เลือก
   onRemovePhoto: (group: ProductGroup, src: string) => Promise<void>;
   onRestorePhoto: (group: ProductGroup, src: string) => Promise<void>;
   onDelete: (group: ProductGroup) => void;
@@ -85,13 +87,25 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
           <button type="button" className="btn btn-tertiary" onClick={() => setEditing(null)}>ยกเลิก</button></span>
       </form>}
       <p className="muted-text">{selected.photos.length} รูป</p>
-      <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src} className={loading(p.src) ? 'loading' : undefined}>
-        {img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
-        {p.src === selected.main?.src && <span className="current-product-main">รูปหลัก</span>}
+      <div className="current-product-photos">{selected.photos.map((p, i) => {
+        const main = p.src === selected.main?.src;
+        // รูปหลัก = Image 1 ที่ AI ยึดทรงสินค้า (16 พ.ย. MAISON 2.11: รูปแรกที่อัปโหลดเป็นรูปแขวนเอียง AI ลอกก้นโค้ง + สายสองเส้น)
+        // กดรูปอื่นเพื่อตั้งเป็นรูปหลัก · สินค้าตัวอย่างไม่ได้อยู่ในคลัง ตั้งไม่ได้
+        const pickable = !sample && !main && selected.photos.length > 1;
+        return <figure key={p.src} className={[loading(p.src) && 'loading', main && selected.photos.length > 1 && 'is-main'].filter(Boolean).join(' ') || undefined}>
+        {pickable
+          ? <button type="button" className="current-product-pick" disabled={busy} aria-label={`ตั้งรูปที่ ${i + 1} เป็นรูปหลัก`} title="ตั้งเป็นรูปหลัก"
+            onClick={() => void onSetMain(selected, p.src!).catch(() => {})}>
+            {img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
+            <span className="current-product-main hint" aria-hidden="true">ตั้งเป็นหลัก</span>
+          </button>
+          : img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
+        {main && <span className="current-product-main">รูปหลัก</span>}
         {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
         {!sample && selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}
           onClick={() => void onRemovePhoto(selected, p.src!).then(() => setRemoved({ group: selected.id, src: p.src! }), () => {})}>×</button>}
-      </figure>)}
+      </figure>;
+      })}
         {!sample && <label className={'current-product-add' + (busy ? ' busy' : '')} title="เพิ่มรูปมุมอื่นของสินค้านี้">
           <span aria-hidden="true">+</span>
           <input type="file" aria-label="เพิ่มรูปมุมอื่นของสินค้านี้" accept={ACCEPT} multiple disabled={busy} onChange={pick(true)} />
@@ -99,6 +113,10 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
       </div>
       {removed?.group === selected.id && <p className="muted-text">นำรูปออกแล้ว · <button type="button" className="btn btn-tertiary" disabled={busy}
         onClick={() => void onRestorePhoto(selected, removed.src).then(() => setRemoved(null), () => {})}>เอากลับ</button></p>}
+      {/* รูปหลัก: AI เลือกให้ตอนมี 2 รูปขึ้นไป (บอกเหตุผล) · ผู้ใช้กดเปลี่ยนได้ แล้ว AI จะไม่เปลี่ยนทับ */}
+      {!sample && selected.photos.length > 1 && <p className="muted-text">{pickingMain ? 'AI กำลังเลือกรูปหลัก...'
+        : selected.mainBy === 'ai' && selected.mainNote ? `รูปหลัก = รูปที่ AI ยึดทรงสินค้า · AI เลือกให้: ${selected.mainNote} · กดรูปอื่นเพื่อเปลี่ยน`
+        : 'รูปหลัก = รูปที่ AI ยึดทรงสินค้า ควรเป็นรูปหน้าตรง พื้นเรียบ มีสินค้าชิ้นเดียว ไม่แขวนหรือถือ · กดรูปอื่นเพื่อเปลี่ยน'}</p>}
       <p className="muted-text">{sample
         ? 'สินค้าตัวอย่าง ลองสร้างรูปได้เลย — สินค้าของคุณเองเพิ่มได้ที่ช่อง "เพิ่มสินค้าใหม่" ด้านบน'
         : 'กด + เพิ่มรูปด้านหลัง ด้านข้าง หรือรายละเอียด (โลโก้ ซิป) ช่วยให้ AI ทำสินค้าได้ตรงกว่า'}</p>

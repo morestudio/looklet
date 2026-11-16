@@ -1,7 +1,15 @@
+import { pickMainPhoto } from '@/lib/ai';
 import { productGroups, PHOTO_VIEWS, type ProductPhoto } from '@/lib/product-groups';
 import { PRODUCT_TYPES } from '@/lib/packshot';
 import { json, post } from '@/lib/route';
-import { listImages, updateMeta } from '@/lib/storage';
+import { listImages, readThumb, updateMeta } from '@/lib/storage';
+
+// AI เลือกรูปหลัก: ดูจากรูปย่อ 512px ในคลัง (ไม่โหลดรูปเต็ม ประหยัดโควตาดาวน์โหลดของ Supabase) ไม่เกิน 10 รูปแรก
+const PICK_MAX = 10;
+const thumbOf = async (src: string) => {
+  const t = await readThumb(src.replace(/^\/api\/files\//, '').split('/').map(decodeURIComponent), 512).catch(() => null);
+  return t && { data: t.data.toString('base64'), mime: 'image/jpeg' };
+};
 
 // ใช้ metadata เดิมทั้ง local และ cloud โดยไม่ต้องเพิ่มตารางหรือย้ายข้อมูลเก่า
 export const POST = post(async (req) => {
@@ -20,7 +28,23 @@ export const POST = post(async (req) => {
   } else if (req.action === 'main') {
     if (!group.photos.some((p) => p.src === req.src)) return json(400, { error: 'รูปหลักต้องอยู่ในสินค้านี้' });
     src = group.id;
-    patch = { productGroupName: group.name, productGroupType: group.type || 'other', productMain: req.src };
+    patch = { productGroupName: group.name, productGroupType: group.type || 'other', productMain: req.src, productMainBy: 'user', productMainNote: '' };
+  } else if (req.action === 'auto-main') {
+    // ไม่ทับรูปหลักที่ผู้ใช้เลือกเอง · AI ตอบไม่ได้ = ใช้รูปหลักเดิม (ตอบ 200 แบบไม่เปลี่ยน ไม่ให้หน้าเว็บขึ้น error)
+    const unchanged = json(200, { src: group.id, patch: {} });
+    if (group.mainBy === 'user' || group.photos.length < 2) return unchanged;
+    const shown = group.photos.slice(0, PICK_MAX);
+    const thumbs = await Promise.all(shown.map((p) => thumbOf(p.src!)));
+    const usable = shown.flatMap((p, i) => (thumbs[i] ? [{ src: p.src!, img: thumbs[i]! }] : []));
+    if (usable.length < 2) return unchanged;
+    const what = PRODUCT_TYPES.find((t) => t.id === group.type)?.prompt ?? 'a product';
+    const pick = await pickMainPhoto(usable.map((u) => u.img), what, group.name);
+    if (!pick) return unchanged;
+    // ระหว่างรอ AI (~4 วินาที) ผู้ใช้อาจกดเลือกเองไปแล้ว -> อ่านใหม่ ไม่ทับ
+    const fresh = productGroups((await listImages({ area: 'uploads', kind: 'products' })) as ProductPhoto[]).find((g) => g.id === group.id);
+    if (!fresh || fresh.mainBy === 'user') return unchanged;
+    src = group.id;
+    patch = { productGroupName: group.name, productGroupType: group.type || 'other', productMain: usable[pick.index].src, productMainBy: 'ai', productMainNote: pick.th };
   } else {
     const photo = photos.find((p) => p.src === req.src);
     if (!photo || ((photo as ProductPhoto).productGroup || photo.src) !== group.id) return json(400, { error: 'รูปนี้ไม่ได้อยู่ในสินค้าที่เลือก' });

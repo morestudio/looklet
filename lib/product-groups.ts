@@ -3,9 +3,11 @@ import type { Item } from './catalog';
 // ข้อมูลกลุ่มเก็บบนรูปแรกของสินค้า แยกจากการเป็นสมาชิกรูป ทำให้ย้าย/นำรูปแรกออกได้โดยกลุ่มไม่หาย
 export type ProductPhoto = Item & {
   productGroup?: string; productGroupName?: string; productGroupType?: string; productMain?: string;
+  productMainBy?: string; productMainNote?: string; // ใครเลือกรูปหลัก ('user' / 'ai') + เหตุผลที่ AI เลือก (ไทย)
   productView?: string; productRemoved?: string;
 };
-export type ProductGroup = { id: string; name: string; type?: string; photos: ProductPhoto[]; main?: ProductPhoto };
+// mainBy: 'user' = ผู้ใช้กดเลือกเอง (หรือมี productMain จากก่อนมี AI เลือก) · 'ai' = AI เลือก · ไม่มี = ยังไม่เคยเลือก (รูปแรกที่อัปโหลด)
+export type ProductGroup = { id: string; name: string; type?: string; photos: ProductPhoto[]; main?: ProductPhoto; mainBy?: 'user' | 'ai'; mainNote?: string };
 export const PHOTO_VIEWS = [
   { id: 'unspecified', name: 'ยังไม่ระบุมุม' }, { id: 'front', name: 'ด้านหน้า' }, { id: 'back', name: 'ด้านหลัง' },
   { id: 'side', name: 'ด้านข้าง' }, { id: 'three-quarter', name: '45°' }, { id: 'top', name: 'ด้านบน' },
@@ -44,6 +46,11 @@ export function productGroups(records: (Omit<ProductPhoto, 'name'> & { name?: st
   for (const group of groups.values()) {
     const root = photos.find((p) => p.src === group.id);
     group.main = group.photos.find((p) => p.src === root?.productMain) ?? group.photos.find((p) => p.src === group.id) ?? group.photos[0];
+    // รูปหลักที่เลือกไว้ถูกนำออกแล้ว = ยังไม่ได้เลือก (ให้ AI เลือกใหม่ได้)
+    if (root?.productMain && group.main?.src === root.productMain) {
+      group.mainBy = root.productMainBy === 'ai' ? 'ai' : 'user';
+      if (group.mainBy === 'ai' && root.productMainNote) group.mainNote = root.productMainNote;
+    }
   }
   return [...groups.values()];
 }

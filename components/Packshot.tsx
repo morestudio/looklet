@@ -3,7 +3,7 @@
 // โครงหน้าเหมือนหน้านางแบบ (components/TryOn.tsx) และใช้ class CSS ชุดเดียวกัน: เมนูขั้นตอนซ้าย แผงเลือก รูปตรงกลาง แผงปรับแต่งขวา
 // หน้าเว็บส่งแค่ id ของตัวเลือก (lib/packshot.ts) ไป app/api/packshot แล้ว server แปลงเป็นคำสั่งเอง
 // คลังรูปแยกจากหน้านางแบบ: สินค้า / ช็อตต้นแบบ / รูปฉาก (KINDS ใน lib/storage.ts) รูปที่สร้างติดป้าย page = 'product'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
@@ -13,7 +13,7 @@ import { recipeKey } from '@/lib/recipe';
 import type { ResultBase, StoredResultBase, StylePlan } from '@/lib/result-types';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
-import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
+import { PRODUCT_SAMPLES, isSampleGroup, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
   IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
@@ -272,6 +272,8 @@ export default function Packshot() {
   const [planning, setPlanning] = useState(false);
   const planningRef = useRef(false);
   const [groupBusy, setGroupBusy] = useState(false);
+  const [pickingMain, setPickingMain] = useState<string | null>(null); // สินค้าที่ AI กำลังเลือกรูปหลัก
+  const mainChecked = useRef(new Set<string>()); // สินค้าที่ถาม AI แล้วในรอบนี้ (ไม่ถามซ้ำ แม้ AI ตอบไม่ได้)
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null);
   const [aiModel, setAiModel] = useState('');
   const [results, setResults] = useState<Result[]>([]);
@@ -453,7 +455,35 @@ export default function Packshot() {
     } finally { setGroupBusy(false); }
   }
   const renameGroup = (g: ProductGroup, name: string) => editGroup({ action: 'edit', group: g.id, name, type: g.type || 'other' });
-  const removePhoto = (g: ProductGroup, src: string) => editGroup({ action: 'remove', group: g.id, src });
+  const setMainPhoto = (g: ProductGroup, src: string) => editGroup({ action: 'main', group: g.id, src }); // รูปหลัก = Image 1 ที่ AI ยึดทรง
+  const removePhoto = async (g: ProductGroup, src: string) => {
+    await editGroup({ action: 'remove', group: g.id, src });
+    if (src === g.main?.src && g.photos.length > 2) await autoMainBusy(g.id); // นำรูปหลักออก -> AI เลือกจากรูปที่เหลือ
+  };
+
+  // AI เลือกรูปหลัก (16 พ.ย.): สินค้า 2 รูปขึ้นไป · ไม่ทับรูปที่ผู้ใช้กดเลือกเอง (server เช็กซ้ำ) · AI ตอบไม่ได้ = ใช้รูปหลักเดิม
+  async function autoMain(groupId: string) {
+    mainChecked.current.add(groupId);
+    setPickingMain(groupId);
+    try {
+      const out = await api<{ src: string; patch: Record<string, string> }>('/api/product-groups', { action: 'auto-main', group: groupId });
+      if (Object.keys(out.patch).length) setLists((l) => ({ ...l, product: l.product.map((p) => (p.src === out.src ? { ...p, ...out.patch } : p)) }));
+    } catch (err) {
+      console.warn('AI เลือกรูปหลักไม่สำเร็จ', err);
+    } finally { setPickingMain(null); }
+  }
+  // นอกขั้นอัปโหลด: groupBusy กันกดสร้างรูประหว่างรอ (ไม่งั้นได้รูปหลักเก่า)
+  async function autoMainBusy(groupId: string) {
+    setGroupBusy(true);
+    try { await autoMain(groupId); } finally { setGroupBusy(false); }
+  }
+  // สินค้าเดิม (ก่อน 16 พ.ย.) ที่ยังไม่เคยเลือกรูปหลัก: ถาม AI ครั้งเดียวตอนเปิดดู แล้วเก็บไว้ ครั้งต่อไปไม่ถามอีก
+  const needsMain = selectedGroup && !isSampleGroup(selectedGroup) && selectedGroup.photos.length >= 2 && !selectedGroup.mainBy ? selectedGroup.id : null;
+  const pickMissingMain = useEffectEvent((id: string) => { void autoMainBusy(id); });
+  useEffect(() => {
+    if (!needsMain || mainChecked.current.has(needsMain) || groupBusy || busy !== null || productUploadRef.current) return;
+    pickMissingMain(needsMain);
+  }, [needsMain, groupBusy, busy]);
   const restorePhoto = (g: ProductGroup, src: string) => editGroup({ action: 'restore', group: g.id, src });
 
   // การเลือกไฟล์หนึ่งครั้ง = สินค้าหนึ่งกลุ่ม รูปแรกเป็นภาพปก รูปที่เหลือใช้ id กลุ่มเดียวกัน
@@ -494,6 +524,8 @@ export default function Packshot() {
         }
       }
       if (failed) setStatus(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);
+      // สินค้ามี 2 รูปขึ้นไป: AI เลือกรูปหลัก (ยังอยู่ใน groupBusy กันสร้างรูปด้วยรูปแรกที่อัปโหลด) · ไม่ทับที่ผู้ใช้เลือกเอง
+      if (groupId && (existing?.photos.length ?? 0) + files.length - failed >= 2 && existing?.mainBy !== 'user') await autoMain(groupId);
     } finally {
       productUploadRef.current = false;
       setGroupBusy(false);
@@ -821,7 +853,7 @@ export default function Packshot() {
       <ProductLibrary groups={groups} selected={selectedGroup} busy={groupBusy || busy !== null}
         analyzing={analyzing} saving={saving.filter((s) => s.key === 'product')}
         onSelect={(id) => select('product', id)} onUpload={onProductFiles}
-        onRename={renameGroup} onRemovePhoto={removePhoto} onRestorePhoto={restorePhoto} onDelete={setDeletingProduct} />
+        onRename={renameGroup} onSetMain={setMainPhoto} pickingMain={pickingMain === selectedGroup?.id} onRemovePhoto={removePhoto} onRestorePhoto={restorePhoto} onDelete={setDeletingProduct} />
     </>;
   } else if (cur.key === 'creative') {
     panel = <CreativeShot idea={creativeIdea} onIdea={(idea) => update({ idea })}
