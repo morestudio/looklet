@@ -1284,7 +1284,7 @@ export default function TryOn() {
               </button>
             ))}
           </nav>
-          <aside className={'panel wear-panel' + (wearNext >= 0 ? ' has-bar' : '')} aria-label={wearCur.title} onClickCapture={markAs(wearStep)} onInputCapture={markAs(wearStep)} inert={editing}>
+          <aside className="panel wear-panel has-bar" aria-label={wearCur.title} onClickCapture={markAs(wearStep)} onInputCapture={markAs(wearStep)} inert={editing}>
             <div className="panel-body">
             <div className="panel-head">
               <span className="num">{STEPS.indexOf(wearCur) + 1}</span>
@@ -1294,10 +1294,13 @@ export default function TryOn() {
             {panelFor(wearStep, { query: wearQuery, setQuery: setWearQuery, filter: wearFilter, setFilter: setWearFilter })}
             </div>
             {/* same bottom bar as the left panel; .sticky-bar clicks don't count as a choice (useChosenSteps) */}
-            {wearNext >= 0 && <div className="sticky-bar">
-              <button className={'btn bar-next ' + (chosen.has(wearStep) ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
-                onClick={() => goStep(wearNext)}>ถัดไป: {STEPS[wearNext].label} →</button>
-            </div>}
+            {/* last right step: no next step, point to the left panel's generate button instead */}
+            <div className="sticky-bar">
+              {wearNext >= 0
+                ? <button className={'btn bar-next ' + (chosen.has(wearStep) ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
+                  onClick={() => goStep(wearNext)}>ถัดไป: {STEPS[wearNext].label} →</button>
+                : <p className="bar-note">{"กด 'สร้างรูปทันที' ที่ล่างซ้าย เมื่อเพิ่มข้อมูลครบแล้ว"}</p>}
+            </div>
           </aside>
         </>}
 
