@@ -24,17 +24,20 @@ let configured = false;
 const queue: [AnalyticsEvent, Params][] = [];
 const QUEUE_MAX = 50; // config never came (Analytics not mounted): don't grow forever
 
+// debug_mode per event: the property ignores it in gtag('config') (components/Analytics.tsx)
+const send = (name: AnalyticsEvent, params: Params) => window.gtag?.('event', name, GA_DEBUG ? { ...params, debug_mode: true } : params);
+
 export function track(name: AnalyticsEvent, params: Params = {}) {
   try {
     if (!gaEnabled()) return;
     if (!configured || !window.gtag) return void (queue.length < QUEUE_MAX && queue.push([name, params]));
-    window.gtag('event', name, params);
+    send(name, params);
   } catch { /* analytics must never break the app */ }
 }
 
 export function markConfigured() {
   configured = true;
-  for (const [name, params] of queue.splice(0)) window.gtag?.('event', name, params);
+  for (const [name, params] of queue.splice(0)) send(name, params);
 }
 
 // funnel step: the first real choice in a step, once per step per full page load (useChosenSteps in components/ui.tsx)
