@@ -16,6 +16,7 @@ import type { BackgroundMode, PhotoGoal, ShotProposal, StoredPosePlan } from '@/
 import { generateSelectedShots } from '@/lib/shot-batch';
 import { StyleView } from './StyleView';
 import { PLATFORM_ASPECTS } from '@/lib/aspects';
+import { errorReason, itemSource, stopwatch, track, trackKept } from '@/lib/analytics';
 import {
   IconBag, IconCompare, IconDownload, IconEdit, IconFrame, IconModel, IconPalette, IconPose, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
   IconShirt, IconSparkle, IconZoom,
@@ -340,6 +341,7 @@ export default function TryOn() {
     setSaving((s) => [...s, { key, url: preview }]);
     try {
       ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...(await uploadImage(file)) }));
+      track('upload', { page: 'model', kind: KIND[key] });
     } catch (err) {
       src = URL.createObjectURL(file); // เซฟไม่ได้ -> ใช้ชั่วคราวไปก่อน
       setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง`);
@@ -430,7 +432,7 @@ export default function TryOn() {
     });
   }
 
-  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
+  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus, 'model');
 
   // ใส่หน้าจริงจากรูปนางแบบแทนหน้าที่ AI วาดใหม่ แล้วเซฟเป็นรูปใหม่ (รูปจาก AI ยังอยู่ไว้เทียบ)
   // ทำไม่ได้ (หาหน้าไม่เจอ / หน้าหันคนละมุม) -> บอกเหตุผล แล้วใช้รูปจาก AI ตามเดิม
@@ -481,6 +483,20 @@ export default function TryOn() {
       `สัดส่วน ${platform.id}`,
     ].join(' · '); // user's choices + ratio only, no AI vendor/model name (Go list item 12)
     const setCaption = (i: number) => `ชุดภาพ ${i + 1}/${SET_SHOTS.length} ${SET_SHOTS[i].name} · ${caption}`;
+    // GA: ids only, never names or the typed text (lib/analytics.ts)
+    const ga = {
+      page: 'model', preset: preset.id, aspect: platform.id, quality, set,
+      model_src: itemSource(model.src),
+      outfit_slots: [outfit && 'full', top && 'top', bottom && 'bottom', shoes && 'shoes'].filter(Boolean).join('+') || 'none',
+      acc_count: accs.length,
+      pose_src: posePreset ? 'preset' : itemSource(pose?.src),
+      pose_mode: pose ? poseMode : posePreset ? posePreset.id : 'none',
+      scene_src: shotScene ? 'pose_photo' : !scene ? 'none' : scene.src ? itemSource(scene.src) : 'text',
+      framing: framingChoice?.id ?? 'style', angle: angleChoice?.id ?? 'style',
+      has_extra: Boolean(extra.trim()),
+    };
+    const elapsed = stopwatch();
+    track('generate_start', ga);
     setGenerating(true);
     setBusy(isDirector ? 'AI กำลังคิด 3 ไอเดียให้เลือก...'
       : set ? `AI กำลังสร้างรูปหลักของชุด (1/${SET_SHOTS.length})...`
@@ -595,6 +611,8 @@ export default function TryOn() {
           showMade();
           prepare(result.src).catch((err) => setRetouchStatus(`เตรียมแต่งรูปไม่สำเร็จ: ${err.message}`));
         });
+        if (batch.results.length) track('generate_success', { ...ga, duration_s: elapsed() });
+        else track('generate_error', { ...ga, reason: errorReason(batch.errors[0]), duration_s: elapsed() });
         const needsReview = batch.results.filter((r) => r.posePlan.review?.status !== 'passed').length;
         // ไอเดียที่ไม่สำเร็จไม่หยุดไอเดียอื่น (lib/shot-batch.ts) -> บอกชื่อไอเดียที่พังพร้อมเหตุผล
         const titleOf = (id: string) => proposal.plan.candidates.find((c) => c.id === id)?.title ?? id;
@@ -606,6 +624,7 @@ export default function TryOn() {
         return;
       }
       const out = await api<{ src: string; posePlan: PosePlan | null }>('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
+      track('generate_success', { ...ga, duration_s: elapsed() });
       const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined, recipe }]; // server เซฟไว้ใน results/ แล้ว
       if (out.posePlan) setStatus(out.posePlan.review
         ? `${out.posePlan.name} · ${out.posePlan.review.summaryThai}${out.posePlan.repairError ? ' · ' + out.posePlan.repairError : ''}`
@@ -649,6 +668,7 @@ export default function TryOn() {
         }
       }
     } catch (err) {
+      track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
       setStatus('สร้างรูปไม่สำเร็จ: ' + friendlyError((err as Error).message));
     } finally {
       setBusy(null);
@@ -691,12 +711,16 @@ export default function TryOn() {
     setBusy('AI กำลังแก้เฉพาะจุด...');
     try {
       const result = await api<Result>('/api/local-edit', { ...request, src: source.src });
+      track('local_edit', { page: 'model', painted: Boolean(request.mask), result: 'success' });
       setResults((r) => [result, ...r]);
       setCurrent(0);
       setAmounts(NO_RETOUCH); setTone(null); setFinish('auto');
       setZoomed(false); setOriginal(false); setRetouchStatus('');
       setLocalEdit(null);
       setStatus('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลัง');
+    } catch (err) {
+      track('local_edit', { page: 'model', painted: Boolean(request.mask), result: 'error', reason: errorReason(err) });
+      throw err;
     } finally { setBusy(null); }
   }
 
@@ -728,8 +752,11 @@ export default function TryOn() {
   async function save() {
     try {
       const cv = await currentCanvas();
-      if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
-      await saveImageFile(await outputBlob(cv), `lolo-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
+      // GA North Star: only a generated image counts (with no result on stage this saves the model photo)
+      const kept = (via: 'download' | 'share' | 'inapp') => shown && trackKept('model', shown, via);
+      if (inAppBrowser()) { kept('inapp'); return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92)); }
+      const how = await saveImageFile(await outputBlob(cv), `lolo-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
+      if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
       setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
@@ -739,11 +766,13 @@ export default function TryOn() {
 
   function goStep(i: number) {
     if (STEPS[i].side === 'right' && !narrow) {
+      if (STEPS[i].key !== wearStep) track('step_view', { page: 'model', step: STEPS[i].key, step_index: i });
       setWearStep(STEPS[i].key);
       setWearQuery('');
       setWearFilter('all');
       return;
     }
+    if (i !== step) track('step_view', { page: 'model', step: STEPS[i].key, step_index: i });
     setStep(i);
     setQuery('');
     setFilter('all');
@@ -751,7 +780,7 @@ export default function TryOn() {
 
   const cur = STEPS[step];
   const wearCur = STEPS.find((s) => s.key === wearStep)!;
-  const { chosen, mark, markAs, setChosen } = useChosenSteps(cur.key);
+  const { chosen, mark, markAs, setChosen } = useChosenSteps(cur.key, 'model');
 
   // edit panel focus: open -> its close button, close -> back to แต่งรูป (the button that had focus unmounts); Esc closes
   useEffect(() => {

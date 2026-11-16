@@ -1,15 +1,17 @@
 'use client';
 // a studio page's history strip <-> /gallery (TryOn, Packshot); place rules live in app/api/update and app/api/delete
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { track, trackKept, type StudioPage } from '@/lib/analytics';
 import { api } from '@/lib/browser';
 
-type Placed = { src: string; inGallery?: boolean };
+type Placed = { src: string; inGallery?: boolean; editedFrom?: string };
 
 export function useHistoryPlaces<R extends Placed>(
   results: R[],
   setResults: Dispatch<SetStateAction<R[]>>,
   setCurrent: Dispatch<SetStateAction<number | null>>,
   setStatus: (status: string) => void,
+  page: StudioPage, // GA: image_kept (via gallery) / gallery_remove
 ) {
   const [removingSrc, setRemovingSrc] = useState<string | null>(null);
   const latest = useRef(results); // read after awaits: results can grow at the front (new generation) meanwhile
@@ -27,6 +29,8 @@ export function useHistoryPlaces<R extends Placed>(
     try {
       await request;
       setStatus('');
+      if (inGallery) track('gallery_remove', { page });
+      else trackKept(page, latest.current.find((r) => r.src === src) ?? { src }, 'gallery');
     } catch (err) {
       mark(inGallery);
       setStatus((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
