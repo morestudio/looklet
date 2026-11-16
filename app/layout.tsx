@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Geist, IBM_Plex_Sans_Thai, Instrument_Serif } from 'next/font/google';
+import Analytics from '@/components/Analytics';
 import './globals.css';
 
 // ฟอนต์ตาม design system Atelier: Geist (ละติน + ตัวเลข) · IBM Plex Sans Thai (ไทย) · Instrument Serif (โลโก้ / หัวข้อใหญ่ ไม่ใช้ตัวหนา)
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="th" className={`${geist.variable} ${thai.variable} ${serif.variable}`}>
-      <body>{children}</body>
+      <body>{children}<Analytics /></body>
     </html>
   );
 }

@@ -1,10 +1,11 @@
 // browser.ts — ตัวช่วยที่ใช้ได้เฉพาะใน browser (รูป, canvas, เรียก API ของเรา)
 import type { AccessoryInfo } from './catalog';
+import { SAFETY_BLOCK, track } from './analytics';
 import { applyFilm, filmOn, type Film } from './film';
 
 // OpenAI ปฏิเสธภาพด้วยระบบความปลอดภัย (2 พ.ย.: ท่าคุกเข่าบนเตียง + ชุดนอนขาสั้น ถูกมองว่า sexual) -> บอกเป็นภาษาไทยแทนข้อความอังกฤษยาวๆ
 // รูปที่พังไม่นับโควตา (lib/usage.ts) · ข้อความเดิมยังอยู่ใน log / หน้าตรวจงาน
-export const friendlyError = (message: string) => /safety system|safety_violations|moderation_blocked/i.test(message)
+export const friendlyError = (message: string) => SAFETY_BLOCK.test(message)
   ? 'AI ปฏิเสธภาพนี้ (ระบบความปลอดภัยของ AI มองว่าอาจไม่เหมาะสม เช่น ท่าบนเตียงกับชุดสั้น) ลองเลือกไอเดียหรือท่าอื่น ไม่เสียโควตา'
   : message;
 
@@ -21,7 +22,9 @@ export async function api<T = { src: string }>(path: string, body: unknown): Pro
   const out = await res.json().catch(() => ({}));
   // สร้างรูปแล้ว (สำเร็จหรือพัง) -> หัวเว็บอัปเดตจำนวนรูปที่เหลือของลูกค้า (useMe ใน components/ui.tsx)
   if (USAGE_ROUTES.includes(path)) window.dispatchEvent(new Event(USAGE_EVENT));
-  if (!res.ok) throw new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`));
+  // quotaBlock(): 403 = code disabled, 429 = tokens used up
+  if (USAGE_ROUTES.includes(path) && (res.status === 403 || res.status === 429)) track('quota_blocked', { route: path.slice(5), status: res.status });
+  if (!res.ok) throw Object.assign(new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`)), { status: res.status });
   return out;
 }
 

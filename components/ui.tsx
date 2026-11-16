@@ -2,6 +2,7 @@
 // ui.tsx — ชิ้นส่วนหน้าเว็บที่ใช้ซ้ำ: การ์ดรูป, ปุ่มกลุ่ม (chips), หัวข้อในแผง
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react';
+import { trackStepDone, type StudioPage } from '@/lib/analytics';
 import { authEnabled } from '@/lib/auth';
 import { thumbSrc, USAGE_EVENT } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
@@ -165,12 +166,15 @@ export function Section({ title, note, children }: { title: string; note?: React
 // สลับหน้า นางแบบ (components/TryOn.tsx) / สินค้า (components/Packshot.tsx) อยู่ในหัวเว็บของทั้งสองหน้า
 // ปุ่ม "ถัดไป" เป็นพื้นหินขอบหมึก (.btn-ready) เมื่อผู้ใช้เลือกอะไรในขั้นนั้นแล้ว (คลิกตัวเลือก / พิมพ์ / อัปโหลด) — ค่าเริ่มต้นที่เลือกไว้ให้ไม่นับ
 // ใส่ mark ที่ onClickCapture + onInputCapture ของแผงเลือก · ช่องค้นหา หัวข้อพับ และแถบปุ่มล่าง (ถัดไป / สร้างรูป) ไม่นับเป็นการเลือก
-export function useChosenSteps<K extends string>(current: K) {
+// page: also reports the first real choice in each step to GA (step_done, the funnel steps; once per step per full page load,
+// a past image restoring setChosen doesn't count)
+export function useChosenSteps<K extends string>(current: K, page: StudioPage) {
   const [chosen, setChosen] = useState<ReadonlySet<K>>(new Set());
   // markAs(key): a second panel showing another step at the same time (TryOn's right panel)
   const markAs = (key: K) => (e: SyntheticEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
+    trackStepDone(page, key);
     setChosen((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   };
   return { chosen, mark: markAs(current), markAs, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)

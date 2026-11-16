@@ -13,6 +13,7 @@ import { recipeKey } from '@/lib/recipe';
 import type { ResultBase, StoredResultBase, StylePlan } from '@/lib/result-types';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
+import { errorReason, itemSource, stopwatch, track, trackKept } from '@/lib/analytics';
 import { PRODUCT_SAMPLES, isSampleGroup, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
 import { SignOutButton } from './AuthForm';
 import {
@@ -27,7 +28,7 @@ import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors'
 import { NO_FILM } from '@/lib/film';
 import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, thumbSrc, toWebImage, uploadImage,
+  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, thumbSrc, toWebImage, uploadImage,
 } from '@/lib/browser';
 import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
@@ -426,6 +427,7 @@ export default function Packshot() {
     setSaving((s) => [...s, { key, url: preview }]);
     try {
       ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...groupMeta, ...(await uploadImage(file)) }));
+      track('upload', { page: 'product', kind: KIND[key], extra_photo: Boolean(targetGroupId) });
     } catch (err) {
       src = URL.createObjectURL(file); // เก็บไม่ได้ -> ใช้ชั่วคราวไปก่อน
       setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง`);
@@ -577,7 +579,7 @@ export default function Packshot() {
     if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
-  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
+  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus, 'product');
 
   async function planCreative() {
     if (!canPlan || planningRef.current || !product || !selectedGroup) return;
@@ -599,7 +601,11 @@ export default function Packshot() {
       if (creativeScopeRef.current !== scope) return; // inputs changed or a past image loaded while planning
       setConceptState({ scope, concepts: out.concepts });
       update({ concept: null });
-    } catch (err) { setStatus('คิดไอเดียไม่สำเร็จ: ' + (err as Error).message); }
+      track('creative_ideas', { result: 'success', retry: concepts.length > 0, has_idea: Boolean(creativeIdea.trim()), has_inspiration: Boolean(inspiration) });
+    } catch (err) {
+      track('creative_ideas', { result: 'error', reason: errorReason(err) }); // not generate_error: no image was asked for
+      setStatus('คิดไอเดียไม่สำเร็จ: ' + (err as Error).message);
+    }
     finally { planningRef.current = false; setPlanning(false); }
   }
 
@@ -632,6 +638,18 @@ export default function Packshot() {
       ...(shotType === 'creative' || shot ? [] : [propsLabel, ...(isMulti ? [] : [angle.name]), framing.name]),
     ].join(' · '); // no AI vendor/model name in what users see (Go list item 12)
     const setCaption = (i: number, name: string) => `ชุดภาพ ${i + 1}/${shotCount} ${name} · ${caption}`;
+    // GA: ids only, never names or the typed text (lib/analytics.ts)
+    const ga = {
+      page: 'product', shot_type: shotType, aspect, quality, set,
+      product_src: itemSource(product.src),
+      scene_src: usePhoto ? itemSource(sceneImg?.src) : setDef.id,
+      prop_style: propsId, own_prop: Boolean(ownName),
+      angle: customAngle ? 'custom' : angle.id, framing: framing.id,
+      hand_pose: shotType === 'handshot' ? handPose.id : 'none',
+      has_extra: Boolean(extra.trim()),
+    };
+    const elapsed = stopwatch();
+    track('generate_start', ga);
     setGenerating(true);
     setBusy(set ? `AI กำลังสร้างรูปแรกของชุด (1/${shotCount})...` : 'AI กำลังสร้างรูป... (ประมาณ 20–90 วินาที)');
     try {
@@ -675,6 +693,7 @@ export default function Packshot() {
       const tag = (i: number) => (shootId ? { id: shootId, index: i } : undefined);
       const firstCaption = set ? setCaption(0, 'Front') : caption;
       const out = await api<{ src: string; stylePlan: StylePlan | null }>('/api/packshot', { ...body, caption: firstCaption, set: tag(0) });
+      track('generate_success', { ...ga, duration_s: elapsed() });
       setResults((r) => [{ src: out.src, caption: firstCaption, set: tag(0), stylePlan: out.stylePlan ?? undefined, recipe }, ...r]);
       if (out.stylePlan) setStatus(`${shotType === 'creative' ? 'ไอเดีย' : 'พร็อพที่ AI คิดให้'} (${out.stylePlan.name}): ${out.stylePlan.th}`);
       showMade();
@@ -698,7 +717,8 @@ export default function Packshot() {
         }
       }
     } catch (err) {
-      setStatus('สร้างรูปไม่สำเร็จ: ' + (err as Error).message);
+      track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
+      setStatus('สร้างรูปไม่สำเร็จ: ' + friendlyError((err as Error).message)); // same Thai wording for an AI safety refusal as the model page
     } finally {
       setBusy(null);
       setPendingSet(null);
@@ -712,10 +732,14 @@ export default function Packshot() {
     setBusy('AI กำลังแก้เฉพาะจุด...');
     try {
       const result = await api<Result>('/api/local-edit', { ...request, src: source.src });
+      track('local_edit', { page: 'product', painted: Boolean(request.mask), result: 'success' });
       setResults((r) => [result, ...r]);
       setCurrent(0);
       setLocalEdit(null);
       setStatus('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลังสินค้า');
+    } catch (err) {
+      track('local_edit', { page: 'product', painted: Boolean(request.mask), result: 'error', reason: errorReason(err) });
+      throw err;
     } finally { setBusy(null); }
   }
 
@@ -746,8 +770,11 @@ export default function Packshot() {
   async function save() {
     try {
       const cv = await currentCanvas();
-      if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
-      await saveImageFile(await outputBlob(cv), downloadName(shown?.editedFrom ? 'png' : 'jpg'));
+      // GA North Star: only a generated image counts (with no result on stage this saves the product photo)
+      const kept = (via: 'download' | 'share' | 'inapp') => shown && trackKept('product', shown, via);
+      if (inAppBrowser()) { kept('inapp'); return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92)); }
+      const how = await saveImageFile(await outputBlob(cv), downloadName(shown?.editedFrom ? 'png' : 'jpg'));
+      if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
       setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
@@ -755,12 +782,13 @@ export default function Packshot() {
   }
 
   function goStep(i: number) {
+    if (i !== step) track('step_view', { page: 'product', step: STEPS[i].key, step_index: i });
     setStep(i);
     setQuery('');
   }
 
   const cur = STEPS[step];
-  const { chosen, mark, setChosen } = useChosenSteps(cur.key);
+  const { chosen, mark, setChosen } = useChosenSteps(cur.key, 'product');
 
   // ---------- past image <-> panel (components/useRecipeSync.ts) ----------
   // stored / compared form of choices: the idea only for Creative and only while still valid
