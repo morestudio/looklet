@@ -117,6 +117,11 @@ export function RemoveImageDialog({ from, inOtherPlace, pageName = 'นางแ
     cancel="ยกเลิก" confirm="ลบถาวร" onCancel={onCancel} onConfirm={onConfirm} />;
 }
 
+export function StartFromImageDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+    cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={onCancel} onConfirm={onConfirm} />;
+}
+
 // การ์ด "+ เพิ่มรูป"
 export function AddCard({ onFile }: { onFile: (f: File) => void }) {
   return (
