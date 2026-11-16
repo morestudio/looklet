@@ -19,7 +19,7 @@
    - `NEXT_PUBLIC_GA_ID` = `G-…`
    - `ANALYTICS_SALT` = สุ่มสตริงยาวๆ (เช่นจาก `openssl rand -hex 32`) ใช้เป็นกุญแจ hash (HMAC) account id เป็น user_id ถ้าไม่ตั้ง จะไม่ส่ง user_id และห้ามเปลี่ยนค่าทีหลัง เพราะ user_id จะเปลี่ยนตามทั้งหมด
    - แล้ว redeploy
-4. Admin → Data collection → **ปิด Google signals**
+4. Admin → Data collection → **ปิด Google signals** และ**ปิด User-provided data collection** (ถ้าเปิดไว้ GA จะสแกนหาอีเมล/เบอร์โทร/ที่อยู่บนหน้าเว็บเอง ตอนนี้ไม่ถูกส่งเพราะ `ad_user_data` เป็น denied แต่ไม่ควรเปิดไว้)
 5. Admin → Data retention → **14 เดือน**
 6. Web stream → Enhanced measurement: เปิด "Page changes based on browser history events" (ค่าเริ่มต้นเปิดอยู่แล้ว)
 7. Admin → Events → ทำเครื่องหมาย **Key event** ให้ `image_kept` และ `generate_success` (event จะขึ้นในรายการหลังมีคนยิงครั้งแรก ประมาณ 24 ชม.)
@@ -52,7 +52,7 @@
 
 ## 3. รายงานที่ต้องสร้าง (Explore)
 
-ทุกรายงานให้ใส่ filter **`role` exactly matches `customer`** (ทีมใช้ทดสอบหนักมาก ถ้าไม่กรองตัวเลขจะเพี้ยน)
+ทุกรายงานให้ใส่ **User segment: `role` exactly matches `customer`** (ทีมใช้ทดสอบหนักมาก ถ้าไม่กรองตัวเลขจะเพี้ยน) ใช้ *segment แบบ user* ไม่ใช่ filter ราย event เพราะ `page_view` แรกของแต่ละหน้าไม่มี role ติดไป (ดูข้อจำกัด) segment แบบ user จะนับทุก event ของลูกค้าคนนั้นรวม page_view ด้วย
 
 1. **Funnel หน้านางแบบ** (Funnel exploration, open funnel):
    `page_view` (page path = `/`) → `step_done` (page = model) → `generate_start` (page = model) → `generate_success` (page = model) → `image_kept` (page = model)
@@ -64,6 +64,7 @@
 
 ## 4. ข้อจำกัดที่ควรรู้
 
+- **`page_view` แรกไม่มี user_id และ role**: tag ของ property นี้ config ตัวเองทันทีที่สคริปต์โหลดและไม่สนพารามิเตอร์ใน `gtag('config')` (เจอ 16 พ.ย.) โค้ดจึงส่ง user_id/role ผ่าน `gtag('set')` แทน ทุก event หลังจากนั้นมีครบ ยกเว้น page_view อัตโนมัติตัวแรกของการโหลดหน้า
 - **คนน้อย ตัวเลขอาจถูกซ่อน**: GA ซ่อนแถวที่มีผู้ใช้น้อย (thresholding) การปิด Google signals ช่วยลดปัญหานี้ ถ้าเห็นไอคอนสามเหลี่ยมสีส้มในรายงาน แปลว่าบางแถวถูกซ่อนอยู่
 - **Ad blocker** ตัดข้อมูลบางส่วน (มักประมาณ 10–30%) ตัวเลขจำนวนรูปที่สร้างที่แม่นจริงให้ดูจาก `/admin` (ตาราง usage)
 - **ไม่มี cookie banner** ตามที่เจ้าของโปรเจกต์ตัดสินใจ (16 พ.ย.) ปิด ads/Google signals และไม่ส่ง PII ไว้แล้ว แต่ยังเป็นความเสี่ยง PDPA ที่รู้แล้วยอมรับ

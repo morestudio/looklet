@@ -42,7 +42,15 @@ for (const [env, host] of [[{}, 'lolostyleshot.vercel.app'], [{ NEXT_PUBLIC_GA_I
   ga.track('image_kept', { page: 'model' });
   assert.equal(sent.length, 3, 'sent directly after config');
 }
-assert.equal(load({ NEXT_PUBLIC_GA_ID: 'G-TEST', NEXT_PUBLIC_GA_DEBUG: '1' }, 'localhost').ga.gaEnabled(), true);
+// debug: anywhere, and every event carries debug_mode (the property ignores it in config)
+{
+  const { ga, sent } = load({ NEXT_PUBLIC_GA_ID: 'G-TEST', NEXT_PUBLIC_GA_DEBUG: '1' }, 'localhost');
+  assert.equal(ga.gaEnabled(), true);
+  ga.track('upload', { page: 'model' });
+  ga.markConfigured();
+  ga.track('step_done', { page: 'model', step: 'model' });
+  assert.deepEqual(sent.map((a) => a[2].debug_mode), [true, true]);
+}
 
 const { ga } = load({ NEXT_PUBLIC_GA_ID: 'G-TEST' }, 'lolostyleshot.vercel.app');
 

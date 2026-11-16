@@ -2,12 +2,13 @@
 // Google Analytics 4 loader (root layout). Events: lib/analytics.ts · setup and reports: docs/analytics.md
 // Production host only (or NEXT_PUBLIC_GA_DEBUG=1); no consent banner (owner's decision 16 Nov), ads/signals off, no PII.
 import Script from 'next/script';
-import { useEffect, useSyncExternalStore } from 'react';
-import { GA_DEBUG, GA_ID, gaEnabled, markConfigured, takeLogin, track } from '@/lib/analytics';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { GA_ID, gaEnabled, markConfigured, takeLogin, track } from '@/lib/analytics';
 
 const never = () => () => {}; // host and env don't change while the page is open
 export default function Analytics() {
   const on = useSyncExternalStore(never, gaEnabled, () => false); // server render: off (hostname is browser-only)
+  const [ready, setReady] = useState(false); // user_id/role queued: only then load gtag.js
 
   useEffect(() => {
     if (!on) return;
@@ -27,19 +28,19 @@ export default function Analytics() {
       .catch(() => null)
       .then((me: { role?: string; aid?: string } | null) => {
         if (cancelled) return;
+        // the property's tag configures itself when gtag.js loads (gtm.init) and ignores gtag('config') params
+        // (ignoreDupeGtagConfigCalls), so user_id and role go through 'set'; queued before the script loads, every
+        // event carries them except that automatic first page_view (checked in headless Chrome, 16 Nov)
+        if (me?.aid) window.gtag!('set', { user_id: me.aid });
         if (me?.role) window.gtag!('set', 'user_properties', { role: me.role });
-        window.gtag!('config', GA_ID, {
-          ...(me?.aid ? { user_id: me.aid } : {}),
-          allow_google_signals: false,
-          allow_ad_personalization_signals: false,
-          ...(GA_DEBUG ? { debug_mode: true } : {}),
-        });
+        window.gtag!('config', GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false });
         markConfigured();
         const method = takeLogin();
         if (method) track('login', { method });
+        setReady(true);
       });
     return () => { cancelled = true; };
   }, [on]);
 
-  return on ? <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" /> : null;
+  return on && ready ? <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" /> : null;
 }
