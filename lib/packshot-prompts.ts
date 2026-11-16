@@ -3,7 +3,7 @@
 // ลำดับรูปต้องตรงกับ "Image n" ในคำสั่ง เปลี่ยนอย่างหนึ่งต้องเปลี่ยนอีกอย่าง (route ทำรายการ inputs ตามลำดับนี้)
 // เขียนเป็นภาษาอังกฤษเพราะโมเดลเจนรูปเข้าใจแม่นกว่า
 import 'server-only';
-import type { RefMode } from './packshot';
+import { EXTRA_MAX, type RefMode } from './packshot';
 import { guideSentence } from './turntable';
 
 // สินค้าต้องเหมือนรูปสินค้าทุกรายละเอียด: AI ชอบวาดของ "คล้ายๆ" ใหม่ (บทเรียนเดียวกับ ACCESSORY_RULES ของหน้านางแบบ)
@@ -111,7 +111,7 @@ export function buildPackshotPrompt(p: PackshotInput) {
     out.push(`The photo will be cropped to ${p.crop}: keep ${p.detail ? 'the selected detail' : 'the product, its shadow and all props'} well inside the middle of the frame, `
       + 'away from the edges that will be cut.');
   }
-  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, 400)}`);
+  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, EXTRA_MAX)}`);
   // ไกด์มุม (ตั้งมุมเอง): รูปต่อจาก สินค้า / ช็อตต้นแบบ / รูปฉาก / รูปพร็อพ — route ต้องเรียงรูปตามนี้ · อยู่ก่อนบรรทัด Most important แบบที่ทดสอบ
   if (p.guideFor != null && !shot) out.push(guideSentence(p.guideFor, (propImage ?? setImage ?? (ref ? 2 : 1)) + 1));
   // ย้ำมุม/ระยะเป็นบรรทัดสุดท้าย: บทเรียน camera ของหน้านางแบบ (21 ต.ค.) ไม่ย้ำ = AI ยึดกรอบภาพ/มุมของรูปที่ส่งไปแทน
@@ -132,7 +132,7 @@ export function buildPackshotSetPrompt(p: PackshotSetInput) {
     PRODUCT_REALISM,
   ];
   if (p.crop) out.push(`The photo will be cropped to ${p.crop}: keep the product and its shadow well inside the middle of the frame.`);
-  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, 400)}`);
+  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, EXTRA_MAX)}`);
   out.push(`Most important: ${p.angle}, with ${p.framing}.`);
   return out.join(' ');
 }
@@ -186,7 +186,7 @@ export function buildHandshotPrompt(p: HandshotInput) {
     `Lighting: ${p.light}`,
     HAND_REALISM,
     p.crop ? `The photo will be cropped to ${p.crop}: keep the product and the hand holding it well inside the middle of the frame, away from the edges that will be cut.` : '',
-    p.extra?.trim() ? `Also: ${p.extra.trim().slice(0, 400)}` : '',
+    p.extra?.trim() ? `Also: ${p.extra.trim().slice(0, EXTRA_MAX)}` : '',
     // ย้ำท่าและระยะเป็นบรรทัดสุดท้าย เหมือน "Most important" ของ buildPackshotPrompt
     `Most important: ${p.single ? 'only ' + p.single : 'exactly one product'}, ${p.short}, with ${m.framing}.`,
   ].filter(Boolean).join(' ');
@@ -203,6 +203,6 @@ export function buildCreativePackshotPrompt(p: { what: string; concept: string; 
     PRODUCT_REALISM,
     'Follow this art direction as one coordinated scene. Keep the product the hero and its existing label legible. Do not add ingredient, scent or benefit claims, new lettering or graphic overlays.',
     p.crop ? `The result will be cropped to ${p.crop}. Keep the product and important composition inside the safe center area.` : '',
-    p.extra?.trim() ? `Additional user direction: ${p.extra.trim().slice(0, 400)}` : '',
+    p.extra?.trim() ? `Additional user direction: ${p.extra.trim().slice(0, EXTRA_MAX)}` : '',
   ].filter(Boolean).join(' ');
 }

@@ -290,7 +290,8 @@ function planRequest({ location, locationIsModelPhoto, locationText, outfit, acc
 
 // ถาม AI ตัววางแผน (ดูรูป + ตอบ JSON เป็นช่องข้อความ) — ใช้ทั้งวางแผนท่า (หน้านางแบบ) และวางพร็อพ (หน้าสินค้า)
 // fields = ช่องข้อความ, choice = ช่องที่ต้องตอบเป็น id ในรายการ (ตอน "AI เลือกให้")
-type PlanAsk = { name: string; text: string; images: Img[]; fields: string[]; choice?: { key: string; ids: string[] } };
+// labels = ใส่ "Photo n:" หน้ารูปแต่ละรูป (ให้ AI ตอบเป็นเลขรูปได้ไม่สับสน)
+type PlanAsk = { name: string; text: string; images: Img[]; fields: string[]; choice?: { key: string; ids: string[] }; labels?: boolean };
 
 async function planWithGemini(a: PlanAsk) {
   const props: Record<string, unknown> = Object.fromEntries(a.fields.map((f) => [f, { type: 'STRING' }]));
@@ -298,7 +299,8 @@ async function planWithGemini(a: PlanAsk) {
   const d = await post('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: a.text }, ...a.images.map((i) => ({ inline_data: { mime_type: i.mime, data: i.data } }))] }],
+      contents: [{ parts: [{ text: a.text }, ...a.images.flatMap((i, n) => [
+        ...(a.labels ? [{ text: `Photo ${n + 1}:` }] : []), { inline_data: { mime_type: i.mime, data: i.data } }])] }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: props, required: Object.keys(props) } },
     }),
   }, 'Gemini', 45_000);
@@ -314,7 +316,8 @@ async function planWithOpenAI(a: PlanAsk) {
       model: 'gpt-6-luna',
       messages: [{ role: 'user', content: [
         { type: 'text', text: a.text },
-        ...a.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } })),
+        ...a.images.flatMap((i, n) => [...(a.labels ? [{ type: 'text', text: `Photo ${n + 1}:` }] : []),
+          { type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } }]),
       ] }],
       response_format: { type: 'json_schema', json_schema: { name: a.name, strict: true, schema: {
         type: 'object', properties: props, required: Object.keys(props), additionalProperties: false,
@@ -390,6 +393,31 @@ export type StylingInput = {
   ownProp?: string | null; // พร็อพของฉันที่พิมพ์มา (Custom Packshot)
   propImage?: Img | null; // รูปพร็อพของฉัน
 };
+
+// ---------- รูปหลักของสินค้า (16 พ.ย.): รูปที่ AI สร้างรูปยึดทรง สี สาย อะไหล่ (Image 1) ----------
+// เดิมรูปแรกที่อัปโหลด = รูปหลักเสมอ · MAISON 2.11 อัปโหลดรูปแขวนตะขอเอียงๆ ก่อน -> ก้นโค้ง สายสองเส้น ไม่มีที่ดึงซิป
+// ทดสอบ 16 พ.ย. (3 รูป): รูปหน้าตรงพื้นเรียบเป็นรูปหลัก = ตรงกับของจริง · ลำดับเกณฑ์ข้างล่างเรียงตามที่ทำให้รูปพังมากสุด
+export async function pickMainPhoto(images: Img[], what: string, name: string): Promise<{ index: number; th: string } | null> {
+  if (images.length < 2) return null;
+  const ids = images.map((_, i) => String(i + 1));
+  const text = `You choose the main reference photo for an AI product photographer. Photos 1 to ${images.length} all show the same product for sale: `
+    + `${what}, named ${JSON.stringify(name.slice(0, 80))} (the name may only be a file name). `
+    + 'The image model will copy the product\'s silhouette, proportions, color, straps, handles and hardware from the main photo, '
+    + 'so the main photo must show the product itself as truly and completely as possible. Pick the photo that best meets these, most important first: '
+    + '1. The whole product is visible and nothing is cut off; a close-up of one detail can never be the main photo. '
+    + '2. Only this one product is in the photo: no other bags, color variants or items hanging or standing with it. '
+    + '3. The product rests on its own on a surface or a plain background: not hung from a hook, held in a hand, worn on a body or on a mannequin, '
+    + 'because those pull its shape, base and straps out of their real form. '
+    + '4. It is seen from the front, straight on or slightly turned, at about the product\'s own height: not only its side, back, top or bottom, '
+    + 'and not looking steeply down at it. '
+    + '5. A plain, uncluttered background, even light that shows its true color, and sharp focus. '
+    + 'If two photos are equally good, choose the one where the handles, straps and hardware are fully visible. '
+    + 'Reply as JSON: main = the number of the chosen photo; reason_th = one short Thai sentence for the shop owner saying why, '
+    + 'for example "รูปหน้าตรง พื้นเรียบ เห็นทั้งใบ มีสินค้าชิ้นเดียว".';
+  const g = await askPlanner({ name: 'main_photo', text, images, fields: ['reason_th'], choice: { key: 'main', ids }, labels: true },
+    (o) => ids.includes(String(o.main)) && typeof o.reason_th === 'string', 'เลือกรูปหลัก');
+  return g ? { index: Number(g.main) - 1, th: g.reason_th.trim().slice(0, 120) } : null;
+}
 
 export async function planStyling({ product, what, setImage, setText, style, moment, ownProp, propImage }: StylingInput): Promise<StylingPlan | null> {
   const choices = PROP_STYLES.filter((p) => p.id !== NO_PROPS);
