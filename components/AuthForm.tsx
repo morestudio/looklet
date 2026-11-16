@@ -3,6 +3,7 @@
 // ไม่มีสมัครเอง: ลูกค้าใช้โค้ดเชิญที่ superadmin ออกให้ (/admin) ทีมงานใช้อีเมลที่ admin เพิ่มให้ (scripts/add-user.mjs)
 // บัญชีที่ไม่มีสิทธิ์ (isMember) เข้าไม่ได้แม้รหัสถูก
 import { useState, type FormEvent } from 'react';
+import { noteLogin } from '@/lib/analytics';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
 import { IconSignOut } from './icons';
@@ -24,7 +25,7 @@ export function LoginForm() {
     setError('');
     const res = await fetch('/api/invite-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
       .catch(() => null);
-    if (res?.ok) return go('/welcome'); // ลูกค้าเข้าด้วยโค้ด -> หน้าต้อนรับ (components/Welcome.tsx) ก่อนเข้าสตูดิโอ
+    if (res?.ok) { noteLogin('invite_code'); return go('/welcome'); } // ลูกค้าเข้าด้วยโค้ด -> หน้าต้อนรับ (components/Welcome.tsx) ก่อนเข้าสตูดิโอ
     setBusy(false);
     setError(((await res?.json().catch(() => null)) as { error?: string } | null)?.error ?? 'เข้าใช้ไม่สำเร็จ ลองอีกครั้ง');
   }
@@ -45,6 +46,7 @@ export function LoginForm() {
       setBusy(false);
       return setError('บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน ติดต่อผู้ดูแล');
     }
+    noteLogin('password');
     go('/');
   }
 
