@@ -226,8 +226,8 @@ export function AdminTabs({ current }: { current: 'overview' | 'audit' }) {
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }); // 4116 -> 4.1K, 200000 -> 200K
 export function TokenUsage() {
   const me = useMe();
-  if (me?.role !== 'customer') return null;
-  const used = me.tokens ?? 0, max = me.tokenQuota ?? 0;
+  if (me?.tokenQuota == null) return null; // every limited account (email or code); superadmin gets none
+  const used = me.tokens ?? 0, max = me.tokenQuota;
   const share = max ? Math.min(1, used / max) : 1;
   const exact = `ใช้ไป ${used.toLocaleString('th-TH')} จาก ${max.toLocaleString('th-TH')} โทเคน`;
   return <span className={'token-usage' + (share >= 0.9 ? ' low' : '')} role="meter" aria-label="โทเคนที่ใช้ไป"

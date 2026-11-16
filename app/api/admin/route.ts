@@ -2,9 +2,10 @@ import { isSuperadmin, me } from '@/lib/account';
 import { inviteEmail, invitePassword, newInviteCode } from '@/lib/invites';
 import { get, json, post } from '@/lib/route';
 import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
-import { DEFAULT_TOKEN_QUOTA, tokensOf, type Invite } from '@/lib/usage';
+import { DEFAULT_TOKEN_QUOTA, tokensOf, type AccountRow } from '@/lib/usage';
 
-// หน้า /admin (superadmin เท่านั้น): สรุปการใช้งานต่อบัญชี + ออก/แก้โค้ดเชิญ — ตาราง invites / usage ใน supabase/schema.sql
+// หน้า /admin (superadmin เท่านั้น): สรุปการใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี — ตาราง accounts / usage ใน supabase/schema.sql
+// accounts = every account (code or email); email accounts appear after their first use (accountOf in lib/usage.ts)
 type UsageRow = { user_id: string | null; email: string | null; page: string; action: string; status: string; cost_thb: number | string; tokens: number | null; created: string };
 // measured / measuredTokens = เฉพาะรูปที่รู้โทเคนจริง (ไว้หาค่าเฉลี่ยต่อรูปโดยไม่ปนค่าประมาณ)
 type Tally = { ok: number; error: number; cost: number; tokens: number; measured: number; measuredTokens: number; model: number; product: number; last: string | null };
@@ -32,11 +33,11 @@ export const GET = get(async () => {
   const sb = serviceClient();
   const [usage, invites] = await Promise.all([
     sb.from('usage').select('user_id, email, page, action, status, cost_thb, tokens, created').order('created', { ascending: false }).limit(5000),
-    sb.from('invites').select('*').order('created', { ascending: true }),
+    sb.from('accounts').select('*').order('created', { ascending: true }),
   ]);
   if (usage.error || invites.error) throw new Error((usage.error ?? invites.error)!.message);
   const rows = usage.data as UsageRow[];
-  const list = invites.data as Invite[];
+  const list = invites.data as AccountRow[];
   const byUser = new Map<string, Tally>();
   const team = new Map<string, Tally>();
   const total = tally();
@@ -48,10 +49,10 @@ export const GET = get(async () => {
     if (!map.has(key)) map.set(key, tally());
     add(map.get(key)!, r);
   }
-  const labelOf = new Map(list.map((i) => [i.user_id, i.label || i.code]));
+  const labelOf = new Map(list.map((i) => [i.user_id, i.label || i.code || '']));
   return json(200, {
     total,
-    invites: list.map((i) => ({ code: i.code, label: i.label, tokenQuota: i.token_quota, disabled: i.disabled, created: i.created, ...(byUser.get(i.user_id) ?? tally()) })),
+    invites: list.map((i) => ({ userId: i.user_id, code: i.code, label: i.label, tokenQuota: i.token_quota, disabled: i.disabled, created: i.created, ...(byUser.get(i.user_id) ?? tally()) })),
     team: [...team].map(([email, t]) => ({ email, ...t })),
     recent: rows.slice(0, 40).map((r) => ({
       created: r.created, who: (r.user_id && labelOf.get(r.user_id)) || r.email || 'ไม่ทราบ', page: r.page, action: r.action, status: r.status, cost: Number(r.cost_thb) || 0,
@@ -76,7 +77,7 @@ export const POST = post(async (req) => {
         email: inviteEmail(), password: invitePassword(code), email_confirm: true, app_metadata: { looklet: true, role: 'customer' },
       });
       if (created.error || !created.data.user) return json(500, { error: 'สร้างบัญชีไม่สำเร็จ: ' + created.error?.message, codes });
-      const row = await sb.from('invites').insert({ code, user_id: created.data.user.id, token_quota: tokenQuota, label: typeof req.label === 'string' ? req.label.trim().slice(0, 80) : '' });
+      const row = await sb.from('accounts').insert({ code, user_id: created.data.user.id, token_quota: tokenQuota, label: typeof req.label === 'string' ? req.label.trim().slice(0, 80) : '' });
       if (row.error) {
         await sb.auth.admin.deleteUser(created.data.user.id); // ไม่มีแถวโค้ด = บัญชีนี้ใช้ไม่ได้ ลบทิ้งไม่ให้ค้าง
         return json(500, { error: 'บันทึกโค้ดไม่สำเร็จ: ' + row.error.message, codes });
@@ -86,9 +87,9 @@ export const POST = post(async (req) => {
     return json(200, { codes });
   }
   if (req.action === 'update') {
-    const { data: invite } = await sb.from('invites').select('*').eq('code', String(req.code)).maybeSingle();
-    if (!invite) return json(404, { error: 'ไม่พบโค้ดนี้' });
-    const patch: Partial<Invite> = {};
+    const { data: invite } = await sb.from('accounts').select('*').eq('user_id', String(req.userId)).maybeSingle();
+    if (!invite) return json(404, { error: 'ไม่พบบัญชีนี้' });
+    const patch: Partial<AccountRow> = {};
     if (typeof req.label === 'string') patch.label = req.label.trim().slice(0, 80);
     if (req.tokenQuota != null) {
       const tokenQuota = Number(req.tokenQuota);
@@ -98,13 +99,16 @@ export const POST = post(async (req) => {
     if (typeof req.disabled === 'boolean' && req.disabled !== invite.disabled) {
       patch.disabled = req.disabled;
       // ปิด = ถอดสิทธิ์ + แบนไม่ให้ต่ออายุ session (token เดิมยังใช้ได้จนหมดอายุ ~1 ชม. แต่สร้างรูปไม่ได้ทันที: quotaBlock เช็ก disabled)
+      // keep the stored role: hard-coding 'customer' would turn an email account into a code account (no /account)
+      const { data: found, error: readError } = await sb.auth.admin.getUserById(invite.user_id);
+      if (readError || !found.user) return json(500, { error: 'อ่านบัญชีไม่สำเร็จ: ' + readError?.message });
       const { error } = await sb.auth.admin.updateUserById(invite.user_id, {
-        app_metadata: { looklet: !req.disabled, role: 'customer' }, ban_duration: req.disabled ? '876000h' : 'none',
+        app_metadata: { ...found.user.app_metadata, looklet: !req.disabled }, ban_duration: req.disabled ? '876000h' : 'none',
       });
       if (error) return json(500, { error: 'เปลี่ยนสถานะบัญชีไม่สำเร็จ: ' + error.message });
     }
-    const { error } = await sb.from('invites').update(patch).eq('code', invite.code);
-    if (error) return json(500, { error: 'แก้โค้ดไม่สำเร็จ: ' + error.message });
+    const { error } = await sb.from('accounts').update(patch).eq('user_id', invite.user_id);
+    if (error) return json(500, { error: 'แก้บัญชีไม่สำเร็จ: ' + error.message });
     return json(200, { ok: true });
   }
   return json(400, { error: 'ไม่มีคำสั่งนี้' });

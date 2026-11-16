@@ -1,7 +1,7 @@
-// usage.ts — นับการใช้งานและโควตาของลูกค้า (ตาราง usage / invites ใน supabase/schema.sql) ใช้ฝั่ง server เท่านั้น
+// usage.ts — นับการใช้งานและโควตาของทุกบัญชี (ตาราง usage / accounts ใน supabase/schema.sql) ใช้ฝั่ง server เท่านั้น
 // route ที่สร้างรูป (generate / packshot / local-edit / refine-skin): quotaBlock() ก่อนเรียก AI, recordUsage() หลังได้ผล (สำเร็จหรือพัง)
 import 'server-only';
-import { isCustomer, me } from './account';
+import { isLimited, me, type Account } from './account';
 import type { GenerateLog, PackshotLog } from './genlog';
 import { serviceClient, supabaseEnabled } from './storage-supabase';
 
@@ -20,14 +20,25 @@ export const DEFAULT_TOKEN_QUOTA = 300_000;
 export const ESTIMATED_TOKENS = 6_000;
 export const tokensOf = (r: { status: string; tokens?: number | null }) => (r.status === 'ok' ? r.tokens ?? ESTIMATED_TOKENS : 0);
 
-// quota = จำนวนรูปแบบเดิม ไม่ใช้แล้ว (เก็บคอลัมน์ไว้) · token_quota = โควตาจริง
-export type Invite = { code: string; user_id: string; label: string; quota: number; token_quota: number; disabled: boolean; created: string };
+// one row per account (was `invites`, 16 Nov): code = invite code, null = email + password login
+// quota = old image-count column, unused · token_quota = the real quota
+export type AccountRow = { user_id: string; code: string | null; label: string; quota: number; token_quota: number; disabled: boolean; created: string };
 
-export async function inviteOf(userId: string): Promise<Invite | null> {
-  const { data, error } = await serviceClient().from('invites').select('*').eq('user_id', userId).maybeSingle();
-  if (error) throw new Error('อ่านโค้ดเชิญไม่สำเร็จ: ' + error.message);
-  return data;
+// an email account gets its row on first use (same defaults as a new invite code); a code account without a row stays disabled
+export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | null> {
+  const read = async () => {
+    const { data, error } = await serviceClient().from('accounts').select('*').eq('user_id', a.id).maybeSingle();
+    if (error) throw new Error('อ่านข้อมูลบัญชีไม่สำเร็จ: ' + error.message);
+    return data as AccountRow | null;
+  };
+  const row = await read();
+  if (row || a.role !== 'team') return row;
+  const { error } = await serviceClient().from('accounts').insert({ user_id: a.id, code: null, label: a.email.slice(0, 80), token_quota: DEFAULT_TOKEN_QUOTA });
+  if (error && error.code !== '23505') throw new Error('สร้างข้อมูลบัญชีไม่สำเร็จ: ' + error.message); // 23505 = a parallel request made it
+  return read();
 }
+
+const DISABLED = () => Response.json({ error: 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล' }, { status: 403 });
 
 // โทเคนของรูปที่สร้างสำเร็จ (นับโควตา) — รูปที่พังไม่นับ · Supabase ส่งได้ครั้งละ 1,000 แถว พอสำหรับโควตาหลักแสนถึงไม่กี่ล้าน
 export async function usedTokens(userId: string) {
@@ -36,16 +47,16 @@ export async function usedTokens(userId: string) {
   return (data ?? []).reduce((sum, r) => sum + tokensOf(r), 0);
 }
 
-// ลูกค้าที่ถูกปิด / ใช้ครบโควตา -> ตอบ error ก่อนเสียเงินเรียก AI · ทีมไม่มีโควตา
+// บัญชีที่ถูกปิด / ใช้ครบโควตา -> ตอบ error ก่อนเสียเงินเรียก AI · superadmin ไม่มีโควตา
 // รู้โทเคนหลังสร้างเสร็จเท่านั้น: ยังเหลือ = สร้างได้ รูปสุดท้ายอาจเกินนิดหน่อย · ชุดภาพหลายมุมยิงพร้อมกัน อาจเกินได้ไม่กี่รูป
 export async function quotaBlock(pendingTokens = 0): Promise<Response | null> {
   const account = me();
-  if (!isCustomer(account) || !supabaseEnabled) return null;
-  const invite = await inviteOf(account!.id);
-  if (!invite || invite.disabled) return Response.json({ error: 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล' }, { status: 403 });
+  if (!isLimited(account) || !supabaseEnabled) return null;
+  const row = await accountOf(account!);
+  if (!row || row.disabled) return DISABLED();
   const used = await usedTokens(account!.id);
-  if (used + Math.max(0, pendingTokens) >= invite.token_quota) {
-    return Response.json({ error: `ใช้โทเคนครบ ${invite.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
+  if (used + Math.max(0, pendingTokens) >= row.token_quota) {
+    return Response.json({ error: `ใช้โทเคนครบ ${row.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
   }
   return null;
 }

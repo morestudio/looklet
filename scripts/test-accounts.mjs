@@ -7,8 +7,8 @@ import path from 'node:path';
 import ts from 'typescript';
 const require = createRequire(import.meta.url);
 
-// ---------- Supabase จำลอง: ตาราง images / invites / usage + auth admin ----------
-const db = { images: [], invites: [], usage: [] };
+// ---------- Supabase จำลอง: ตาราง images / accounts / usage + auth admin ----------
+const db = { images: [], accounts: [], usage: [] };
 const users = new Map();
 const signIns = [];
 let noAuditColumns = false; // จำลองฐานข้อมูลที่ยังไม่ได้รัน db-apply (ไม่มีคอลัมน์ usage.result / usage.log)
@@ -35,6 +35,7 @@ function table(name) {
     limit: (n) => { lim = n; return b; },
     insert: (row) => {
       if (noAuditColumns && name === 'usage' && ('log' in row || 'result' in row)) return Promise.resolve({ error: missing });
+      if (name === 'accounts' && db.accounts.some((a) => a.user_id === row.user_id)) return Promise.resolve({ error: { code: '23505', message: 'duplicate key' } });
       db[name].push({ id: db[name].length + 1, created: new Date().toISOString(), ...row });
       return Promise.resolve({ error: null });
     },
@@ -118,6 +119,7 @@ const storage = load('lib/storage.ts');
 const { normalizeInviteCode, newInviteCode, invitePassword } = load('lib/invites.ts');
 const { post } = load('lib/route.ts');
 const { quotaBlock, recordUsage } = load('lib/usage.ts');
+const meRoute = load('app/api/me/route.ts');
 const inviteLogin = load('app/api/invite-login/route.ts');
 const admin = load('app/api/admin/route.ts');
 const audit = load('app/api/admin/audit/route.ts');
@@ -139,26 +141,34 @@ assert.match(invitePassword('ABCD-2345'), /[a-z]/);
 assert.match(invitePassword('ABCD-2345'), /[0-9]/);
 
 // ---------- แยกรูปของแต่ละบัญชี ----------
-assert.equal(visibleTo({}, null), true); // ในเครื่องไม่มี login = ทีม
+assert.equal(visibleTo({}, null), true); // no login (local) = owner-less files
 assert.equal(visibleTo({ owner: 'alice' }, null), false);
 assert.equal(visibleTo({ owner: 'alice' }, alice), true);
 assert.equal(visibleTo({ owner: 'alice' }, bob), false);
-assert.equal(visibleTo({}, alice), false); // คลังของทีม (รูปเดิมทั้งหมด) ลูกค้าไม่เห็น
+assert.equal(visibleTo({}, alice), false); // old owner-less team library: hidden from every signed-in account
+assert.equal(visibleTo({}, team), false);
+assert.equal(visibleTo({}, boss), false);
+assert.equal(visibleTo({ owner: 'team' }, team), true); // email accounts own their images like code accounts
+assert.equal(visibleTo({ owner: 'alice' }, team), false);
 assert.equal(visibleTo({ owner: 'alice' }, boss), false);
 const r = { area: 'results' };
 const teamSrc = await withAccount(team, () => storage.saveImage(r, 'AA==', 'image/png', { caption: 'team', owner: 'alice' }));
 const aliceSrc = await withAccount(alice, () => storage.saveImage(r, 'AA==', 'image/png', { caption: 'alice', owner: 'bob' }));
-assert.equal(db.images.find((x) => x.meta.caption === 'team').meta.owner, undefined); // ทีมไม่ติดเจ้าของ และส่ง owner มาเองไม่ได้
+assert.equal(db.images.find((x) => x.meta.caption === 'team').meta.owner, 'team'); // email account gets its own id; a sent owner is ignored
+db.images.push({ path: 'results/legacy.jpg', area: 'results', kind: null, meta: { caption: 'legacy' }, created: '2026-10-01T00:00:00.000Z' });
 assert.equal(db.images.find((x) => x.meta.caption === 'alice').meta.owner, 'alice'); // เจ้าของมาจากบัญชีที่เรียก ไม่ใช่ meta
 const captions = async (who) => (await withAccount(who, () => storage.listImages(r))).map((x) => x.caption);
 assert.deepEqual(await captions(alice), ['alice']);
 assert.deepEqual(await captions(bob), []);
 assert.deepEqual(await captions(team), ['team']);
-assert.deepEqual(await captions(boss), ['team']);
+assert.deepEqual(await captions(boss), []); // superadmin's own library only
+assert.equal(await withAccount(team, () => storage.readImage(['results', 'legacy.jpg'])), null);
+assert(await withAccount(boss, () => storage.readImage(['results', 'legacy.jpg']))); // audit can still open legacy by path
 const parts = (src) => src.slice('/api/files/'.length).split('/');
 assert(await withAccount(alice, () => storage.readImage(parts(aliceSrc))));
 assert.equal(await withAccount(bob, () => storage.readImage(parts(aliceSrc))), null); // รู้ชื่อไฟล์ก็เปิดไม่ได้
 assert.equal(await withAccount(alice, () => storage.readImage(parts(teamSrc))), null);
+assert.equal(await withAccount(team, () => storage.readImage(parts(aliceSrc))), null);
 // รูปย่อ (/api/files?w=) สิทธิ์เดียวกับรูปเต็ม
 assert(await withAccount(alice, () => storage.readThumb(parts(aliceSrc), 512)));
 assert.equal(await withAccount(bob, () => storage.readThumb(parts(aliceSrc), 512)), null);
@@ -187,7 +197,7 @@ assert.equal(seen.who.id, 'alice');
 
 // ---------- โควตา (โทเคน) ----------
 const { usedTokens, ESTIMATED_TOKENS } = load('lib/usage.ts');
-db.invites.push({ code: 'AAAA-BBBB', user_id: 'alice', label: 'ร้าน A', quota: 50, token_quota: 20000, disabled: false });
+db.accounts.push({ user_id: 'alice', code: 'AAAA-BBBB', user_id: 'alice', label: 'ร้าน A', quota: 50, token_quota: 20000, disabled: false });
 const quota = () => withAccount(alice, () => quotaBlock());
 assert.equal(await quota(), null);
 await withAccount(alice, () => recordUsage({ page: 'product', action: 'packshot', model: 'openai:gpt-image-2.5-sunburst', quality: 'high', status: 'ok', tokens: 5000 }));
@@ -200,10 +210,32 @@ await withAccount(alice, () => recordUsage({ page: 'product', action: 'packshot'
 assert.equal((await quota()).status, 429); // 20,000 ครบแล้ว (รูปสุดท้ายเกินได้)
 assert.deepEqual(db.usage.map((u) => u.tokens), [5000, 9000, null, 9000]);
 assert.deepEqual(db.usage.map((u) => u.cost_thb), [2, 0, 4, 2]);
-db.invites[0].token_quota = 1_000_000;
-db.invites[0].disabled = true;
+db.accounts[0].token_quota = 1_000_000;
+db.accounts[0].disabled = true;
 assert.equal((await quota()).status, 403);
-assert.equal(await withAccount(team, () => quotaBlock()), null); // ทีมไม่มีโควตา
+// email account: row made on first use, then the same quota rules
+assert.equal(await withAccount(team, () => quotaBlock()), null);
+assert.deepEqual(db.accounts.filter((a) => a.user_id === 'team').map((a) => [a.code, a.label, a.token_quota]), [[null, 'team@x', 300000]]);
+assert.equal(await withAccount(team, () => quotaBlock()), null); // second call reuses the row
+assert.equal(db.accounts.filter((a) => a.user_id === 'team').length, 1);
+db.accounts.find((a) => a.user_id === 'team').token_quota = 1000;
+await withAccount(team, () => recordUsage({ page: 'model', action: 'generate', model: 'openai:gpt-image-2.5-sunburst', quality: 'high', status: 'ok', tokens: 1200 }));
+assert.equal((await withAccount(team, () => quotaBlock())).status, 429);
+db.accounts.find((a) => a.user_id === 'team').token_quota = 300000;
+// code account without a row stays disabled (no row made for it)
+assert.equal((await withAccount(bob, () => quotaBlock())).status, 403);
+assert(!db.accounts.some((a) => a.user_id === 'bob'));
+assert.equal(await withAccount(boss, () => quotaBlock()), null); // superadmin: no quota, no row
+assert(!db.accounts.some((a) => a.user_id === 'boss'));
+db.usage = db.usage.filter((u) => u.user_id !== 'team');
+
+// ---------- /api/me: every limited account gets its token bar ----------
+caller = team;
+let mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
+assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['team', 'team@x', 300000, 0]);
+caller = boss;
+mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
+assert.equal(mine.tokenQuota, undefined);
 
 // ---------- admin: เฉพาะ superadmin ออกโค้ด / แก้ / ปิด ----------
 caller = alice;
@@ -214,8 +246,9 @@ assert.equal((await admin.POST(request({ action: 'create', count: 1, tokenQuota:
 let res = await admin.POST(request({ action: 'create', count: 2, tokenQuota: 300000 }));
 assert.equal(res.status, 200);
 const [code1, code2] = (await res.json()).codes;
-assert.equal(db.invites.filter((i) => [code1, code2].includes(i.code) && i.token_quota === 300000).length, 2);
-const user1 = users.get(db.invites.find((i) => i.code === code1).user_id);
+assert.equal(db.accounts.filter((i) => [code1, code2].includes(i.code) && i.token_quota === 300000).length, 2);
+const user1 = users.get(db.accounts.find((i) => i.code === code1).user_id);
+const user2 = users.get(db.accounts.find((i) => i.code === code2).user_id);
 assert.deepEqual(user1.app_metadata, { looklet: true, role: 'customer' });
 res = await admin.GET(new Request('http://test/api/admin'), {});
 const summary = await res.json();
@@ -225,8 +258,18 @@ assert.equal(aliceRow.tokens, 5000 + ESTIMATED_TOKENS + 9000);
 assert.equal(aliceRow.tokenQuota, 1_000_000);
 assert.deepEqual([summary.total.measured, summary.total.measuredTokens], [2, 14000]); // ค่าเฉลี่ยไม่ปนค่าประมาณ
 assert.equal(summary.total.cost, 8);
-assert.equal((await admin.POST(request({ action: 'update', code: code2, tokenQuota: 250000 }))).status, 200);
-assert.equal(db.invites.find((i) => i.code === code2).token_quota, 250000);
+const teamRow = summary.invites.find((i) => i.userId === 'team');
+assert.deepEqual([teamRow.code, teamRow.label], [null, 'team@x']); // email accounts listed with code accounts
+assert.equal((await admin.POST(request({ action: 'update', userId: user2.id, tokenQuota: 250000 }))).status, 200);
+assert.equal(db.accounts.find((i) => i.code === code2).token_quota, 250000);
+assert.equal((await admin.POST(request({ action: 'update', userId: 'nobody', label: 'x' }))).status, 404);
+// disabling an email account keeps its role (it must still reach /account after being enabled again)
+users.set('team', { id: 'team', email: 'team@x', app_metadata: { looklet: true } });
+assert.equal((await admin.POST(request({ action: 'update', userId: 'team', disabled: true }))).status, 200);
+assert.deepEqual(users.get('team').app_metadata, { looklet: false });
+assert.equal((await admin.POST(request({ action: 'update', userId: 'team', disabled: false }))).status, 200);
+assert.deepEqual(users.get('team').app_metadata, { looklet: true });
+assert.equal(db.accounts.find((a) => a.user_id === 'team').disabled, false);
 
 // ---------- เข้าด้วยโค้ด ----------
 caller = undefined;
@@ -236,8 +279,8 @@ assert.equal(await login('ZZZZ-ZZZZ'), 401);
 assert.equal(await login(code1.toLowerCase().replace('-', ' ')), 200);
 assert.equal(signIns.at(-1).email, user1.email);
 caller = boss;
-assert.equal((await admin.POST(request({ action: 'update', code: code1, disabled: true }))).status, 200);
-assert.equal(user1.app_metadata.looklet, false); // ปิดแล้วถอดสิทธิ์ + แบน
+assert.equal((await admin.POST(request({ action: 'update', userId: user1.id, disabled: true }))).status, 200);
+assert.deepEqual(user1.app_metadata, { looklet: false, role: 'customer' }); // ปิดแล้วถอดสิทธิ์ + แบน
 assert.equal(user1.ban_duration, '876000h');
 caller = undefined;
 assert.equal(await login(code1), 401);
@@ -269,7 +312,7 @@ const [failed, fresh, old] = list.rows;
 assert.deepEqual([fresh.src, fresh.hasLog, fresh.caption, fresh.who, fresh.customer], [aliceSrc, true, 'alice', 'ร้าน A', true]);
 assert.deepEqual([failed.status, failed.error, failed.src, failed.who], ['error', 'AI timeout', null, 'team@x']);
 assert.deepEqual([old.src, old.guessed, old.hasLog, old.plan.name], ['/api/files/results/old.jpg', true, false, 'Walnut Pause']);
-assert(list.people.some((x) => x.user === 'alice' && x.label === 'ร้าน A') && list.people.some((x) => x.email === 'team@x'));
+assert(list.people.some((x) => x.user === 'alice' && x.label === 'ร้าน A') && list.people.some((x) => x.user === 'team' && x.label === 'team@x'));
 assert.equal(list.next, null);
 const detail = await (await auditGet('?id=2')).json();
 assert.deepEqual(detail.log.prompt, ['A photo of the bag.', 'Its strap rests on the table.']);
@@ -281,7 +324,7 @@ assert.deepEqual((await (await auditGet('?before=3')).json()).rows.map((x) => x.
 // superadmin เปิดรูปของลูกค้าได้เมื่อรู้ชื่อไฟล์ (รูปในพรอมต์/ผลลัพธ์) แต่คลังรูปของตัวเองยังไม่ปนของลูกค้า
 assert(await withAccount(boss, () => storage.readImage(parts(aliceSrc))));
 assert.equal(await withAccount(team, () => storage.readImage(parts(aliceSrc))), null);
-assert.deepEqual(await captions(boss), ['team']);
+assert.deepEqual(await captions(boss), []);
 // ยังไม่ได้รัน db-apply: บันทึกการใช้งานต้องไม่หาย (โควตานับต่อ) และหน้าตรวจงานยังเปิดได้
 noAuditColumns = true;
 await withAccount(alice, () => recordUsage(usageOf('ok', packshotLog({ status: 'สำเร็จ', result: aliceSrc }))));
@@ -293,4 +336,4 @@ assert.equal(list.rows.length, 4);
 assert(list.rows.every((x) => !x.hasLog));
 noAuditColumns = false;
 
-console.log('Accounts passed: invite codes, code login, per-account image privacy, owner cannot be forged, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');
+console.log('Accounts passed: invite codes, code login, per-account image privacy for email and code accounts (legacy team library hidden), owner cannot be forged, email-account rows on first use, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');

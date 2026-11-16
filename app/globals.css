@@ -67,9 +67,9 @@ button, select, input, textarea { font-family: inherit; }
 .beta { margin-left: var(--space-4); padding: var(--space-2) var(--space-8); border-radius: var(--r-full); background: var(--accent-soft); color: var(--accent-text); font-family: var(--font-sans); font-size: var(--text-2xs); font-weight: 600; vertical-align: 3px; }
 /* สลับหน้า นางแบบ / สินค้า (components/ui.tsx PageSwitch) · หน้าที่อยู่ = แท็บขาวอุ่นมีเงาบางๆ บนรางสีหิน (design system) */
 .page-switch { flex: 0 0 auto; display: flex; gap: var(--space-2); padding: 3px; border-radius: var(--r-full); background: var(--surface-card); }
-.page-switch a { display: inline-flex; align-items: center; height: var(--tab-height); padding: 0 var(--space-14); border-radius: var(--r-full); color: var(--mute); font-size: var(--text-sm); font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; }
-.page-switch a:not(.active):hover { color: var(--ink); }
-.page-switch a.active { background: var(--canvas); color: var(--ink); box-shadow: var(--shadow-tab); }
+.page-switch a, .page-switch button { display: inline-flex; align-items: center; height: var(--tab-height); padding: 0 var(--space-14); border-radius: var(--r-full); color: var(--mute); font-size: var(--text-sm); font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; }
+.page-switch a:not(.active):hover, .page-switch button:not(.active):hover { color: var(--ink); }
+.page-switch a.active, .page-switch button.active { background: var(--canvas); color: var(--ink); box-shadow: var(--shadow-tab); }
 /* ลูกค้า: แถบโทเคนใช้ไป / ทั้งหมด มุมขวาบน (TokenUsage) · ใช้ไป ≥ 90% เป็นสีดินเผา (danger) */
 .token-usage { display: inline-flex; align-items: center; gap: var(--space-8); height: var(--tab-height); padding: 0 var(--space-12); border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); font-size: var(--text-xs); white-space: nowrap; }
 .token-track { flex: none; width: 64px; height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--hairline); }
@@ -471,11 +471,11 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 .auth-card h1 { margin: 0 0 var(--space-4); color: var(--ink-soft); font-family: var(--font-display); font-size: var(--text-3xl); font-weight: 400; }
 .auth-card label { display: flex; flex-direction: column; gap: var(--space-6); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 600; }
 .auth-card .btn { height: var(--control-height-field); }
-/* หน้าเข้าใช้: โค้ดเชิญ (ลูกค้า) ก่อน อีเมล (ทีมงาน) พับไว้ด้านล่าง */
+/* หน้าเข้าใช้: 2 แท็บเท่ากัน โค้ดเชิญ | อีเมล (16 พ.ย.) — same look as PageSwitch */
 .auth-form { display: flex; flex-direction: column; gap: var(--space-14); }
 .auth-code { font-size: var(--text-xl); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
-.auth-team summary { color: var(--mute); font-size: var(--text-sm); cursor: pointer; }
-.auth-team[open] summary { margin-bottom: var(--space-12); }
+.auth-tabs { align-self: stretch; }
+.auth-tabs button { flex: 1; justify-content: center; border: 0; background: none; font: inherit; cursor: pointer; }
 input.field { height: var(--control-height-field); padding: 0 var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--canvas); color: var(--ink); font-size: var(--text-md); }
 .auth-error, .auth-ok { margin: 0; padding: var(--space-8) var(--space-12); border-radius: var(--r-md); font-size: var(--text-sm); }
 .auth-error { background: var(--danger-soft); color: var(--danger); }
