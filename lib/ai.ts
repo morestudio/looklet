@@ -11,6 +11,7 @@ const AI_MODELS = [
   { id: 'gemini:gemini-3.1-flash-image', label: 'Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)', key: 'GEMINI_API_KEY' },
   { id: 'gemini:gemini-3.1-flash-lite-image', label: 'Gemini 3.1 Flash Lite Image (ถูกสุด ~1 บาท/รูป)', key: 'GEMINI_API_KEY' },
   { id: 'gemini:gemini-3-pro-image', label: 'Gemini 3 Pro Image (ดีสุด ~4.5–8 บาท/รูป)', key: 'GEMINI_API_KEY' },
+  { id: 'openai:gpt-image-2.6-sunburst', label: 'OpenAI gpt-image-2.6-sunburst', key: 'OPENAI_API_KEY' }, // หน้าสินค้า (PRODUCT_AI_MODEL)
   { id: 'openai:gpt-image-2.5-sunburst', label: 'OpenAI gpt-image-2.5-sunburst', key: 'OPENAI_API_KEY' },
   { id: 'openai:gpt-image-2.5-flare', label: 'OpenAI gpt-image-2.5-flare', key: 'OPENAI_API_KEY' },
   { id: 'openai:gpt-image-2', label: 'OpenAI gpt-image-2', key: 'OPENAI_API_KEY' },

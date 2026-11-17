@@ -279,4 +279,16 @@ for (const kind of [{ shot_type: 'styled' }, { shot_type: 'multi', set_ref: 'her
 out = await shoot({ shot_type: 'styled', extra: longExtra + 'y'.repeat(200) + 'TAIL' });
 assert(out.call.prompt.includes(longExtra) && !out.call.prompt.includes('TAIL'));
 assert.equal(logs.at(-1).style.extra.length, 1000);
-console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props, handshot poses and custom turntable angles.');
+// ---------- ห้ามสินค้าเพี้ยน (17 พ.ย.): ต่อจากประโยคเปิดทุกคำสั่ง (ชุดภาพมุมที่ 2 เปิดด้วย 2 ประโยค = ประโยคที่ 3) · เลขรูปสินค้าถูก ----------
+const ruleAt = (prompt) => prompt.split(/(?<=\.) (?=[A-Z])/).findIndex((x) => x.startsWith('Most important, the product itself must not change'));
+for (const [opts, n] of [[{ shot_type: 'styled' }, 1], [{ shot_type: 'clean' }, 1], [{ shot_type: 'styled', ref: 'style', ref_mode: 'shot' }, 1],
+  [{ shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }, 2], [{ shot_type: 'handshot', hand_pose: 'arm' }, 1], [{ shot_type: 'creative', creative_concept: creative }, 1]]) {
+  out = await shoot(opts);
+  assert.equal(out.result.status, 200);
+  assert.equal(ruleAt(out.call.prompt), opts.set_ref ? 2 : 1, JSON.stringify(opts));
+  assert(out.call.prompt.includes(`Most important, the product itself must not change: it must stay exactly the product in Image ${n}, with the same shape and proportions, the same parts and the same number of each, the same colors, materials and surface finish, and every logo, label and letter exactly as shown.`), JSON.stringify(opts));
+  assert.match(out.call.prompt, /Only how it is placed may change: how it is turned, positioned and arranged in the photo, and how its flexible parts such as straps or cords fall; however it is placed, nothing about the product itself may change\./);
+}
+// กระเป๋า/โท้ทไม่สั่งให้หูตั้งแล้ว (สาเหตุสายสะพายตั้งชี้ฟ้า)
+for (const t of ['bag', 'tote']) assert.doesNotMatch(catalog.productType(t).stand, /standing up/);
+console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props, handshot poses, custom turntable angles, and the product-must-not-change rule as the second sentence of every prompt.');

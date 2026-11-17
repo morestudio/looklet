@@ -32,11 +32,12 @@ async function asCaller(run: (account: Account) => Promise<Response>) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- body มาจากหน้าเว็บ แต่ละ route เช็กเอง
-export function post(handler: (body: any) => Promise<Response>) {
+export function post(handler: (body: any) => Promise<Response>, opts: { model?: string } = {}) {
   return (req: Request) => asCaller(async () => {
     const body = await req.json();
-    // ผู้ใช้เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ทุก request ที่ส่งโมเดลมาใช้ DEFAULT_AI_MODEL เสมอ
-    if (body && typeof body === 'object' && 'model' in body) body.model = DEFAULT_AI_MODEL;
+    // ผู้ใช้เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ทุก request ที่ส่งโมเดลมาใช้โมเดลของ route นั้นเสมอ
+    // (opts.model เช่น หน้าสินค้า = PRODUCT_AI_MODEL) ไม่บอก = DEFAULT_AI_MODEL
+    if (body && typeof body === 'object' && 'model' in body) body.model = opts.model ?? DEFAULT_AI_MODEL;
     return handler(body);
   });
 }

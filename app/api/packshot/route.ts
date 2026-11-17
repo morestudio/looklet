@@ -1,5 +1,5 @@
 import { availableModels, describeLighting, generateImage, planStyling, type Img } from '@/lib/ai';
-import { GPT25_SIZES, isGpt25 } from '@/lib/catalog';
+import { GPT25_SIZES, PRODUCT_AI_MODEL, isGpt25 } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type LogImage, type PackshotLog } from '@/lib/genlog';
 import { cropTo, servable, svgJpeg } from '@/lib/images';
 import { readTurn, turnFill, turnPlace, turntableSvg } from '@/lib/turntable';
@@ -129,7 +129,7 @@ export const POST = post(async (req) => {
   const handLight = PRODUCT_LIGHTS.find((l) => l.id === 'window')!; // Handshot ใช้แสงหน้าต่างนุ่มเสมอ (ตามที่ทดสอบ)
   let prompt = creative ? buildCreativePackshotPrompt({ what: type.prompt, concept: creative.prompt, crop, extra: req.extra })
     : handPose ? buildHandshotPrompt({ what: type.prompt, single: handshotSingle(type.id), mode: handPose.mode, pose: handPose.prompt, short: handPose.short, light: handLight.prompt, crop, extra: req.extra })
-    : setRef ?buildPackshotSetPrompt({ what: type.prompt, place, flat, lens, angle: angle.prompt, framing: framing.prompt, crop, extra: req.extra })
+    : setRef ? buildPackshotSetPrompt({ what: type.prompt, place, flat, lens, angle: angle.prompt, framing: framing.prompt, crop, extra: req.extra })
     : buildPackshotPrompt({
       what: type.prompt, place, flat, refMode, hasSetImage: Boolean(setImage), hasPropImage: Boolean(propImage), set: setText, props,
       light: ref || setImage ? null : light.prompt, refLight, sceneLight, lens, angle: angle.prompt, framing: (props && framing.withProps) || framing.prompt,
@@ -239,4 +239,4 @@ export const POST = post(async (req) => {
     await recordUsage({ ...usage, status: 'error', tokens, log });
     throw e;
   }
-});
+}, { model: PRODUCT_AI_MODEL }); // หน้าสินค้าใช้ GPT Image 2.6 (lib/catalog.ts) หน้าอื่นใช้ DEFAULT_AI_MODEL
