@@ -45,8 +45,12 @@ export const POST = post(async (req) => {
     const { width = 0, height = 0 } = await sharp(image.data).metadata();
     const canvas = width && height ? editCanvas(width, height, size) : null;
     const padded = canvas && (canvas.width !== width || canvas.height !== height) ? canvas : null;
-    const output = await generateImage(SKIN_MODEL, [padded ? await toEditCanvas(source, padded) : source], SKIN_PROMPT,
-      { size, quality: 'high', aspect: '2:3' });
+    const output = await generateImage(
+      SKIN_MODEL,
+      [padded ? await toEditCanvas(source, padded) : source],
+      SKIN_PROMPT,
+      { size, quality: 'high', aspect: '2:3' },
+    );
     tokens = output.tokens;
     const refined = padded ? await fromEditCanvas(output, padded) : output;
     // PNG 1664×2496 ~6 MB เกินที่ Vercel ส่งได้ต่อครั้ง (4.5 MB) เปิดรูปไม่ขึ้น -> JPEG q97 ~1.3 MB
@@ -60,12 +64,38 @@ export const POST = post(async (req) => {
     }
     // เก็บเป็นรูปใหม่ก่อนเขียน log เสมอ ต้นฉบับยังอยู่แม้ขั้นตอนถัดไปมีปัญหา
     const src = await saveImage({ area: 'results' }, saved.data, saved.mime, meta);
-    const entry = await writeGenerateLog({ ...log, status: 'สำเร็จ', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, result: src });
-    await recordUsage({ page: 'model', action: 'refine-skin', model: SKIN_MODEL, quality: 'high', status: 'ok', tokens, log: entry });
+    const entry = await writeGenerateLog({
+      ...log,
+      status: 'สำเร็จ',
+      duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`,
+      result: src,
+    });
+    await recordUsage({
+      page: 'model',
+      action: 'refine-skin',
+      model: SKIN_MODEL,
+      quality: 'high',
+      status: 'ok',
+      tokens,
+      log: entry,
+    });
     return json(200, { src, ...meta });
   } catch (e) {
-    const entry = await writeGenerateLog({ ...log, status: 'พัง', duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`, error: (e as Error).message });
-    await recordUsage({ page: 'model', action: 'refine-skin', model: SKIN_MODEL, quality: 'high', status: 'error', tokens, log: entry });
+    const entry = await writeGenerateLog({
+      ...log,
+      status: 'พัง',
+      duration: `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`,
+      error: (e as Error).message,
+    });
+    await recordUsage({
+      page: 'model',
+      action: 'refine-skin',
+      model: SKIN_MODEL,
+      quality: 'high',
+      status: 'error',
+      tokens,
+      log: entry,
+    });
     throw e;
   }
 });

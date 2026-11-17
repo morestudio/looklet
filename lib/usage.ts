@@ -20,14 +20,23 @@ export const estimateCost = (model: string, quality: string, calls = 1) => (COST
 export const DEFAULT_TOKEN_QUOTA = 300_000;
 // แถวที่ไม่รู้โทเคน (รูปก่อนเริ่มนับโทเคน หรือ AI ไม่บอก) นับแบบประมาณ ไม่ให้สร้างฟรี
 export const ESTIMATED_TOKENS = 6_000;
-export const tokensOf = (r: { status: string; tokens?: number | null }) => (r.status === 'ok' ? r.tokens ?? ESTIMATED_TOKENS : 0);
+export const tokensOf = (r: { status: string; tokens?: number | null }) =>
+  r.status === 'ok' ? (r.tokens ?? ESTIMATED_TOKENS) : 0;
 
 // one row per account (was `invites`, 16 Nov): code = invite code, null = email + password login
 // quota = old image-count column, unused · token_quota = the real quota
 // pending = signed up at /signup, waiting for a superadmin (app/api/signup); phone / line only on those rows
 export type AccountRow = {
-  user_id: string; code: string | null; label: string; quota: number; token_quota: number; disabled: boolean; created: string;
-  pending?: boolean; phone?: string | null; line?: string | null;
+  user_id: string;
+  code: string | null;
+  label: string;
+  quota: number;
+  token_quota: number;
+  disabled: boolean;
+  created: string;
+  pending?: boolean;
+  phone?: string | null;
+  line?: string | null;
 };
 
 // email accounts: rows for existing ones come from the backfill in schema.sql; one added later gets its row on first use
@@ -41,7 +50,9 @@ export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | n
   };
   const row = await read();
   if (row) return row;
-  const { error } = await serviceClient().from('accounts').insert({ user_id: a.id, code: null, label: a.email.slice(0, 80), token_quota: DEFAULT_TOKEN_QUOTA });
+  const { error } = await serviceClient()
+    .from('accounts')
+    .insert({ user_id: a.id, code: null, label: a.email.slice(0, 80), token_quota: DEFAULT_TOKEN_QUOTA });
   if (error && error.code !== '23505') throw new Error('สร้างข้อมูลบัญชีไม่สำเร็จ: ' + error.message); // 23505 = a parallel request made it
   return read();
 }
@@ -54,8 +65,13 @@ const PAGE = 1000;
 export async function usedTokens(userId: string) {
   let sum = 0;
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await serviceClient().from('usage').select('status, tokens').eq('user_id', userId).eq('status', 'ok')
-      .order('id', { ascending: true }).range(from, from + PAGE - 1);
+    const { data, error } = await serviceClient()
+      .from('usage')
+      .select('status, tokens')
+      .eq('user_id', userId)
+      .eq('status', 'ok')
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
     if (error) throw new Error('อ่านการใช้งานไม่สำเร็จ: ' + error.message);
     for (const r of data ?? []) sum += tokensOf(r);
     if ((data ?? []).length < PAGE) return sum;
@@ -91,8 +107,12 @@ export async function uploadBlock(): Promise<Response | null> {
 }
 
 export type UsageEntry = {
-  page: 'model' | 'product'; action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin';
-  model: string; quality: string; status: 'ok' | 'error'; calls?: number; // calls = เรียก AI สร้างรูปกี่ครั้ง (harmonize = 2)
+  page: 'model' | 'product';
+  action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin';
+  model: string;
+  quality: string;
+  status: 'ok' | 'error';
+  calls?: number; // calls = เรียก AI สร้างรูปกี่ครั้ง (harmonize = 2)
   tokens?: number; // โทเคนที่ AI คิดจริงรวมทุกครั้ง (0/ไม่มี = ไม่รู้ -> ESTIMATED_TOKENS)
   log?: GenerateLog | PackshotLog; // สิ่งที่ส่งให้ AI (พรอมต์ รูป ค่าที่เลือก) -> หน้าตรวจงาน /admin/audit · result = log.result
 };
@@ -103,13 +123,22 @@ export async function recordUsage(entry: UsageEntry) {
   const account = me();
   try {
     const row = {
-      user_id: account?.id ?? null, email: account?.email ?? 'local', page: entry.page, action: entry.action,
-      model: entry.model, quality: entry.quality, status: entry.status, tokens: entry.tokens || null,
+      user_id: account?.id ?? null,
+      email: account?.email ?? 'local',
+      page: entry.page,
+      action: entry.action,
+      model: entry.model,
+      quality: entry.quality,
+      status: entry.status,
+      tokens: entry.tokens || null,
       cost_thb: entry.status === 'ok' ? estimateCost(entry.model, entry.quality, entry.calls) : 0,
     };
-    let { error } = await serviceClient().from('usage').insert({ ...row, result: entry.log?.result ?? null, log: entry.log ?? null });
+    let { error } = await serviceClient()
+      .from('usage')
+      .insert({ ...row, result: entry.log?.result ?? null, log: entry.log ?? null });
     // ฐานข้อมูลยังไม่มีคอลัมน์ result/log (ยังไม่ได้รัน db-apply หลัง 2 พ.ย.) -> บันทึกแบบเดิม โควตาต้องนับต่อได้เสมอ
-    if (error && /column.*\b(result|log)\b|\b(result|log)\b.*column/i.test(error.message)) ({ error } = await serviceClient().from('usage').insert(row));
+    if (error && /column.*\b(result|log)\b|\b(result|log)\b.*column/i.test(error.message))
+      ({ error } = await serviceClient().from('usage').insert(row));
     if (error) console.error('บันทึกการใช้งานไม่สำเร็จ', error.message);
   } catch (e) {
     console.error('บันทึกการใช้งานไม่สำเร็จ', e);

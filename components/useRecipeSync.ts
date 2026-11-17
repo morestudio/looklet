@@ -30,12 +30,28 @@ export function useRecipeSync<R, S extends string, X>(o: {
   const [confirmStart, setConfirmStart] = useState(false);
   const liveKey = recipeKey(o.recipe);
   const liveKeyRef = useRef(liveKey); // read when a generation finishes (its closure holds the sent key)
-  useEffect(() => { liveKeyRef.current = liveKey; });
+  useEffect(() => {
+    liveKeyRef.current = liveKey;
+  });
 
-  const loadShown = () => o.apply(o.shown!.recipe, o.steps.filter((k) => !o.shown!.missing.includes(k)));
-  const startFromShown = () => { o.onStart?.(o.shown!.recipe); setDraft(null); setViewKey(null); setSyncedSrc(null); o.close(); };
-  if (cleanKey === null && o.ready) { setCleanKey(liveKey); setPageStart(o.recipe); }
-  if (cleanKey !== null && o.shownSrc !== syncedSrc) { // clicked before ready -> loads right after
+  const loadShown = () =>
+    o.apply(
+      o.shown!.recipe,
+      o.steps.filter((k) => !o.shown!.missing.includes(k)),
+    );
+  const startFromShown = () => {
+    o.onStart?.(o.shown!.recipe);
+    setDraft(null);
+    setViewKey(null);
+    setSyncedSrc(null);
+    o.close();
+  };
+  if (cleanKey === null && o.ready) {
+    setCleanKey(liveKey);
+    setPageStart(o.recipe);
+  }
+  if (cleanKey !== null && o.shownSrc !== syncedSrc) {
+    // clicked before ready -> loads right after
     setSyncedSrc(o.shownSrc);
     if (o.shown) {
       if (!draft) setDraft({ recipe: o.recipe, chosen: [...o.chosen], extra: o.keep() });
@@ -43,13 +59,22 @@ export function useRecipeSync<R, S extends string, X>(o: {
       setViewKey(recipeKey(o.shown.recipe));
     } else {
       let key = liveKey;
-      if (draft) { const back = o.revalidate(draft.recipe); o.apply(back, draft.chosen); o.restore(draft.extra); setDraft(null); key = recipeKey(back); }
+      if (draft) {
+        const back = o.revalidate(draft.recipe);
+        o.apply(back, draft.chosen);
+        o.restore(draft.extra);
+        setDraft(null);
+        key = recipeKey(back);
+      }
       setViewKey(o.shownSrc ? key : null); // image without recipe: panel keeps the draft
     }
   } else if (viewKey !== null && liveKey !== viewKey && !confirmStart) {
     // a choice changed while viewing: no recipe -> back to the (changed) draft; recipe -> new draft from it
-    if (!o.shown) { setViewKey(null); setSyncedSrc(null); o.close(); }
-    else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
+    if (!o.shown) {
+      setViewKey(null);
+      setSyncedSrc(null);
+      o.close();
+    } else if (draft && recipeKey(draft.recipe) !== cleanKey) setConfirmStart(true);
     else startFromShown();
   }
 
@@ -59,13 +84,34 @@ export function useRecipeSync<R, S extends string, X>(o: {
     pageStart,
     // generation finished with the key it was sent with: true = panel unchanged since, open the new image
     // draft here = when it was sent: sent from a past image (draft set aside) doesn't save the draft's picks
-    finished: (sentKey: string) => { if (!draft) setCleanKey(sentKey); return liveKeyRef.current === sentKey; },
+    finished: (sentKey: string) => {
+      if (!draft) setCleanKey(sentKey);
+      return liveKeyRef.current === sentKey;
+    },
     // "เริ่มจากรูปนี้?" dialog; cancel re-keys from today's lists, else it reopens after a delete
-    confirm: confirmStart ? {
-      cancel: () => { setConfirmStart(false); if (o.shown) { loadShown(); setViewKey(recipeKey(o.shown.recipe)); } },
-      accept: () => { setConfirmStart(false); if (o.shown) startFromShown(); },
-    } : null,
+    confirm: confirmStart
+      ? {
+          cancel: () => {
+            setConfirmStart(false);
+            if (o.shown) {
+              loadShown();
+              setViewKey(recipeKey(o.shown.recipe));
+            }
+          },
+          accept: () => {
+            setConfirmStart(false);
+            if (o.shown) startFromShown();
+          },
+        }
+      : null,
     // panel <- r as a fresh setup (model page "ล้าง")
-    reset: (r: R) => { o.apply(r, []); setDraft(null); setViewKey(null); setSyncedSrc(null); o.close(); setCleanKey(recipeKey(r)); },
+    reset: (r: R) => {
+      o.apply(r, []);
+      setDraft(null);
+      setViewKey(null);
+      setSyncedSrc(null);
+      o.close();
+      setCleanKey(recipeKey(r));
+    },
   };
 }

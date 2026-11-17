@@ -18,13 +18,24 @@ function load(file) {
   const code = ts.transpileModule(readFileSync(new URL('../' + file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  new Function('require', 'module', 'exports', 'process', 'fetch', code)((id) => {
-    if (id === 'server-only') return {};
-    if (id === '@/lib/route') return { post: (fn) => fn, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) };
-    if (id.startsWith('@/')) return load(id.slice(2) + '.ts');
-    if (id.startsWith('.')) return load(path.posix.normalize(path.posix.join(path.posix.dirname(file), id)) + '.ts');
-    return require(id);
-  }, loaded, loaded.exports, { env: { OPENAI_API_KEY: 'fake-test-key' } }, fakeFetch);
+  new Function('require', 'module', 'exports', 'process', 'fetch', code)(
+    (id) => {
+      if (id === 'server-only') return {};
+      if (id === '@/lib/route')
+        return {
+          post: (fn) => fn,
+          json: (status, body) => ({ status, body }),
+          errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }),
+        };
+      if (id.startsWith('@/')) return load(id.slice(2) + '.ts');
+      if (id.startsWith('.')) return load(path.posix.normalize(path.posix.join(path.posix.dirname(file), id)) + '.ts');
+      return require(id);
+    },
+    loaded,
+    loaded.exports,
+    { env: { OPENAI_API_KEY: 'fake-test-key' } },
+    fakeFetch,
+  );
   modules.set(file, loaded.exports);
   return loaded.exports;
 }
@@ -32,9 +43,15 @@ const { CREATIVE_FIELDS, readCreativeConcept } = load('lib/creative.ts');
 const { POST } = load('app/api/creative-concepts/route.ts');
 for (const n of [1, 2, 3]) {
   const concept = {
-    title: `Concept ${n}`, summary: 'คอนเซปต์ภาพสินค้าจากวัสดุและโทนสีที่เห็นจริง', palette: '#ddeeff, #aaaaaa, #eeeeee',
-    scene: 'ฉากเรียบ', props: 'กระจกและถาดโลหะ', lighting: 'แสงหน้าต่าง', composition: 'ขวดอยู่ด้านหน้า',
-    prompt: 'Photograph the exact product on a silver tray with a small mirror, on a blue-grey surface. Soft daylight from the left reveals natural reflections. Keep the label readable and every product detail intact. Use a medium lens and a slightly elevated viewpoint.',
+    title: `Concept ${n}`,
+    summary: 'คอนเซปต์ภาพสินค้าจากวัสดุและโทนสีที่เห็นจริง',
+    palette: '#ddeeff, #aaaaaa, #eeeeee',
+    scene: 'ฉากเรียบ',
+    props: 'กระจกและถาดโลหะ',
+    lighting: 'แสงหน้าต่าง',
+    composition: 'ขวดอยู่ด้านหน้า',
+    prompt:
+      'Photograph the exact product on a silver tray with a small mirror, on a blue-grey surface. Soft daylight from the left reveals natural reflections. Keep the label readable and every product detail intact. Use a medium lens and a slightly elevated viewpoint.',
   };
   for (const field of CREATIVE_FIELDS) response[`${field}_${n}`] = concept[field];
 }
@@ -58,7 +75,14 @@ out = await POST({ ...base, product: '' });
 assert.equal(out.status, 400);
 assert.equal(requests.length, count);
 // ไอเดียที่พิมพ์ + ภาพแรงบันดาลใจ + ข้อมูลสินค้า ใส่พร้อมกันได้ (ไม่มีโหมดแล้ว)
-out = await POST({ ...base, idea: 'minimal silver', inspiration: 'mood-photo', facts: 'กลิ่นไม้', previous: ['Old idea'], product_name: 'เซรั่มขวดฟ้า' });
+out = await POST({
+  ...base,
+  idea: 'minimal silver',
+  inspiration: 'mood-photo',
+  facts: 'กลิ่นไม้',
+  previous: ['Old idea'],
+  product_name: 'เซรั่มขวดฟ้า',
+});
 assert.equal(out.status, 200);
 const inspirationRequest = requests.at(-1).messages[0].content;
 assert.equal(inspirationRequest.filter((m) => m.type === 'image_url').length, 3);
@@ -74,4 +98,6 @@ assert.equal(out.status, 503);
 response.prompt_1 = '';
 out = await POST(base);
 assert.equal(out.status, 503);
-console.log('Creative concepts passed: three validated concepts, product/inspiration ordering, factual guardrails, combined optional inputs, refresh context, and invalid-response recovery.');
+console.log(
+  'Creative concepts passed: three validated concepts, product/inspiration ordering, factual guardrails, combined optional inputs, refresh context, and invalid-response recovery.',
+);

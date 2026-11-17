@@ -7,17 +7,31 @@ const GA_HOST = 'lolostyleshot.vercel.app'; // production only: localhost and Ve
 export const GA_DEBUG = process.env.NEXT_PUBLIC_GA_DEBUG === '1'; // local testing: load anywhere, events show in GA DebugView
 
 export type AnalyticsEvent =
-  | 'login' | 'sign_up' | 'step_done' | 'step_view' | 'upload'
-  | 'generate_start' | 'generate_success' | 'generate_error' | 'quota_blocked'
-  | 'image_kept' | 'gallery_remove' | 'local_edit' | 'creative_ideas';
+  | 'login'
+  | 'sign_up'
+  | 'step_done'
+  | 'step_view'
+  | 'upload'
+  | 'generate_start'
+  | 'generate_success'
+  | 'generate_error'
+  | 'quota_blocked'
+  | 'image_kept'
+  | 'gallery_remove'
+  | 'local_edit'
+  | 'creative_ideas';
 export type Params = Record<string, string | number | boolean>;
 export type StudioPage = 'model' | 'product';
 
 declare global {
-  interface Window { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void }
+  interface Window {
+    dataLayer?: unknown[];
+    gtag?: (...args: unknown[]) => void;
+  }
 }
 
-export const gaEnabled = () => typeof window !== 'undefined' && Boolean(GA_ID) && (GA_DEBUG || location.hostname === GA_HOST);
+export const gaEnabled = () =>
+  typeof window !== 'undefined' && Boolean(GA_ID) && (GA_DEBUG || location.hostname === GA_HOST);
 
 // events fired before gtag('config') (it waits for /api/me) would reach no stream -> hold them until configured
 let configured = false;
@@ -25,14 +39,17 @@ const queue: [AnalyticsEvent, Params][] = [];
 const QUEUE_MAX = 50; // config never came (Analytics not mounted): don't grow forever
 
 // debug_mode per event: the property ignores it in gtag('config') (components/Analytics.tsx)
-const send = (name: AnalyticsEvent, params: Params) => window.gtag?.('event', name, GA_DEBUG ? { ...params, debug_mode: true } : params);
+const send = (name: AnalyticsEvent, params: Params) =>
+  window.gtag?.('event', name, GA_DEBUG ? { ...params, debug_mode: true } : params);
 
 export function track(name: AnalyticsEvent, params: Params = {}) {
   try {
     if (!gaEnabled()) return;
     if (!configured || !window.gtag) return void (queue.length < QUEUE_MAX && queue.push([name, params]));
     send(name, params);
-  } catch { /* analytics must never break the app */ }
+  } catch {
+    /* analytics must never break the app */
+  }
 }
 
 export function markConfigured() {
@@ -51,14 +68,20 @@ export function trackStepDone(page: StudioPage, step: string) {
 // login happens on /login right before a full page load (no user_id yet, hit may be cut off): fire it on the next page instead
 const LOGIN_FLAG = 'lolo:ga-login';
 export function noteLogin(method: 'invite_code' | 'password') {
-  try { sessionStorage.setItem(LOGIN_FLAG, method); } catch { /* private mode */ }
+  try {
+    sessionStorage.setItem(LOGIN_FLAG, method);
+  } catch {
+    /* private mode */
+  }
 }
 export function takeLogin(): string | null {
   try {
     const method = sessionStorage.getItem(LOGIN_FLAG);
     sessionStorage.removeItem(LOGIN_FLAG);
     return method;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // where a picked image came from: built-in sample (public/images) or the user's own upload
@@ -93,7 +116,16 @@ export function firstKeep(src: string, inGallery = false) {
 }
 
 // the North Star event, one place for both studio pages: download / share sheet / in-app long-press save / gallery bookmark
-export function trackKept(page: StudioPage, image: { src: string; inGallery?: boolean; editedFrom?: string }, via: 'download' | 'share' | 'inapp' | 'gallery') {
+export function trackKept(
+  page: StudioPage,
+  image: { src: string; inGallery?: boolean; editedFrom?: string },
+  via: 'download' | 'share' | 'inapp' | 'gallery',
+) {
   // via gallery: the image has just been bookmarked, so its own inGallery flag doesn't make it a repeat
-  track('image_kept', { page, via, edited: Boolean(image.editedFrom), first: firstKeep(image.src, via !== 'gallery' && image.inGallery) });
+  track('image_kept', {
+    page,
+    via,
+    edited: Boolean(image.editedFrom),
+    first: firstKeep(image.src, via !== 'gallery' && image.inGallery),
+  });
 }

@@ -24,4 +24,3 @@ export type StoredResultBase<R = Record<string, unknown>> = {
   inGallery?: boolean;
   inHistory?: boolean;
 };
-

@@ -13,32 +13,43 @@ export default function Analytics() {
 
   useEffect(() => {
     if (!on) return;
-    if (!window.gtag) { // once per page load (dev StrictMode runs effects twice)
+    if (!window.gtag) {
+      // once per page load (dev StrictMode runs effects twice)
       window.dataLayer = window.dataLayer || [];
       // gtag.js reads `arguments` objects from dataLayer, not arrays
-      // eslint-disable-next-line prefer-rest-params
-      window.gtag = function gtag() { window.dataLayer!.push(arguments); };
-      window.gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'granted' });
+      window.gtag = function gtag() {
+        // eslint-disable-next-line prefer-rest-params
+        window.dataLayer!.push(arguments);
+      };
+      window.gtag('consent', 'default', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'granted',
+      });
       window.gtag('js', new Date());
     }
     let cancelled = false;
     // shared /api/me request (loadMe: plain fetch with a timeout, so a hung request can't keep the queued events from leaving)
-    loadMe()
-      .then((me) => {
-        if (cancelled) return;
-        // the property's tag configures itself when gtag.js loads (gtm.init) and ignores gtag('config') params
-        // (ignoreDupeGtagConfigCalls), so user_id and role go through 'set'; queued before the script loads, every
-        // event carries them except that automatic first page_view (checked in headless Chrome, 16 Nov)
-        if (me?.aid) window.gtag!('set', { user_id: me.aid });
-        if (me?.role) window.gtag!('set', 'user_properties', { role: me.role });
-        window.gtag!('config', GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false });
-        markConfigured();
-        const method = takeLogin();
-        if (method) track('login', { method });
-        setReady(true);
-      });
-    return () => { cancelled = true; };
+    loadMe().then((me) => {
+      if (cancelled) return;
+      // the property's tag configures itself when gtag.js loads (gtm.init) and ignores gtag('config') params
+      // (ignoreDupeGtagConfigCalls), so user_id and role go through 'set'; queued before the script loads, every
+      // event carries them except that automatic first page_view (checked in headless Chrome, 16 Nov)
+      if (me?.aid) window.gtag!('set', { user_id: me.aid });
+      if (me?.role) window.gtag!('set', 'user_properties', { role: me.role });
+      window.gtag!('config', GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false });
+      markConfigured();
+      const method = takeLogin();
+      if (method) track('login', { method });
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [on]);
 
-  return on && ready ? <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" /> : null;
+  return on && ready ? (
+    <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+  ) : null;
 }

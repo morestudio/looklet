@@ -9,12 +9,22 @@ export type ErrorBody = { error: ApiErrorObject };
 type Options = { reason?: FailReason; extra?: Record<string, unknown> };
 
 const STATUS_CODES: Record<number, string> = {
-  400: 'bad_request', 401: 'unauthorized', 403: 'forbidden', 404: 'not_found', 409: 'conflict', 413: 'payload_too_large',
-  429: 'too_many_requests', 500: 'internal_server_error', 502: 'bad_gateway', 503: 'service_unavailable', 504: 'gateway_timeout',
+  400: 'bad_request',
+  401: 'unauthorized',
+  403: 'forbidden',
+  404: 'not_found',
+  409: 'conflict',
+  413: 'payload_too_large',
+  429: 'too_many_requests',
+  500: 'internal_server_error',
+  502: 'bad_gateway',
+  503: 'service_unavailable',
+  504: 'gateway_timeout',
 };
 
-export const errorBody = (status: number, message: string, { reason, extra }: Options = {}): ErrorBody =>
-  ({ error: { ...extra, code: reason ?? STATUS_CODES[status] ?? 'error', message } });
+export const errorBody = (status: number, message: string, { reason, extra }: Options = {}): ErrorBody => ({
+  error: { ...extra, code: reason ?? STATUS_CODES[status] ?? 'error', message },
+});
 
 export const errorResponse = (status: number, message: string, options?: Options) =>
   Response.json(errorBody(status, message, options), { status });

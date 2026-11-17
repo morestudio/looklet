@@ -11,5 +11,17 @@ if (!process.env.POSTGRES_URL_NON_POOLING) {
 const url = new URL(process.env.POSTGRES_URL_NON_POOLING);
 for (const key of [...url.searchParams.keys()]) if (key !== 'sslmode') url.searchParams.delete(key);
 if (!url.searchParams.get('sslmode')) url.searchParams.set('sslmode', 'require');
-execFileSync('psql', [url.toString(), '-v', 'ON_ERROR_STOP=1', '-X', '-q', '-f', new URL('../supabase/schema.sql', import.meta.url).pathname], { stdio: 'inherit' });
+execFileSync(
+  'psql',
+  [
+    url.toString(),
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-X',
+    '-q',
+    '-f',
+    new URL('../supabase/schema.sql', import.meta.url).pathname,
+  ],
+  { stdio: 'inherit' },
+);
 console.log('ใช้ supabase/schema.sql กับฐานข้อมูลแล้ว');

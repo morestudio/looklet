@@ -43,14 +43,17 @@ export async function proxy(request: NextRequest) {
     }
     return res;
   };
-  if (pathname === '/login' || pathname === '/signup') return member ? carry(NextResponse.redirect(new URL('/', request.url))) : response;
+  if (pathname === '/login' || pathname === '/signup')
+    return member ? carry(NextResponse.redirect(new URL('/', request.url))) : response;
   // เข้าด้วยโค้ดเชิญ / สมัครใช้งาน: คนที่ยังไม่เข้าสู่ระบบต้องเรียกได้
   if (pathname === '/api/invite-login' || pathname === '/api/signup') return response;
   if (member) {
     const role = roleOf(data?.claims);
     // หน้า admin เฉพาะ superadmin (API เช็กซ้ำ) · บัญชีที่เข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
-    if (((pathname === '/admin' || pathname.startsWith('/admin/')) && role !== 'superadmin')
-      || (pathname === '/account' && await codeAccount(String(data!.claims!.sub)))) {
+    if (
+      ((pathname === '/admin' || pathname.startsWith('/admin/')) && role !== 'superadmin') ||
+      (pathname === '/account' && (await codeAccount(String(data!.claims!.sub))))
+    ) {
       return carry(NextResponse.redirect(new URL('/', request.url)));
     }
     return response;

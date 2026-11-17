@@ -8,7 +8,15 @@
 // มือถือ: แตะครั้งแรกเพื่อซูม ปัดนิ้วเลื่อนแบบปกติของ browser · Esc หรือ ✕ = ปิด
 // เดิมเปิดมาซูมตรงจุดที่กดบนเวทีเลย (22 ต.ค.) — 29 ต.ค. ผู้ใช้ขอให้เปิดมาพอดีจอก่อน
 // รูป 1664×2496 ละเอียดกว่าจอ ต้องซูมถึงจะเห็นผิว/เนื้อผ้า
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react';
 import { IconHand } from './icons';
 
 // scale = กี่เท่าของตอนพอดีจอ · (fx, fy) = จุดบนรูป (สัดส่วน 0..1) ที่ต้องอยู่ตรงตำแหน่ง (ax, ay) ในกรอบ (px)
@@ -63,7 +71,12 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
   const anchorAt = (clientX: number, clientY: number): Anchor => {
     const r = imgRef.current!.getBoundingClientRect();
     const b = boxRef.current!.getBoundingClientRect();
-    return { fx: clamp01((clientX - r.left) / r.width), fy: clamp01((clientY - r.top) / r.height), ax: clientX - b.left, ay: clientY - b.top };
+    return {
+      fx: clamp01((clientX - r.left) / r.width),
+      fy: clamp01((clientY - r.top) / r.height),
+      ax: clientX - b.left,
+      ay: clientY - b.top,
+    };
   };
   const middle = () => {
     const b = boxRef.current!.getBoundingClientRect();
@@ -83,7 +96,8 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
     const box = boxRef.current;
     if (!box) return;
     const onWheel = (e: WheelEvent) => {
-      const wheelNotch = e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+      const wheelNotch =
+        e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
       if (!e.ctrlKey && !wheelNotch) return; // ปัดสองนิ้ว: ให้ browser เลื่อนกรอบที่ซูมอยู่ตามปกติ
       e.preventDefault();
       const speed = e.ctrlKey ? 0.01 : e.deltaMode === 1 ? 0.05 : 0.002; // หนีบนิ้ว / ล้อแบบบรรทัด / ล้อแบบพิกเซล
@@ -106,7 +120,14 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
     const onImage = e.target === imgRef.current;
     const mouse = e.pointerType === 'mouse';
     if (mouse && e.button !== 0) return; // ซูม/ลากด้วยปุ่มซ้ายเท่านั้น (ปุ่มขวา = ดูทั้งรูป ใน onContextMenu)
-    drag.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop, moved: false, zoomedIn: false };
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      left: box.scrollLeft,
+      top: box.scrollTop,
+      moved: false,
+      zoomedIn: false,
+    };
     if (!mouse || (!zoom && !onImage)) return;
     if (!zoom) {
       drag.current.zoomedIn = true;
@@ -139,28 +160,56 @@ export default function ImageViewer({ src, alt, onClose }: { src: string; alt: s
   }
 
   // เปอร์เซ็นต์เทียบขนาดจริงของรูป (100% = 1 พิกเซลรูปต่อ 1 พิกเซลจอ)
-  const percent = fit && zoom ? Math.round((fit.width * zoom.scale / fit.natural) * 100) : null;
+  const percent = fit && zoom ? Math.round(((fit.width * zoom.scale) / fit.natural) * 100) : null;
   const atMax = zoom !== null && zoom.scale >= maxScale - 0.01;
   return (
     <dialog ref={dialogRef} className="viewer" onClose={onClose} onKeyDown={onKeyDown}>
-      <div ref={boxRef} className={'viewer-box' + (zoom ? ' zoomed' : '') + (dragging ? ' dragging' : '')}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => setDragging(false)}
-        onPointerCancel={() => setDragging(false)} onClick={onClick}
+      <div
+        ref={boxRef}
+        className={'viewer-box' + (zoom ? ' zoomed' : '') + (dragging ? ' dragging' : '')}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={() => setDragging(false)}
+        onPointerCancel={() => setDragging(false)}
+        onClick={onClick}
         onContextMenu={(e) => {
           if (!zoom) return;
           e.preventDefault();
           setZoom(null);
-        }}>
-        <img ref={imgRef} src={src} alt={alt} draggable={false} onLoad={onLoad}
-          style={zoom && fit ? { width: fit.width * zoom.scale, maxWidth: 'none', maxHeight: 'none' } : undefined} />
+        }}
+      >
+        <img
+          ref={imgRef}
+          src={src}
+          alt={alt}
+          draggable={false}
+          onLoad={onLoad}
+          style={zoom && fit ? { width: fit.width * zoom.scale, maxWidth: 'none', maxHeight: 'none' } : undefined}
+        />
       </div>
-      <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>×</button>
-      <p className="viewer-hint">{zoom ? <><IconHand /> ลากหรือปัดสองนิ้วเพื่อเลื่อน · ซูมออกด้วย − หรือ ทั้งรูป</> : 'กดตรงที่อยากดูเพื่อซูม · ล้อเมาส์หรือหนีบนิ้วเพื่อซูมเข้า/ออก'}</p>
+      <button type="button" className="viewer-close" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>
+        ×
+      </button>
+      <p className="viewer-hint">
+        {zoom ? (
+          <>
+            <IconHand /> ลากหรือปัดสองนิ้วเพื่อเลื่อน · ซูมออกด้วย − หรือ ทั้งรูป
+          </>
+        ) : (
+          'กดตรงที่อยากดูเพื่อซูม · ล้อเมาส์หรือหนีบนิ้วเพื่อซูมเข้า/ออก'
+        )}
+      </p>
       <div className="viewer-tools" role="toolbar" aria-label="ซูม">
-        <button type="button" aria-label="ซูมออก" title="ซูมออก (−)" disabled={!zoom} onClick={() => zoomBy(1 / STEP)}>−</button>
+        <button type="button" aria-label="ซูมออก" title="ซูมออก (−)" disabled={!zoom} onClick={() => zoomBy(1 / STEP)}>
+          −
+        </button>
         <output aria-live="polite">{percent !== null ? `${percent}%` : 'พอดีจอ'}</output>
-        <button type="button" aria-label="ซูมเข้า" title="ซูมเข้า (+)" disabled={atMax} onClick={() => zoomBy(STEP)}>+</button>
-        <button type="button" className="viewer-fit" title="ดูทั้งรูป (0)" disabled={!zoom} onClick={() => setZoom(null)}>ทั้งรูป</button>
+        <button type="button" aria-label="ซูมเข้า" title="ซูมเข้า (+)" disabled={atMax} onClick={() => zoomBy(STEP)}>
+          +
+        </button>
+        <button type="button" className="viewer-fit" title="ดูทั้งรูป (0)" disabled={!zoom} onClick={() => setZoom(null)}>
+          ทั้งรูป
+        </button>
       </div>
     </dialog>
   );

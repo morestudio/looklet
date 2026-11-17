@@ -13,11 +13,24 @@ const HOLD_MS = 1400; // เขียนเสร็จแล้วค้าง�
 const FADE_MS = 500; // จางออกก่อนเข้าสตูดิโอ (เท่ากับ transition ใน CSS)
 const nameMs = (name: string) => Math.min(2600, Math.max(1000, [...name].length * 120)); // ชื่อยาว = เขียนนานขึ้น
 
-function Ink({ text, className, delay, duration }: { text: string; className: string; delay: number; duration: number }) {
+function Ink({
+  text,
+  className,
+  delay,
+  duration,
+}: {
+  text: string;
+  className: string;
+  delay: number;
+  duration: number;
+}) {
   const timing = { '--wl-delay': `${delay}ms`, '--wl-dur': `${duration}ms` } as CSSProperties;
-  return <span className={'wl-ink ' + className} style={timing} aria-hidden="true">
-    <span className="wl-pen">{text}</span><span className="wl-fill">{text}</span>
-  </span>;
+  return (
+    <span className={'wl-ink ' + className} style={timing} aria-hidden="true">
+      <span className="wl-pen">{text}</span>
+      <span className="wl-fill">{text}</span>
+    </span>
+  );
 }
 
 export default function Welcome() {
@@ -35,28 +48,49 @@ export default function Welcome() {
 
   useEffect(() => {
     let gone = false;
-    document.fonts.ready.then(() => { if (!gone) setFontsReady(true); });
+    document.fonts.ready.then(() => {
+      if (!gone) setFontsReady(true);
+    });
     const timer = setTimeout(() => setWaited(true), 1200);
-    return () => { gone = true; clearTimeout(timer); };
+    return () => {
+      gone = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
     if (!writing) return;
     const fade = setTimeout(() => setLeaving(true), total);
     const go = setTimeout(enter, total + FADE_MS);
-    return () => { clearTimeout(fade); clearTimeout(go); };
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(go);
+    };
   }, [writing, total, enter]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') enter(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') enter();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [enter]);
 
-  return <main className={'welcome' + (writing ? ' writing' : '') + (leaving ? ' leaving' : '')} onClick={enter}>
-    <h1 className="sr-only">Welcome{name ? ` ${name}` : ''}</h1>
-    <Ink text="Welcome" className="wl-welcome" delay={0} duration={WELCOME_MS} />
-    {name && <Ink text={name} className={'wl-name' + (isEmail ? ' wl-email' : '')} delay={WELCOME_MS + GAP_MS} duration={nameMs(name)} />}
-    <Link className="sr-only" href="/" prefetch={false}>เข้าสตูดิโอ</Link>
-  </main>;
+  return (
+    <main className={'welcome' + (writing ? ' writing' : '') + (leaving ? ' leaving' : '')} onClick={enter}>
+      <h1 className="sr-only">Welcome{name ? ` ${name}` : ''}</h1>
+      <Ink text="Welcome" className="wl-welcome" delay={0} duration={WELCOME_MS} />
+      {name && (
+        <Ink
+          text={name}
+          className={'wl-name' + (isEmail ? ' wl-email' : '')}
+          delay={WELCOME_MS + GAP_MS}
+          duration={nameMs(name)}
+        />
+      )}
+      <Link className="sr-only" href="/" prefetch={false}>
+        เข้าสตูดิโอ
+      </Link>
+    </main>
+  );
 }

@@ -7,14 +7,17 @@ import { uploadBlock } from '@/lib/usage';
 export const POST = post(async (req) => {
   if (!isKind(req.kind) || !req.data) return errorResponse(400, 'ข้อมูลรูปไม่ถูกต้อง');
   // เดิมชนิดที่ไม่รู้จักถูกเก็บเป็น .png ทั้งที่ข้างในไม่ใช่ PNG -> เปิดรูปไม่ได้ (เจอกับ HEIC 19 ต.ค.)
-  if (!isStorable(req.mime || 'image/png')) return errorResponse(400, 'ชนิดไฟล์รูปนี้เก็บไม่ได้ (รับ JPG, PNG, WebP, GIF, HEIC)');
+  if (!isStorable(req.mime || 'image/png'))
+    return errorResponse(400, 'ชนิดไฟล์รูปนี้เก็บไม่ได้ (รับ JPG, PNG, WebP, GIF, HEIC)');
   const blocked = await uploadBlock();
   if (blocked) return blocked;
   const meta: Record<string, string> = { name: String(req.name || 'รูปที่เพิ่ม').slice(0, 80) };
   if (req.type) meta.type = String(req.type).slice(0, 20);
   if (req.kind === 'products') {
     if (req.productGroup != null) {
-      const group = productGroups(await listImages({ area: 'uploads', kind: 'products' })).find((g) => g.id === req.productGroup);
+      const group = productGroups(await listImages({ area: 'uploads', kind: 'products' })).find(
+        (g) => g.id === req.productGroup,
+      );
       if (!group) return errorResponse(400, 'ไม่พบสินค้าที่จะเพิ่มรูปให้');
       meta.productGroup = group.id;
       meta.type = group.type || 'other';

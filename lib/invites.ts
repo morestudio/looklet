@@ -11,10 +11,15 @@ export const newInviteCode = () => {
 };
 // ลูกค้าพิมพ์ตัวเล็ก/เว้นวรรค/ไม่ใส่ขีดก็ได้ -> "ABCD-EFGH" · ไม่ใช่รูปแบบโค้ด = null
 export function normalizeInviteCode(input: unknown) {
-  const s = String(input ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const s = String(input ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
   return s.length === 8 && [...s].every((c) => ALPHABET.includes(c)) ? `${s.slice(0, 4)}-${s.slice(4)}` : null;
 }
 // รหัสผ่านของบัญชีโค้ดเชิญ: มีตัวใหญ่ ตัวเล็ก ตัวเลข สัญลักษณ์ ผ่านกฎรหัสผ่านของ Supabase · ความลับจริงคือตัวโค้ด
 export const invitePassword = (code: string) => `Looklet!${code}#9`;
 // อีเมลภายในของบัญชีลูกค้า (ไม่เกี่ยวกับโค้ด ดูรายชื่อบัญชีแล้วเดาโค้ดไม่ได้)
-export const inviteEmail = () => `looklet+guest-${randomInt(36 ** 6).toString(36).padStart(6, '0')}@morestudio.co.th`;
+export const inviteEmail = () =>
+  `looklet+guest-${randomInt(36 ** 6)
+    .toString(36)
+    .padStart(6, '0')}@morestudio.co.th`;

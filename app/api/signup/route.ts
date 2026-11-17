@@ -29,7 +29,10 @@ export async function POST(req: Request) {
     if (!/^\d{9,15}$/.test(phone.replace(/[\s\-()+.]/g, ''))) return errorResponse(400, 'เบอร์โทรไม่ถูกต้อง');
 
     const sb = serviceClient();
-    const { count, error: countError } = await sb.from('accounts').select('user_id', { count: 'exact', head: true }).eq('pending', true);
+    const { count, error: countError } = await sb
+      .from('accounts')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('pending', true);
     if (countError) throw new Error(countError.message);
     if ((count ?? 0) >= MAX_PENDING) return errorResponse(503, 'ปิดรับสมัครชั่วคราว ลองใหม่ภายหลัง');
 
@@ -37,7 +40,15 @@ export async function POST(req: Request) {
     if (error?.code === 'email_exists') return errorResponse(409, 'อีเมลนี้มีบัญชีอยู่แล้ว ลองเข้าสู่ระบบ หรือติดต่อผู้ดูแล');
     if (error?.code === 'weak_password') return errorResponse(400, 'รหัสผ่านง่ายเกินไป ลองตั้งให้ยากขึ้น');
     if (error || !data.user) throw new Error(error?.message ?? 'no user');
-    const row = { user_id: data.user.id, code: null, label, token_quota: DEFAULT_TOKEN_QUOTA, pending: true, phone, line: line || null };
+    const row = {
+      user_id: data.user.id,
+      code: null,
+      label,
+      token_quota: DEFAULT_TOKEN_QUOTA,
+      pending: true,
+      phone,
+      line: line || null,
+    };
     const { error: rowError } = await sb.from('accounts').insert(row);
     if (rowError) {
       await sb.auth.admin.deleteUser(data.user.id); // no row = nobody would ever see this request
@@ -56,7 +67,11 @@ export async function GET() {
     const { data } = await (await createClient()).auth.getClaims();
     const id = data?.claims?.sub;
     if (!id) return json(200, { pending: false });
-    const { data: row } = await serviceClient().from('accounts').select('pending').eq('user_id', String(id)).maybeSingle();
+    const { data: row } = await serviceClient()
+      .from('accounts')
+      .select('pending')
+      .eq('user_id', String(id))
+      .maybeSingle();
     return json(200, { pending: row?.pending === true });
   } catch {
     return json(200, { pending: false });

@@ -16,7 +16,9 @@ export function useHistoryPlaces<R extends Placed>(
 ) {
   const [removingSrc, setRemovingSrc] = useState<string | null>(null);
   const latest = useRef(results); // read after awaits: results can grow at the front (new generation) meanwhile
-  useEffect(() => { latest.current = results; }, [results]);
+  useEffect(() => {
+    latest.current = results;
+  }, [results]);
   const pending = useRef(new Map<string, Promise<unknown>>()); // in-flight bookmark request per src
 
   // optimistic; taps on the same image are ignored until its request settles (else update/delete can land out of order)
@@ -26,7 +28,10 @@ export function useHistoryPlaces<R extends Placed>(
     const mark = (v: boolean) => setResults((list) => list.map((r) => (r.src === src ? { ...r, inGallery: v } : r)));
     mark(!inGallery);
     const request = api('/api/update', { src, inGallery: !inGallery });
-    pending.current.set(src, request.catch(() => undefined));
+    pending.current.set(
+      src,
+      request.catch(() => undefined),
+    );
     try {
       await request;
       if (inGallery) track('gallery_remove', { page });
@@ -55,11 +60,17 @@ export function useHistoryPlaces<R extends Placed>(
     setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
   }
 
-  const removeDialog = removingSrc ? {
-    inOtherPlace: Boolean(results.find((r) => r.src === removingSrc)?.inGallery),
-    onCancel: () => setRemovingSrc(null),
-    onConfirm: () => { const src = removingSrc; setRemovingSrc(null); void removeFromHistory(src); },
-  } : null;
+  const removeDialog = removingSrc
+    ? {
+        inOtherPlace: Boolean(results.find((r) => r.src === removingSrc)?.inGallery),
+        onCancel: () => setRemovingSrc(null),
+        onConfirm: () => {
+          const src = removingSrc;
+          setRemovingSrc(null);
+          void removeFromHistory(src);
+        },
+      }
+    : null;
 
   return { toggleGallery, removeFromHistory, askRemove: setRemovingSrc, removeDialog };
 }
@@ -67,7 +78,9 @@ export function useHistoryPlaces<R extends Placed>(
 // ← → step through the history strip in on-screen order (order = results indices as drawn, sets grouped); "รูปใหม่" (null) comes first
 export function useHistoryKeys(order: number[], setCurrent: Dispatch<SetStateAction<number | null>>) {
   const latest = useRef(order);
-  useEffect(() => { latest.current = order; });
+  useEffect(() => {
+    latest.current = order;
+  });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
@@ -77,7 +90,9 @@ export function useHistoryKeys(order: number[], setCurrent: Dispatch<SetStateAct
       e.preventDefault(); // no native sideways scroll on top of ours
       const seq = [null, ...latest.current];
       setCurrent((c) => seq[Math.min(seq.length - 1, Math.max(0, seq.indexOf(c) + step))]);
-      requestAnimationFrame(() => document.querySelector('.history .active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+      requestAnimationFrame(() =>
+        document.querySelector('.history .active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+      );
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

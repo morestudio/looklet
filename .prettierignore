@@ -1,0 +1,13 @@
+# generated / runtime data (most are gitignored too)
+.next/
+node_modules/
+package-lock.json
+next-env.d.ts
+public/
+results/
+images/
+logs/
+output/
+supabase/
+# docs are written by hand; keep their line breaks
+*.md

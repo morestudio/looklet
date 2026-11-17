@@ -12,8 +12,14 @@ const logs = []; // generation logs (writeGenerateLog)
 const ai = {
   availableModels: () => [{ id: 'test:image' }],
   describeLighting: async () => 'soft daylight',
-  planStyling: async (input) => { planned.push(input); return { en: 'a small pear beside the product', th: 'ลูกแพร์', style: 'fruit' }; },
-  generateImage: async (_model, images, prompt) => { calls.push({ images, prompt }); return { data: 'output', mime: 'image/jpeg' }; },
+  planStyling: async (input) => {
+    planned.push(input);
+    return { en: 'a small pear beside the product', th: 'ลูกแพร์', style: 'fruit' };
+  },
+  generateImage: async (_model, images, prompt) => {
+    calls.push({ images, prompt });
+    return { data: 'output', mime: 'image/jpeg' };
+  },
 };
 function load(file) {
   if (cache.has(file)) return cache.get(file);
@@ -22,24 +28,48 @@ function load(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const mocks = {
-    'server-only': {}, '@/lib/ai': ai,
+    'server-only': {},
+    '@/lib/ai': ai,
     '@/lib/catalog': { isGpt25: () => false, GPT25_SIZES: {} },
-    '@/lib/images': { cropTo: async (o) => o, servable: async (o) => o, svgJpeg: async (svg) => (svg.startsWith('<svg') ? 'guide-jpeg' : 'bad-svg') },
-    '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) },
-    '@/lib/storage': { saveImage: async (_where, _data, _mime, meta) => { saved.push(meta); return '/test/result.jpg'; } },
+    '@/lib/images': {
+      cropTo: async (o) => o,
+      servable: async (o) => o,
+      svgJpeg: async (svg) => (svg.startsWith('<svg') ? 'guide-jpeg' : 'bad-svg'),
+    },
+    '@/lib/route': {
+      post: (handler) => handler,
+      json: (status, body) => ({ status, body }),
+      errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }),
+    },
+    '@/lib/storage': {
+      saveImage: async (_where, _data, _mime, meta) => {
+        saved.push(meta);
+        return '/test/result.jpg';
+      },
+    },
     '@/lib/usage': { quotaBlock: async () => null, recordUsage: async () => {} },
-    '@/lib/genlog': { localTime: () => 'test', sentences: (s) => s, writeGenerateLog: async (entry) => { logs.push(entry); } },
+    '@/lib/genlog': {
+      localTime: () => 'test',
+      sentences: (s) => s,
+      writeGenerateLog: async (entry) => {
+        logs.push(entry);
+      },
+    },
   };
-  new Function('require', 'module', 'exports', code)((id) => {
-    if (id in mocks) return mocks[id];
-    if (id === '@/lib/creative') return load('lib/creative.ts');
-    if (id === '@/lib/recipe') return load('lib/recipe.ts'); // recipe stored with each image
-    if (id === '@/lib/packshot' || id === './packshot') return load('lib/packshot.ts');
-    if (id === '@/lib/packshot-prompts') return load('lib/packshot-prompts.ts');
-    if (id === './aspects' || id === '@/lib/aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
-    if (id === './turntable' || id === '@/lib/turntable') return load('lib/turntable.ts'); // ตั้งมุมเอง
-    return require(id);
-  }, loaded, loaded.exports);
+  new Function('require', 'module', 'exports', code)(
+    (id) => {
+      if (id in mocks) return mocks[id];
+      if (id === '@/lib/creative') return load('lib/creative.ts');
+      if (id === '@/lib/recipe') return load('lib/recipe.ts'); // recipe stored with each image
+      if (id === '@/lib/packshot' || id === './packshot') return load('lib/packshot.ts');
+      if (id === '@/lib/packshot-prompts') return load('lib/packshot-prompts.ts');
+      if (id === './aspects' || id === '@/lib/aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
+      if (id === './turntable' || id === '@/lib/turntable') return load('lib/turntable.ts'); // ตั้งมุมเอง
+      return require(id);
+    },
+    loaded,
+    loaded.exports,
+  );
   cache.set(file, loaded.exports);
   return loaded.exports;
 }
@@ -53,13 +83,23 @@ async function shoot(options) {
   return { result, call: calls[0] };
 }
 assert.equal(catalog.SHOT_TYPES.length, 7);
-assert.deepEqual(catalog.PRODUCT_SET_SHOTS.map((s) => s.id), ['front', 'back', 'side', 'three-quarter', 'top', 'bottom']);
+assert.deepEqual(
+  catalog.PRODUCT_SET_SHOTS.map((s) => s.id),
+  ['front', 'back', 'side', 'three-quarter', 'top', 'bottom'],
+);
 for (const shot of catalog.SHOT_TYPES) {
   const preset = catalog.productPreset('clean');
   assert(catalog.shotSets(shot.id).some((s) => s.id === preset.set));
   assert(catalog.shotFramings(shot.id).length > 0);
 }
-let out = await shoot({ shot_type: 'clean', preset: 'still-life', props: 'fruit', set_id: 'plinth', framing: 'detail', ref: 'foreign' });
+let out = await shoot({
+  shot_type: 'clean',
+  preset: 'still-life',
+  props: 'fruit',
+  set_id: 'plinth',
+  framing: 'detail',
+  ref: 'foreign',
+});
 assert.equal(out.result.status, 200);
 assert.match(out.call.prompt, /No props/);
 assert.match(out.call.prompt, /seamless paper backdrop/);
@@ -70,9 +110,19 @@ assert.match(out.call.prompt, /Focus specifically on the existing zipper/);
 assert.match(out.call.prompt, /Images 2 are additional photographs/);
 assert.equal(out.call.images[1].data, 'detail-photo');
 // every product photo sent is stored for /gallery, main first; non-path srcs dropped
-await shoot({ shot_type: 'detail', detail_target: 'zipper', support_images: ['back-photo', 'side-photo'],
-  refs: { product: { src: '/api/files/uploads/products/main.png' }, supports: [{ src: '/api/files/uploads/products/back.png' }, { src: 'http://x/side.png' }] } });
-assert.deepEqual(saved.at(-1).productPhotos, ['/api/files/uploads/products/main.png', '/api/files/uploads/products/back.png']);
+await shoot({
+  shot_type: 'detail',
+  detail_target: 'zipper',
+  support_images: ['back-photo', 'side-photo'],
+  refs: {
+    product: { src: '/api/files/uploads/products/main.png' },
+    supports: [{ src: '/api/files/uploads/products/back.png' }, { src: 'http://x/side.png' }],
+  },
+});
+assert.deepEqual(saved.at(-1).productPhotos, [
+  '/api/files/uploads/products/main.png',
+  '/api/files/uploads/products/back.png',
+]);
 out = await shoot({ shot_type: 'detail', detail_target: 'feature', feature: ' ' });
 assert.equal(out.result.status, 400);
 assert.equal(calls.length, 0);
@@ -89,26 +139,53 @@ assert.match(out.call.prompt, /natural holding contact is allowed/);
 assert.doesNotMatch(out.call.prompt, /No props: nothing|product rests on the surface with real weight/);
 out = await shoot({ shot_type: 'scale', dimensions, scale_reference: 'laptop' });
 assert.equal(out.result.status, 400);
-out = await shoot({ shot_type: 'scale', dimensions, scale_reference: 'laptop', reference_size: { width: 31, depth: 22 } });
+out = await shoot({
+  shot_type: 'scale',
+  dimensions,
+  scale_reference: 'laptop',
+  reference_size: { width: 31, depth: 22 },
+});
 assert.match(out.call.prompt, /Laptop body width 31 cm and depth 22 cm/);
 for (const angle of catalog.PRODUCT_SET_SHOTS.slice(1)) {
   out = await shoot({ shot_type: 'multi', set_ref: 'hero', set_shot: angle.id, support_images: ['back-photo'] });
   assert.equal(out.result.status, 200);
-  assert.deepEqual(out.call.images.map((i) => i.data), ['hero', 'primary', 'back-photo']);
+  assert.deepEqual(
+    out.call.images.map((i) => i.data),
+    ['hero', 'primary', 'back-photo'],
+  );
   assert.match(out.call.prompt, /same light and the same color grading/);
   assert.match(out.call.prompt, /Images 3 are additional photographs/);
-  assert.match(out.call.prompt, new RegExp(catalog.PRODUCT_ANGLES.find((a) => a.id === angle.angle).prompt.slice(0, 35)));
+  assert.match(
+    out.call.prompt,
+    new RegExp(catalog.PRODUCT_ANGLES.find((a) => a.id === angle.angle).prompt.slice(0, 35)),
+  );
 }
-out = await shoot({ shot_type: 'styled', preset: 'still-life', ref: 'style', ref_mode: 'light', set_image: 'scene', support_images: ['detail-photo'] });
+out = await shoot({
+  shot_type: 'styled',
+  preset: 'still-life',
+  ref: 'style',
+  ref_mode: 'light',
+  set_image: 'scene',
+  support_images: ['detail-photo'],
+});
 assert.equal(out.result.status, 200);
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'style', 'scene', 'detail-photo']);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'style', 'scene', 'detail-photo'],
+);
 assert.match(out.call.prompt, /Images 4 are additional photographs/);
 assert.match(out.call.prompt, /Props: a small pear/);
 out = await shoot({ shot_type: 'unknown' });
 assert.equal(out.result.status, 400);
 // มุมกล้องต้องตรงกับประเภทภาพ และบังคับอัตโนมัติแม้ส่งค่ามุมเก่ามา
-assert.deepEqual(catalog.shotAngles('clean').map((a) => a.id), ['front', 'three-quarter', 'side', 'back', 'top', 'bottom']);
-assert.deepEqual(catalog.shotAngles('styled').map((a) => a.id), ['front', 'three-quarter', 'side', 'above', 'top', 'low']);
+assert.deepEqual(
+  catalog.shotAngles('clean').map((a) => a.id),
+  ['front', 'three-quarter', 'side', 'back', 'top', 'bottom'],
+);
+assert.deepEqual(
+  catalog.shotAngles('styled').map((a) => a.id),
+  ['front', 'three-quarter', 'side', 'above', 'top', 'low'],
+);
 assert.equal(catalog.resolveProductAngle('clean', 'low', 'low').id, 'front');
 assert.equal(catalog.resolveProductAngle('styled', null, 'three-quarter').id, 'three-quarter');
 assert.equal(catalog.resolveProductAngle('styled', null, 'high').id, 'above');
@@ -131,7 +208,15 @@ out = await shoot({ shot_type: 'styled', preset: 'still-life', angle: 'low' });
 assert.match(out.call.prompt, /looking slightly up/);
 // ฉาก สี และแสงต้องเป็นคู่เดียวกันในหน้าเว็บและ API
 const studio = catalog.productPreset('clean');
-assert.deepEqual(catalog.sceneColors('clean', catalog.SETS.find((s) => s.id === 'cove')).map((c) => c.id), ['white', 'light-grey', 'cream']);
+assert.deepEqual(
+  catalog
+    .sceneColors(
+      'clean',
+      catalog.SETS.find((s) => s.id === 'cove'),
+    )
+    .map((c) => c.id),
+  ['white', 'light-grey', 'cream'],
+);
 assert.equal(catalog.resolveProductBackground('clean', studio, 'plinth', 'charcoal', null).set.id, 'cove');
 assert.equal(catalog.resolveProductBackground('clean', studio, null, 'charcoal', null).color.id, 'white');
 assert.equal(catalog.resolveProductBackground('detail', studio, 'plywood', 'blush', null).set.id, 'cove');
@@ -141,10 +226,14 @@ for (const reference of ['paper', 'laptop']) {
   assert.equal(background.set.id, 'table');
   assert.equal(background.light.id, 'softbox');
 }
-for (const reference of ['hand', 'person']) assert.equal(catalog.resolveProductBackground('scale', studio, 'table', 'white', null, reference).set.id, 'cove');
+for (const reference of ['hand', 'person'])
+  assert.equal(catalog.resolveProductBackground('scale', studio, 'table', 'white', null, reference).set.id, 'cove');
 const styledPreset = catalog.productPreset('still-life');
 assert.equal(catalog.resolveProductBackground('styled', styledPreset, 'dark-fabric', 'white', null).light.id, 'flash');
-assert.equal(catalog.resolveProductBackground('styled', styledPreset, 'dark-fabric', 'white', 'window').light.id, 'window');
+assert.equal(
+  catalog.resolveProductBackground('styled', styledPreset, 'dark-fabric', 'white', 'window').light.id,
+  'window',
+);
 assert.equal(catalog.resolveProductBackground('styled', styledPreset, 'plywood', 'lilac', null).color.id, 'match');
 assert.equal(catalog.resolveProductBackground('styled', styledPreset, 'plywood', null, null).light.id, 'window');
 out = await shoot({ shot_type: 'clean', set_id: 'plinth', set_color: 'charcoal' });
@@ -152,7 +241,13 @@ assert.match(out.call.prompt, /backdrop in pure neutral white/);
 out = await shoot({ shot_type: 'detail', set_id: 'linen', set_color: 'blush' });
 assert.match(out.call.prompt, /plain, visually quiet neutral background, softly out of focus/);
 assert.doesNotMatch(out.call.prompt, /crumpled cotton bedsheet/);
-out = await shoot({ shot_type: 'scale', dimensions, scale_reference: 'laptop', reference_size: { width: 31, depth: 22 }, set_id: 'plinth' });
+out = await shoot({
+  shot_type: 'scale',
+  dimensions,
+  scale_reference: 'laptop',
+  reference_size: { width: 31, depth: 22 },
+  set_id: 'plinth',
+});
 assert.match(out.call.prompt, /matte white tabletop/);
 out = await shoot({ shot_type: 'styled', set_id: 'plywood', set_color: 'match' });
 assert.match(out.call.prompt, /visible luminance contrast/);
@@ -160,39 +255,83 @@ out = await shoot({ shot_type: 'styled', set_image: 'uploaded-room', light: 'fla
 assert.match(out.call.prompt, /horizon, vanishing points and camera perspective/);
 assert.match(out.call.prompt, /natural contact shadow/);
 assert.doesNotMatch(out.call.prompt, /direct on-camera flash/);
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'uploaded-room', 'side']);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'uploaded-room', 'side'],
+);
 // ภาพ Creative ต้องใช้คอนเซปต์ที่เลือก โดยไม่ถูก preset packshot ทับ
-const creative = { id: 'test', title: 'Silver Study', summary: 'จัดขวดบนถาดเงินและกระจก', palette: ['#ccddee', '#eeeeee', '#777777'],
-  scene: 'ฉากฟ้าเทา ถาดเงิน', props: 'ถาดเงินและกระจก', lighting: 'แสงหน้าต่างด้านซ้าย', composition: 'ขวดเด่นด้านหน้า',
-  prompt: 'An editorial photograph of the exact product standing on a polished silver tray, with a small tilted mirror behind it, on a cool blue-grey seamless set. Soft window light from the left creates controlled reflections, with a 70mm lens and a slightly elevated camera. The label stays readable and the product is the hero.' };
+const creative = {
+  id: 'test',
+  title: 'Silver Study',
+  summary: 'จัดขวดบนถาดเงินและกระจก',
+  palette: ['#ccddee', '#eeeeee', '#777777'],
+  scene: 'ฉากฟ้าเทา ถาดเงิน',
+  props: 'ถาดเงินและกระจก',
+  lighting: 'แสงหน้าต่างด้านซ้าย',
+  composition: 'ขวดเด่นด้านหน้า',
+  prompt:
+    'An editorial photograph of the exact product standing on a polished silver tray, with a small tilted mirror behind it, on a cool blue-grey seamless set. Soft window light from the left creates controlled reflections, with a 70mm lens and a slightly elevated camera. The label stays readable and the product is the hero.',
+};
 out = await shoot({ shot_type: 'creative' });
 assert.equal(out.result.status, 400);
 assert.equal(calls.length, 0);
-out = await shoot({ shot_type: 'creative', creative_concept: creative, props: 'fruit', set_id: 'plywood', angle: 'low', support_images: ['back'] });
+out = await shoot({
+  shot_type: 'creative',
+  creative_concept: creative,
+  props: 'fruit',
+  set_id: 'plywood',
+  angle: 'low',
+  support_images: ['back'],
+});
 assert.equal(out.result.status, 200);
 assert.match(out.call.prompt, /Selected art direction: An editorial photograph/);
 assert.match(out.call.prompt, /polished silver tray/);
 assert.match(out.call.prompt, /Show exactly one product/); // รูปสินค้ามีหลายชิ้นได้: เอาเฉพาะชิ้นที่ไอเดียพูดถึง
 assert.doesNotMatch(out.call.prompt, /No props:|raw plywood|camera low|One very large, soft/);
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'back']);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'back'],
+);
 assert.equal(out.result.body.stylePlan.name, creative.title);
 out = await shoot({ shot_type: 'creative', creative_concept: { ...creative, palette: ['invalid'] } });
 assert.equal(out.result.status, 400);
 // พร็อพ: ทุกแนวอยู่ในกลุ่มเดียวของหน้าเว็บ · พร็อพของฉัน (พิมพ์/รูป) เรียงรูปถูกต้องและใช้เฉพาะ Custom
 const grouped = catalog.PROP_GROUPS.flatMap((g) => g.ids);
 assert.equal(new Set(grouped).size, grouped.length);
-assert.deepEqual([...grouped].sort(), catalog.PROP_STYLES.filter((p) => p.id !== catalog.NO_PROPS).map((p) => p.id).sort());
-for (const style of catalog.PROP_STYLES.filter((p) => p.id !== catalog.NO_PROPS)) assert(style.brief && style.moments.length >= 4, style.id);
-out = await shoot({ shot_type: 'styled', props: 'ceramics', set_image: 'scene', prop_text: ' cream ceramic cup ', prop_image: 'prop-photo', support_images: ['detail-photo'] });
+assert.deepEqual(
+  [...grouped].sort(),
+  catalog.PROP_STYLES.filter((p) => p.id !== catalog.NO_PROPS)
+    .map((p) => p.id)
+    .sort(),
+);
+for (const style of catalog.PROP_STYLES.filter((p) => p.id !== catalog.NO_PROPS))
+  assert(style.brief && style.moments.length >= 4, style.id);
+out = await shoot({
+  shot_type: 'styled',
+  props: 'ceramics',
+  set_image: 'scene',
+  prop_text: ' cream ceramic cup ',
+  prop_image: 'prop-photo',
+  support_images: ['detail-photo'],
+});
 assert.equal(out.result.status, 200);
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'scene', 'prop-photo', 'detail-photo']);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'scene', 'prop-photo', 'detail-photo'],
+);
 assert.match(out.call.prompt, /Image 3 is the user's own prop: include this exact object/);
 assert.match(out.call.prompt, /Images 4 are additional photographs/);
-assert.match(out.call.prompt, /One of the props is the user's own prop \(cream ceramic cup\), the exact object from the prop photo/);
+assert.match(
+  out.call.prompt,
+  /One of the props is the user's own prop \(cream ceramic cup\), the exact object from the prop photo/,
+);
 assert.match(out.call.prompt, /Apart from the user's own prop, props carry no logos/);
 // มีพร็อพ: จัดเป็นกลุ่มกลางภาพ และสินค้าเล็กลง (withProps) ให้พร็อพไม่โดนตัดที่ขอบ · ไม่มีพร็อพ: สินค้ากลางภาพขนาดเดิม
 assert.match(out.call.prompt, /composed together as one balanced group in the middle of the frame/);
-assert.match(out.call.prompt, /about 75 percent of the frame width, its whole silhouette inside the frame, its props grouped close/);
+assert.match(
+  out.call.prompt,
+  /about 75 percent of the frame width, its whole silhouette inside the frame, its props grouped close/,
+);
 assert.match(out.call.prompt, /one cohesive, intentional still life/);
 assert.equal(planned[0].ownProp, 'cream ceramic cup');
 assert.equal(planned[0].propImage.data, 'prop-photo');
@@ -204,17 +343,42 @@ out = await shoot({ shot_type: 'clean', prop_text: 'a cup', prop_image: 'prop-ph
 assert.equal(out.call.images.length, 1);
 assert.doesNotMatch(out.call.prompt, /own prop/);
 out = await shoot({ shot_type: 'styled', props: 'none', framing: 'medium' });
-assert.match(out.call.prompt, /the product about 60 percent of the frame width, with some space of the set around it, the product centered horizontally/);
+assert.match(
+  out.call.prompt,
+  /the product about 60 percent of the frame width, with some space of the set around it, the product centered horizontally/,
+);
 assert.match(out.call.prompt, /No props: nothing in the frame/);
 // Handshot: ท่าถือตามประเภทสินค้า (UI กับ API ใช้ resolveHandPose ตัวเดียวกัน) · รองเท้าถือข้างเดียว · ไม่มีฉาก/พร็อพ/ชุดภาพ
-assert.deepEqual(catalog.handPoses('bag').map((p) => p.id), ['hold', 'handle', 'chest', 'arm', 'side']);
-assert.deepEqual(catalog.handPoses('shoes').map((p) => p.id), ['hold', 'palm', 'chest']);
+assert.deepEqual(
+  catalog.handPoses('bag').map((p) => p.id),
+  ['hold', 'handle', 'chest', 'arm', 'side'],
+);
+assert.deepEqual(
+  catalog.handPoses('shoes').map((p) => p.id),
+  ['hold', 'palm', 'chest'],
+);
 assert.equal(catalog.resolveHandPose('shoes', 'handle').id, 'hold');
 assert.equal(catalog.resolveHandPose('tote', 'arm').id, 'arm');
-out = await shoot({ shot_type: 'handshot', product_type: 'shoes', hand_pose: 'palm', aspect: '4:5', props: 'fruit', set_id: 'plinth', set_image: 'room', ref: 'style', support_images: ['side'] });
+out = await shoot({
+  shot_type: 'handshot',
+  product_type: 'shoes',
+  hand_pose: 'palm',
+  aspect: '4:5',
+  props: 'fruit',
+  set_id: 'plinth',
+  set_image: 'room',
+  ref: 'style',
+  support_images: ['side'],
+});
 assert.equal(out.result.status, 200);
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'side']);
-assert.match(out.call.prompt, /^A professional handheld product photograph of one single shoe from the pair from Image 1/);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'side'],
+);
+assert.match(
+  out.call.prompt,
+  /^A professional handheld product photograph of one single shoe from the pair from Image 1/,
+);
 assert.match(out.call.prompt, /show only one single shoe from the pair, never both/);
 assert.match(out.call.prompt, /Pose: The product rests on a flat, open palm/);
 assert.match(out.call.prompt, /hand and wrist entering from the lower edge/);
@@ -223,7 +387,10 @@ assert.match(out.call.prompt, /Soft natural daylight from a large window/);
 assert.match(out.call.prompt, /exactly five fingers/);
 assert.match(out.call.prompt, /Images 2 are additional photographs/);
 assert.match(out.call.prompt, /Most important: only one single shoe from the pair, resting on an open palm/);
-assert.doesNotMatch(out.call.prompt, /Props:|small pear|sculptural plinth|reference photo by another brand|Image 2 is the set/);
+assert.doesNotMatch(
+  out.call.prompt,
+  /Props:|small pear|sculptural plinth|reference photo by another brand|Image 2 is the set/,
+);
 assert.equal(planned.length, 0);
 out = await shoot({ shot_type: 'handshot', product_type: 'shoes', hand_pose: 'arm' }); // ท่ากระเป๋ากับรองเท้า -> ถือโชว์
 assert.match(out.call.prompt, /Pose: One hand holds the product up toward the camera/);
@@ -241,27 +408,66 @@ assert.deepEqual(turntable.readTurn({ yaw: 400, elev: 99 }), { yaw: 180, elev: 6
 assert.deepEqual(turntable.readTurn({ yaw: -35.4, elev: -3 }), { yaw: -35, elev: 0 });
 assert.equal(turntable.readTurn({ yaw: 'left' }), null);
 // ถ้อยคำมุมตรงกับที่ทดสอบ 2 พ.ย. (A และ B)
-assert.equal(turntable.describeTurn('bag', { yaw: -35, elev: 25 }), "the product turned about 35 degrees so its front faces a little to the viewer's left and one end panel is visible on the viewer's right, with the camera about 25 degrees above the product looking down at it so its top edge is visible");
-assert.match(turntable.describeTurn('bag', { yaw: 150, elev: 12 }), /^a three-quarter back view: the product turned about 150 degrees so its back faces the camera and one end panel is visible on the viewer's right; the front is not visible/);
-assert.match(turntable.describeTurn('shoes', { yaw: 90, elev: 10 }), /side profile: the toes point to the viewer's right/);
+assert.equal(
+  turntable.describeTurn('bag', { yaw: -35, elev: 25 }),
+  "the product turned about 35 degrees so its front faces a little to the viewer's left and one end panel is visible on the viewer's right, with the camera about 25 degrees above the product looking down at it so its top edge is visible",
+);
+assert.match(
+  turntable.describeTurn('bag', { yaw: 150, elev: 12 }),
+  /^a three-quarter back view: the product turned about 150 degrees so its back faces the camera and one end panel is visible on the viewer's right; the front is not visible/,
+);
+assert.match(
+  turntable.describeTurn('shoes', { yaw: 90, elev: 10 }),
+  /side profile: the toes point to the viewer's right/,
+);
 assert.match(turntable.guideSentence('shoes', 3), /^Image 3 is an angle guide.*darkest end of each block is the toe/);
-assert.match(turntable.turntableSvg('beauty', { yaw: 0, elev: 0 }, { orient: 'square' }), /^<svg[^>]+width="1024" height="1024"/);
-out = await shoot({ shot_type: 'styled', angle: 'custom', turn: { yaw: -35, elev: 25 }, props: 'ceramics', set_image: 'scene', prop_image: 'prop-photo', support_images: ['detail-photo'] });
+assert.match(
+  turntable.turntableSvg('beauty', { yaw: 0, elev: 0 }, { orient: 'square' }),
+  /^<svg[^>]+width="1024" height="1024"/,
+);
+out = await shoot({
+  shot_type: 'styled',
+  angle: 'custom',
+  turn: { yaw: -35, elev: 25 },
+  props: 'ceramics',
+  set_image: 'scene',
+  prop_image: 'prop-photo',
+  support_images: ['detail-photo'],
+});
 assert.equal(out.result.status, 200);
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'scene', 'prop-photo', 'guide-jpeg', 'detail-photo']);
-assert.match(out.call.prompt, /Image 4 is an angle guide, not a product photo: a plain grey stand-in block with a thin arc for the strap/);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'scene', 'prop-photo', 'guide-jpeg', 'detail-photo'],
+);
+assert.match(
+  out.call.prompt,
+  /Image 4 is an angle guide, not a product photo: a plain grey stand-in block with a thin arc for the strap/,
+);
 assert.match(out.call.prompt, /Images 5 are additional photographs/);
-assert.match(out.call.prompt, /Camera: [^.]*the product turned about 35 degrees so its front faces a little to the viewer's left/);
-assert.match(out.call.prompt, /match Image 4 exactly\. Use Image 4 only for orientation and viewpoint[^.]*\. Most important: the product turned about 35 degrees/);
+assert.match(
+  out.call.prompt,
+  /Camera: [^.]*the product turned about 35 degrees so its front faces a little to the viewer's left/,
+);
+assert.match(
+  out.call.prompt,
+  /match Image 4 exactly\. Use Image 4 only for orientation and viewpoint[^.]*\. Most important: the product turned about 35 degrees/,
+);
 out = await shoot({ shot_type: 'clean', product_type: 'beauty', angle: 'custom', turn: { yaw: 20, elev: 10 } });
-assert.deepEqual(out.call.images.map((i) => i.data), ['primary', 'guide-jpeg']);
+assert.deepEqual(
+  out.call.images.map((i) => i.data),
+  ['primary', 'guide-jpeg'],
+);
 assert.match(out.call.prompt, /Image 2 is an angle guide[^.]*stand-in cylinder/);
 assert.match(out.call.prompt, /It stands upright on its base, perfectly vertical\./); // ตัด "label facing the camera" ที่ขัดกับมุมที่ตั้ง
 assert.match(out.call.prompt, /This is a catalog packshot/);
 out = await shoot({ shot_type: 'styled', angle: 'custom', turn: { yaw: 'x', elev: 10 } });
 assert.equal(out.result.status, 400);
 assert.equal(calls.length, 0);
-for (const other of [{ shot_type: 'detail', detail_target: 'logo' }, { shot_type: 'handshot' }, { shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }]) {
+for (const other of [
+  { shot_type: 'detail', detail_target: 'logo' },
+  { shot_type: 'handshot' },
+  { shot_type: 'multi', set_ref: 'hero', set_shot: 'back' },
+]) {
   out = await shoot({ ...other, angle: 'custom', turn: { yaw: 90, elev: 10 } });
   assert.equal(out.result.status, 200, other.shot_type);
   assert(!out.call.images.some((i) => i.data === 'guide-jpeg'), other.shot_type);
@@ -270,7 +476,12 @@ for (const other of [{ shot_type: 'detail', detail_target: 'logo' }, { shot_type
 // สั่งเพิ่มเติม: ส่งให้ AI และเก็บใน log ครบถึง EXTRA_MAX (1,000) ทุกประเภทภาพ · เดิมตัดที่ 400 (MAISON 2.11 ประโยคสายกระเป๋าหาย 16 พ.ย.)
 assert.equal(catalog.EXTRA_MAX, 1000);
 const longExtra = 'x'.repeat(900) + ' the strap drapes softly over the bowl edge';
-for (const kind of [{ shot_type: 'styled' }, { shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }, { shot_type: 'handshot' }, { shot_type: 'creative', creative_concept: creative }]) {
+for (const kind of [
+  { shot_type: 'styled' },
+  { shot_type: 'multi', set_ref: 'hero', set_shot: 'back' },
+  { shot_type: 'handshot' },
+  { shot_type: 'creative', creative_concept: creative },
+]) {
   out = await shoot({ ...kind, extra: longExtra });
   assert.equal(out.result.status, 200, kind.shot_type);
   assert(out.call.prompt.includes(longExtra), kind.shot_type);
@@ -280,15 +491,34 @@ out = await shoot({ shot_type: 'styled', extra: longExtra + 'y'.repeat(200) + 'T
 assert(out.call.prompt.includes(longExtra) && !out.call.prompt.includes('TAIL'));
 assert.equal(logs.at(-1).style.extra.length, 1000);
 // ---------- ห้ามสินค้าเพี้ยน (17 พ.ย.): ต่อจากประโยคเปิดทุกคำสั่ง (ชุดภาพมุมที่ 2 เปิดด้วย 2 ประโยค = ประโยคที่ 3) · เลขรูปสินค้าถูก ----------
-const ruleAt = (prompt) => prompt.split(/(?<=\.) (?=[A-Z])/).findIndex((x) => x.startsWith('Most important, the product itself must not change'));
-for (const [opts, n] of [[{ shot_type: 'styled' }, 1], [{ shot_type: 'clean' }, 1], [{ shot_type: 'styled', ref: 'style', ref_mode: 'shot' }, 1],
-  [{ shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }, 2], [{ shot_type: 'handshot', hand_pose: 'arm' }, 1], [{ shot_type: 'creative', creative_concept: creative }, 1]]) {
+const ruleAt = (prompt) =>
+  prompt
+    .split(/(?<=\.) (?=[A-Z])/)
+    .findIndex((x) => x.startsWith('Most important, the product itself must not change'));
+for (const [opts, n] of [
+  [{ shot_type: 'styled' }, 1],
+  [{ shot_type: 'clean' }, 1],
+  [{ shot_type: 'styled', ref: 'style', ref_mode: 'shot' }, 1],
+  [{ shot_type: 'multi', set_ref: 'hero', set_shot: 'back' }, 2],
+  [{ shot_type: 'handshot', hand_pose: 'arm' }, 1],
+  [{ shot_type: 'creative', creative_concept: creative }, 1],
+]) {
   out = await shoot(opts);
   assert.equal(out.result.status, 200);
   assert.equal(ruleAt(out.call.prompt), opts.set_ref ? 2 : 1, JSON.stringify(opts));
-  assert(out.call.prompt.includes(`Most important, the product itself must not change: it must stay exactly the product in Image ${n}, with the same shape and proportions, the same parts and the same number of each, the same colors, materials and surface finish, and every logo, label and letter exactly as shown.`), JSON.stringify(opts));
-  assert.match(out.call.prompt, /Only how it is placed may change: how it is turned, positioned and arranged in the photo, and how its flexible parts such as straps or cords fall; however it is placed, nothing about the product itself may change\./);
+  assert(
+    out.call.prompt.includes(
+      `Most important, the product itself must not change: it must stay exactly the product in Image ${n}, with the same shape and proportions, the same parts and the same number of each, the same colors, materials and surface finish, and every logo, label and letter exactly as shown.`,
+    ),
+    JSON.stringify(opts),
+  );
+  assert.match(
+    out.call.prompt,
+    /Only how it is placed may change: how it is turned, positioned and arranged in the photo, and how its flexible parts such as straps or cords fall; however it is placed, nothing about the product itself may change\./,
+  );
 }
 // กระเป๋า/โท้ทไม่สั่งให้หูตั้งแล้ว (สาเหตุสายสะพายตั้งชี้ฟ้า)
 for (const t of ['bag', 'tote']) assert.doesNotMatch(catalog.productType(t).stand, /standing up/);
-console.log('Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props, handshot poses, custom turntable angles, and the product-must-not-change rule as the second sentence of every prompt.');
+console.log(
+  'Packshot workflow checks passed: shot constraints, validation, scale, detail, six angles, image ordering, styled references, prop groups, own props, handshot poses, custom turntable angles, and the product-must-not-change rule as the second sentence of every prompt.',
+);

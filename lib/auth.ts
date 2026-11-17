@@ -20,5 +20,6 @@ export const isMember = (claims: JwtPayload | null | undefined) => appMeta(claim
 // role = what the account may do (app_metadata.role, set with the secret key only), 16 Nov: no "team" any more
 // superadmin = /admin, audit, no quota · customer = everyone else, whichever way they sign in
 export type Role = 'superadmin' | 'customer';
-export const roleOf = (claims: JwtPayload | null | undefined): Role => (appMeta(claims)?.role === 'superadmin' ? 'superadmin' : 'customer');
+export const roleOf = (claims: JwtPayload | null | undefined): Role =>
+  appMeta(claims)?.role === 'superadmin' ? 'superadmin' : 'customer';
 // how an account signs in (code or email) is not stored here: accounts.code says it (null = email + password)

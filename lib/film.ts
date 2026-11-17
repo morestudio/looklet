@@ -12,7 +12,8 @@ export type Film = { look: FilmLook; grain: number; soften: number; phone: numbe
 // เดิม 15/15 (ผู้ใช้เลือก 22 ต.ค. ตอนเปลี่ยนรูปเป็น 1664×2496), ก่อนหน้านั้น 35/45 กับรูป 1024×1536
 export const FILM_DEFAULT: Film = { look: 'film', grain: 0, soften: 0, phone: 50 };
 export const NO_FILM: Film = { look: 'off', grain: 0, soften: 0, phone: 0 };
-export const filmOn = (f: Film) => (f.look === 'film' ? f.grain > 0 || f.soften > 0 : f.look === 'phone' && f.phone > 0);
+export const filmOn = (f: Film) =>
+  f.look === 'film' ? f.grain > 0 || f.soften > 0 : f.look === 'phone' && f.phone > 0;
 
 const GRAIN_MAX = 14; // ความแรงเกรน (ระดับสว่าง 0..255) ที่สไลเดอร์ 100
 const SOFTEN_MAX = 1.4; // รัศมีเบลอ (px) ที่สไลเดอร์ 100
@@ -65,14 +66,16 @@ function grainField(w: number, h: number) {
   const key = `${w}x${h}`;
   if (grainCache?.key === key) return grainCache.noise;
   let seed = 7;
-  const rand = () => { // mulberry32
+  const rand = () => {
+    // mulberry32
     seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   const raw = new Float32Array(w * h);
-  for (let i = 0; i < raw.length; i++) raw[i] = Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(2 * Math.PI * rand()); // Box–Muller
+  for (let i = 0; i < raw.length; i++)
+    raw[i] = Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(2 * Math.PI * rand()); // Box–Muller
   const noise = blur(raw, w, h, 0.6, 1, 1);
   for (let i = 0; i < noise.length; i++) noise[i] *= 1.6; // เบลอแล้วเกรนจางลง ชดเชยกลับ
   grainCache = { key, noise };
@@ -89,7 +92,9 @@ export function applyFilm(img: ImageData, film: Film) {
   const soft = sigma > 0.05 ? blur(data, w, h, sigma, 4, 3) : null;
   const noise = amount > 0 ? grainField(w, h) : null;
   for (let p = 0, i = 0; p < w * h; p++, i += 4) {
-    let r = data[i], g = data[i + 1], b = data[i + 2];
+    let r = data[i],
+      g = data[i + 1],
+      b = data[i + 2];
     if (soft) {
       r += (soft[i] - r) * SOFT_MIX;
       g += (soft[i + 1] - g) * SOFT_MIX;
@@ -99,9 +104,13 @@ export function applyFilm(img: ImageData, film: Film) {
       // เกรนเฉพาะความสว่าง (ใส่เท่ากันทุกสี ไม่เป็นจุดสี) แรงสุดที่โทนกลาง ขาว/ดำจัดน้อยลง เหมือนฟิล์ม
       const lum = (r + g + b) / 765;
       const n = noise[p] * amount * (0.45 + 2.2 * lum * (1 - lum));
-      r += n; g += n; b += n;
+      r += n;
+      g += n;
+      b += n;
     }
-    data[i] = r; data[i + 1] = g; data[i + 2] = b; // Uint8ClampedArray ปัด/ตัดให้เอง
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b; // Uint8ClampedArray ปัด/ตัดให้เอง
   }
   return img;
 }
@@ -117,7 +126,9 @@ function applyPhone(img: ImageData, k: number) {
   const soft = sharpen > 0 ? blur(data, w, h, 1.0, 4, 3) : null;
   const noise = noiseAmt > 0 ? grainField(w, h) : null;
   for (let p = 0, i = 0; p < w * h; p++, i += 4) {
-    let r = data[i], g = data[i + 1], b = data[i + 2];
+    let r = data[i],
+      g = data[i + 1],
+      b = data[i + 2];
     if (soft) {
       r += (r - soft[i]) * sharpen;
       g += (g - soft[i + 1]) * sharpen;
@@ -130,9 +141,13 @@ function applyPhone(img: ImageData, k: number) {
     if (noise) {
       const dark = 1 - Math.min(1, Math.max(0, lum / 255));
       const n = noise[p] * noiseAmt * (0.2 + dark * dark * 1.6);
-      r += n; g += n; b += n;
+      r += n;
+      g += n;
+      b += n;
     }
-    data[i] = r; data[i + 1] = g; data[i + 2] = b;
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b;
   }
   return img;
 }
