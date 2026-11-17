@@ -16,13 +16,14 @@ export const EXTRA_MAX = 1000;
 export type ProductType = { id: string; name: string; prompt: string; stand: string; flat: string };
 export const PRODUCT_TYPES: ProductType[] = [
   { id: 'bag', name: 'กระเป๋าทรงแข็ง', prompt: 'a structured handbag',
-    stand: 'The bag stands upright on its base, filled so it holds its shape, its handle standing up in its own natural curve.',
+    // 17 พ.ย.: เอา "its handle standing up in its own natural curve" ออก (สั่งให้สายตั้ง: สายสะพายตั้งชี้ฟ้า 9/12 รูปของ MAISON 2.11)
+    stand: 'The bag stands upright on its base, filled so it holds its shape.',
     flat: 'The bag lies flat on its back with its front facing up, its handle and any strap falling onto the surface in loose, natural curves.' },
   { id: 'soft-bag', name: 'กระเป๋าทรงนิ่ม', prompt: 'a soft, unstructured bag such as a pouch, hobo or drawstring bag',
     stand: 'The bag sits on its base and settles a little under its own weight, with soft natural folds in the leather; its handles and straps relax naturally.',
     flat: 'The bag lies flat on the surface with its front facing up, gathered and soft, its straps falling onto the surface in loose, natural curves.' },
   { id: 'tote', name: 'กระเป๋าโท้ท', prompt: 'a tote bag',
-    stand: 'The tote stands upright on its base, filled so it holds its shape, its handles standing up in their own natural curve.',
+    stand: 'The tote stands upright on its base, filled so it holds its shape.',
     flat: 'The tote lies flat on its back with its front facing up, its handles falling onto the surface in loose, natural curves.' },
   { id: 'shoes', name: 'รองเท้า', prompt: 'a pair of shoes',
     stand: 'The pair stands side by side on the surface, one shoe slightly ahead of the other and turned a little, so both the side and the front show.',

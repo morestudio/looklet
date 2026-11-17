@@ -6,6 +6,14 @@ import 'server-only';
 import { EXTRA_MAX, type RefMode } from './packshot';
 import { guideSentence } from './turntable';
 
+// สำคัญที่สุด อยู่บนสุด (17 พ.ย. ผู้ใช้: "ห้ามทำให้สินค้าเพี้ยนไปจากรูปตัวอย่าง ในเรื่องของลักษณะ แต่การจัดวาง สามารถจัดวางเปลี่ยนไปได้ แต่ห้ามเพี้ยน")
+// ประโยคที่ 2 ของทุกคำสั่งหน้าสินค้า ต่อจากประโยคแรก แบบ SKIN_TONE ของหน้านางแบบ (AI ให้น้ำหนักส่วนบนของคำสั่งมากกว่า)
+// n = เลขรูปสินค้า (ชุดภาพมุมที่ 2 เป็นต้นไป = 2) · ลักษณะห้ามเปลี่ยน / การจัดวาง (หมุน ตำแหน่ง สายตกยังไง) เปลี่ยนได้
+export const PRODUCT_FIRST = (n: number) => 'Most important, the product itself must not change: it must stay exactly the product in '
+  + `Image ${n}, with the same shape and proportions, the same parts and the same number of each, the same colors, materials and surface finish, `
+  + 'and every logo, label and letter exactly as shown. Only how it is placed may change: how it is turned, positioned and arranged in the photo, '
+  + 'and how its flexible parts such as straps or cords fall; however it is placed, nothing about the product itself may change.';
+
 // สินค้าต้องเหมือนรูปสินค้าทุกรายละเอียด: AI ชอบวาดของ "คล้ายๆ" ใหม่ (บทเรียนเดียวกับ ACCESSORY_RULES ของหน้านางแบบ)
 // รูปตัวอย่างโชว์รายละเอียดชัด: ผิวหนังเม็ด/เรียบ ฝีเข็มสีตัด สีขอบหนัง อะไหล่ทอง โลโก้ปั๊มนูน ตัวอักษรปั๊มทองเล็กๆ
 // threeD = ประโยคบอกให้ถ่ายสินค้าเป็นของสามมิติ (Handshot ใช้แบบสั้นที่ไม่พูดถึงฉาก/ตำแหน่งกล้อง ตามที่ทดสอบ 2 พ.ย.)
@@ -66,6 +74,7 @@ export function buildPackshotPrompt(p: PackshotInput) {
     : `A professional still-life product photograph of ${p.what} from Image 1 for a fashion brand's Instagram feed: ${p.framing}, `
       // มีพร็อพ: จัดกลุ่มสินค้า + พร็อพไว้กลางภาพ (เดิมสินค้าอยู่กลาง พร็อพเลยถูกดันไปชิดขอบจนโดนตัด)
       + (p.props && !p.scale ? 'the product and its props composed together as one balanced group in the middle of the frame.' : 'the product centered horizontally.'));
+  out.push(PRODUCT_FIRST(1));
   out.push(fidelity(1));
   if (ref === 'shot') {
     out.push('Image 2 is a reference photo by another brand. Recreate its shot with our product in place of the product shown in it: the same '
@@ -126,6 +135,7 @@ export function buildPackshotSetPrompt(p: PackshotSetInput) {
   const out = [
     `Image 1 is the first photo of a product shoot of ${p.what}. Create another photo from the same shoot, as if the photographer only moved `
       + 'the camera: the same product on the same set, with the same props in the same places, the same light and the same color grading.',
+    PRODUCT_FIRST(2),
     `New camera: ${p.lens}, ${p.angle}. Framing: ${p.framing}.`,
     p.place,
     fidelity(2) + ' The product must look exactly like it does in Image 1 and Image 2.',
@@ -177,6 +187,7 @@ export function buildHandshotPrompt(p: HandshotInput) {
   const m = HAND_SHOT[p.mode];
   return [
     `A professional handheld product photograph of ${p.single ?? p.what} from Image 1 for a brand's Instagram feed: ${m.framing}.`,
+    PRODUCT_FIRST(1),
     fidelity(1, 'Treat the product as a real three-dimensional object and photograph it fresh as described here, showing its real depth. '),
     p.single ? `Image 1 shows ${p.what}: show only ${p.single}, never both.` : 'Show exactly one product.',
     `Pose: ${p.pose}`,
@@ -196,6 +207,7 @@ export function buildHandshotPrompt(p: HandshotInput) {
 export function buildCreativePackshotPrompt(p: { what: string; concept: string; crop?: string | null; extra?: string | null }) {
   return [
     `Create one creative editorial still-life product photograph of ${p.what} from Image 1.`,
+    PRODUCT_FIRST(1),
     fidelity(1),
     // รูปสินค้ามีหลายชิ้น/หลายสีได้ (กระเป๋าสองใบในรูปเดียว): เอาเฉพาะชิ้นที่ไอเดียพูดถึง
     'Show exactly one product, the one the art direction describes; leave out any other items or color variants that appear in the product photos.',
