@@ -24,8 +24,8 @@ export default function Welcome() {
   const router = useRouter();
   const enter = useCallback(() => router.push('/'), [router]); // เข้าสตูดิโอ (session ตั้งไว้แล้วตอนเข้าด้วยโค้ด)
   const me = useMe();
-  // every sign-in (code or email) lands here; the label set in /admin (an email account's label starts as its email)
-  const name = me?.label?.trim() ?? '';
+  // every sign-in (code or email) lands here; the label set in /admin, or the email when it is empty (same as AccountMenu)
+  const name = me?.label?.trim() || me?.email || '';
   const isEmail = name.includes('@');
   const [fontsReady, setFontsReady] = useState(false);
   const [waited, setWaited] = useState(false); // ไม่รู้ชื่อภายในเวลานี้ (เช่นในเครื่องไม่มี login) -> เขียนแค่ Welcome
