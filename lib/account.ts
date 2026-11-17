@@ -2,10 +2,10 @@
 // storage / usage อ่านจากที่นี่ ไม่ต้องส่งต่อกันทุกฟังก์ชัน (interface ของ lib/storage.ts คงเดิม)
 import 'server-only';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Login, Role } from './auth';
+import type { Role } from './auth';
 
 // null = ไม่ต้องเข้าสู่ระบบ (ไม่มี Supabase หรือ dev ไม่ต้อง login)
-export type Account = { id: string; email: string; role: Role; login: Login } | null;
+export type Account = { id: string; email: string; role: Role } | null;
 
 const store = new AsyncLocalStorage<Account>();
 export const withAccount = <T>(account: Account, fn: () => T) => store.run(account, fn);

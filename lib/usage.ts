@@ -25,7 +25,8 @@ export const tokensOf = (r: { status: string; tokens?: number | null }) => (r.st
 export type AccountRow = { user_id: string; code: string | null; label: string; quota: number; token_quota: number; disabled: boolean; created: string };
 
 // email accounts: rows for existing ones come from the backfill in schema.sql; one added later gets its row on first use
-// (same defaults as a new invite code); a code account without a row stays disabled (its code was removed)
+// (same defaults as a new invite code). Code accounts get theirs from /admin with the code; a code account whose row
+// was deleted by hand comes back as an email-style row (code null), accepted: rows are never deleted by the app
 export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | null> {
   const read = async () => {
     const { data, error } = await serviceClient().from('accounts').select('*').eq('user_id', a.id).maybeSingle();
@@ -33,7 +34,7 @@ export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | n
     return data as AccountRow | null;
   };
   const row = await read();
-  if (row || a.login === 'code') return row;
+  if (row) return row;
   const { error } = await serviceClient().from('accounts').insert({ user_id: a.id, code: null, label: a.email.slice(0, 80), token_quota: DEFAULT_TOKEN_QUOTA });
   if (error && error.code !== '23505') throw new Error('สร้างข้อมูลบัญชีไม่สำเร็จ: ' + error.message); // 23505 = a parallel request made it
   return read();

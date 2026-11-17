@@ -21,12 +21,4 @@ export const isMember = (claims: JwtPayload | null | undefined) => appMeta(claim
 // superadmin = /admin, audit, no quota · customer = everyone else, whichever way they sign in
 export type Role = 'superadmin' | 'customer';
 export const roleOf = (claims: JwtPayload | null | undefined): Role => (appMeta(claims)?.role === 'superadmin' ? 'superadmin' : 'customer');
-
-// login = how the account signs in, separate from role: 'code' = invite code (its password is derived from the code,
-// so it can't be changed at /account), 'email' = email + password. Code accounts carry app_metadata.login = 'code';
-// role 'customer' on older code accounts counts too (sessions issued before scripts/login-flag.mjs marked them).
-export type Login = 'code' | 'email';
-export const loginOf = (claims: JwtPayload | null | undefined): Login => {
-  const meta = appMeta(claims);
-  return meta?.login === 'code' || meta?.role === 'customer' ? 'code' : 'email';
-};
+// how an account signs in (code or email) is not stored here: accounts.code says it (null = email + password)

@@ -134,23 +134,19 @@ const admin = load('app/api/admin/route.ts');
 const audit = load('app/api/admin/audit/route.ts');
 const request = (body) => new Request('http://test/api', { method: 'POST', body: JSON.stringify(body) });
 
-const alice = { id: 'alice', email: 'a@x', role: 'customer', login: 'code' };
-const bob = { id: 'bob', email: 'b@x', role: 'customer', login: 'code' };
-const team = { id: 'team', email: 'team@x', role: 'customer', login: 'email' }; // a customer signing in with email
-const boss = { id: 'boss', email: 'boss@x', role: 'superadmin', login: 'email' };
+const alice = { id: 'alice', email: 'a@x', role: 'customer' };
+const bob = { id: 'bob', email: 'b@x', role: 'customer' };
+const team = { id: 'team', email: 'team@x', role: 'customer' }; // a customer signing in with email
+const boss = { id: 'boss', email: 'boss@x', role: 'superadmin' };
 
-// ---------- role vs login (lib/auth.ts, 16 Nov): role = what an account may do, login = how it signs in ----------
+// ---------- role (lib/auth.ts, 16 Nov): superadmin or customer, whichever way the account signs in ----------
 {
-  const { roleOf, loginOf } = appLoader()('lib/auth.ts');
+  const { roleOf } = appLoader()('lib/auth.ts');
   const c = (app_metadata) => ({ app_metadata });
   assert.equal(roleOf(c({ looklet: true, role: 'superadmin' })), 'superadmin');
   assert.equal(roleOf(c({ looklet: true })), 'customer'); // email account: no stored role
-  assert.equal(roleOf(c({ looklet: true, login: 'code' })), 'customer');
+  assert.equal(roleOf(c({ looklet: true, role: 'customer' })), 'customer'); // older code accounts
   assert.equal(roleOf(c({ looklet: true, role: 'team' })), 'customer'); // no team any more
-  assert.equal(loginOf(c({ looklet: true, login: 'code' })), 'code');
-  assert.equal(loginOf(c({ looklet: true, role: 'customer' })), 'code'); // older code accounts / sessions before login-flag.mjs
-  assert.equal(loginOf(c({ looklet: true })), 'email');
-  assert.equal(loginOf(c({ looklet: true, role: 'superadmin' })), 'email');
 }
 
 // ---------- โค้ดเชิญ ----------
@@ -245,9 +241,10 @@ db.accounts.find((a) => a.user_id === 'team').token_quota = 1000;
 await withAccount(team, () => recordUsage({ page: 'model', action: 'generate', model: 'openai:gpt-image-2.5-sunburst', quality: 'high', status: 'ok', tokens: 1200 }));
 assert.equal((await withAccount(team, () => quotaBlock())).status, 429);
 db.accounts.find((a) => a.user_id === 'team').token_quota = 300000;
-// code account without a row stays disabled (no row made for it)
-assert.equal((await withAccount(bob, () => quotaBlock())).status, 403);
-assert(!db.accounts.some((a) => a.user_id === 'bob'));
+// any account without a row gets one on first use (a code account's row comes from /admin; one deleted by hand comes back with code null)
+assert.equal(await withAccount(bob, () => quotaBlock()), null);
+assert.deepEqual(db.accounts.filter((a) => a.user_id === 'bob').map((a) => a.code), [null]);
+db.accounts = db.accounts.filter((a) => a.user_id !== 'bob');
 assert.equal(await withAccount(boss, () => quotaBlock()), null); // superadmin: no quota, no row
 assert(!db.accounts.some((a) => a.user_id === 'boss'));
 db.usage = db.usage.filter((u) => u.user_id !== 'team');
@@ -296,7 +293,7 @@ const [code1, code2] = (await res.json()).codes;
 assert.equal(db.accounts.filter((i) => [code1, code2].includes(i.code) && i.token_quota === 300000).length, 2);
 const user1 = users.get(db.accounts.find((i) => i.code === code1).user_id);
 const user2 = users.get(db.accounts.find((i) => i.code === code2).user_id);
-assert.deepEqual(user1.app_metadata, { looklet: true, login: 'code' }); // role is not stored for customers
+assert.deepEqual(user1.app_metadata, { looklet: true }); // role is not stored for customers; accounts.code marks a code account
 res = await admin.GET(new Request('http://test/api/admin'), {});
 const summary = await res.json();
 const aliceRow = summary.invites.find((i) => i.code === 'AAAA-BBBB');
@@ -327,7 +324,7 @@ assert.equal(await login(code1.toLowerCase().replace('-', ' ')), 200);
 assert.equal(signIns.at(-1).email, user1.email);
 caller = boss;
 assert.equal((await admin.POST(request({ action: 'update', userId: user1.id, disabled: true }))).status, 200);
-assert.deepEqual(user1.app_metadata, { looklet: false, login: 'code' }); // ปิดแล้วถอดสิทธิ์ + แบน
+assert.deepEqual(user1.app_metadata, { looklet: false }); // ปิดแล้วถอดสิทธิ์ + แบน
 assert.equal(user1.ban_duration, '876000h');
 caller = undefined;
 assert.equal(await login(code1), 401);
