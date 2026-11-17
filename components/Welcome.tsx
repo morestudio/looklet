@@ -24,9 +24,9 @@ export default function Welcome() {
   const router = useRouter();
   const enter = useCallback(() => router.push('/'), [router]); // เข้าสตูดิโอ (session ตั้งไว้แล้วตอนเข้าด้วยโค้ด)
   const me = useMe();
-  // every sign-in (code or email) lands here; the label set in /admin, not an email (an email account's label starts as its email)
-  const label = me?.label?.trim() ?? '';
-  const name = label.includes('@') ? '' : label;
+  // every sign-in (code or email) lands here; the label set in /admin (an email account's label starts as its email)
+  const name = me?.label?.trim() ?? '';
+  const isEmail = name.includes('@');
   const [fontsReady, setFontsReady] = useState(false);
   const [waited, setWaited] = useState(false); // ไม่รู้ชื่อภายในเวลานี้ (เช่นในเครื่องไม่มี login) -> เขียนแค่ Welcome
   const [leaving, setLeaving] = useState(false);
@@ -56,7 +56,7 @@ export default function Welcome() {
   return <main className={'welcome' + (writing ? ' writing' : '') + (leaving ? ' leaving' : '')} onClick={enter}>
     <h1 className="sr-only">Welcome{name ? ` ${name}` : ''}</h1>
     <Ink text="Welcome" className="wl-welcome" delay={0} duration={WELCOME_MS} />
-    {name && <Ink text={name} className="wl-name" delay={WELCOME_MS + GAP_MS} duration={nameMs(name)} />}
+    {name && <Ink text={name} className={'wl-name' + (isEmail ? ' wl-email' : '')} delay={WELCOME_MS + GAP_MS} duration={nameMs(name)} />}
     <Link className="sr-only" href="/" prefetch={false}>เข้าสตูดิโอ</Link>
   </main>;
 }
