@@ -9,6 +9,8 @@ create table if not exists public.images (
   created timestamptz not null default now()
 );
 create index if not exists images_area_kind_created on public.images (area, kind, created desc);
+-- 16 Nov: lists (sbList) and the upload cap (sbCountUploads) filter by owner
+create index if not exists images_owner_area_kind_created on public.images ((meta->>'owner'), area, kind, created desc);
 -- 10 พ.ย.: จัดโฟลเดอร์ใน bucket ตามบัญชี (team/... = คลังร่วมของทีม, customers/<id บัญชี>/... = ลูกค้า) — ลิงก์รูปและ path ไม่เปลี่ยน
 -- object = ที่อยู่ไฟล์จริง (objectKey ใน lib/storage-supabase.ts) · null = ไฟล์ยังอยู่ที่ path เดิม (scripts/storage-rearrange.mjs ย้ายให้)
 alter table public.images add column if not exists object text;

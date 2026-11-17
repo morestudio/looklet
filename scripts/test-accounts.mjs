@@ -79,7 +79,7 @@ const files = new Map();
 const supabaseMock = {
   supabaseEnabled: true, serviceClient,
   sbSave: async (key, area, kind, data, _mime, meta) => { files.set(key, data); db.images.push({ path: key, area, kind, meta, created: new Date().toISOString() }); },
-  sbList: async (area, kind) => db.images.filter((r) => r.area === area && (r.kind ?? null) === kind),
+  sbList: async (area, kind, owner) => db.images.filter((r) => r.area === area && (r.kind ?? null) === kind && (r.meta?.owner ?? null) === owner),
   sbRead: async (key, allowed) => { const r = db.images.find((x) => x.path === key); return r && allowed(r.meta) ? files.get(key) ?? Buffer.from('x') : null; },
   sbMeta: async (key) => db.images.find((x) => x.path === key)?.meta ?? null,
   sbUpdateMeta: async (key, meta, allowed) => { const r = db.images.find((x) => x.path === key); if (!r || !allowed(r.meta)) return false; r.meta = { ...r.meta, ...meta }; return true; },

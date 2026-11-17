@@ -47,9 +47,12 @@ export async function sbSave(key: string, area: string, kind: string | null, dat
 }
 
 // ใหม่สุดก่อน — kind = null คือรูปที่สร้าง (results)
-export async function sbList(area: string, kind: string | null): Promise<Row[]> {
+// owner filtered in the query (16 Nov): the 1,000 cap (PostgREST's max rows per request) now counts per account,
+// so other accounts' newer rows can't push someone's older images out of their list; owner null = owner-less rows (no login)
+export async function sbList(area: string, kind: string | null, owner: string | null): Promise<Row[]> {
   let q = sb().from('images').select('path, meta, created').eq('area', area);
   q = kind === null ? q.is('kind', null) : q.eq('kind', kind);
+  q = owner === null ? q.is('meta->>owner', null) : q.eq('meta->>owner', owner);
   const { data, error } = await q.order('created', { ascending: false }).limit(1000);
   if (error) throw new Error('อ่านคลังรูปจาก Supabase ไม่สำเร็จ: ' + error.message);
   return data as Row[];

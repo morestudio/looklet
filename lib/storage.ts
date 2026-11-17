@@ -99,7 +99,8 @@ export type Stored = {
 // ใหม่สุดก่อน — ข้ามไฟล์ .json ที่อ่านไม่ได้หรือรูปหายไปแล้ว
 export async function listImages(where: Where): Promise<Stored[]> {
   if (supabaseEnabled) {
-    const rows = (await sbList(where.area, where.area === 'uploads' ? where.kind : null)).filter((r) => visibleTo(r.meta));
+    // query already limited to the caller's rows; visibleTo stays as the privacy check
+    const rows = (await sbList(where.area, where.area === 'uploads' ? where.kind : null, me()?.id ?? null)).filter((r) => visibleTo(r.meta));
     return rows.map((r) => {
       const file = r.path.slice(r.path.lastIndexOf('/') + 1);
       return { ...r.meta, file, created: Date.parse(r.created) / 1000, src: urlOf(where, file) } as Stored;
