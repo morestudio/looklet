@@ -2,11 +2,12 @@
 // AuthForm.tsx — หน้าเข้าสู่ระบบ (โค้ดเชิญ / อีเมล + รหัสผ่าน) และหน้าเปลี่ยนรหัสผ่าน ใช้กรอบเดียวกัน
 // ไม่มีสมัครเอง: โค้ดเชิญที่ superadmin ออกให้ (/admin) หรืออีเมลที่ admin เพิ่มให้ (scripts/add-user.mjs) — two equal tabs since 16 Nov (same kind of account, only the sign-in differs)
 // บัญชีที่ไม่มีสิทธิ์ (isMember) เข้าไม่ได้แม้รหัสถูก
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { noteLogin } from '@/lib/analytics';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
-import { IconSignOut } from './icons';
+import { IconAccount, IconEye, IconEyeOff, IconKey, IconSignOut } from './icons';
+import { useMe } from './ui';
 
 // หลังเข้าสู่ระบบ/เปลี่ยนรหัส: โหลดหน้าใหม่ทั้งหน้า ให้ proxy.ts เห็น cookie ใหม่
 const go = (path: string) => window.location.assign(path);
@@ -27,7 +28,7 @@ export function LoginForm() {
     setError('');
     const res = await fetch('/api/invite-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
       .catch(() => null);
-    if (res?.ok) { noteLogin('invite_code'); return go('/welcome'); } // ลูกค้าเข้าด้วยโค้ด -> หน้าต้อนรับ (components/Welcome.tsx) ก่อนเข้าสตูดิโอ
+    if (res?.ok) { noteLogin('invite_code'); return go('/welcome'); } // หน้าต้อนรับ (components/Welcome.tsx) ก่อนเข้าสตูดิโอ ทั้งเข้าด้วยโค้ดและอีเมล
     setBusy(false);
     setError(((await res?.json().catch(() => null)) as { error?: string } | null)?.error ?? 'เข้าใช้ไม่สำเร็จ ลองอีกครั้ง');
   }
@@ -44,12 +45,12 @@ export function LoginForm() {
     }
     const { data } = await supabase.auth.getClaims();
     if (!isMember(data?.claims)) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
       setBusy(false);
       return setError('บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน ติดต่อผู้ดูแล');
     }
     noteLogin('password');
-    go('/');
+    go('/welcome');
   }
 
   return (
@@ -71,14 +72,28 @@ export function LoginForm() {
       ) : (
         <form className="auth-form" id="login-email" role="tabpanel" aria-labelledby="login-tab-email" onSubmit={(e) => void submit(e)}>
           <label>อีเมล<input className="field" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>รหัสผ่าน<input className="field" type="password" autoComplete="current-password" required value={password}
-            onChange={(e) => setPassword(e.target.value)} /></label>
+          <PasswordField label="รหัสผ่าน" autoComplete="current-password" value={password} onChange={setPassword} />
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าใช้งาน'}</button>
         </form>
       )}
       {error && <p className="auth-error" role="alert">{error}</p>}
     </div>
   );
+}
+
+// password input with a show/hide eye; the button sits outside the <label> so the input's name stays just the label
+function PasswordField({ label, autoComplete, value, onChange }: {
+  label: string; autoComplete: string; value: string; onChange: (v: string) => void;
+}) {
+  const [shown, setShown] = useState(false);
+  return <div className="password-field">
+    <label>{label}<input className="field" type={shown ? 'text' : 'password'} autoComplete={autoComplete} required value={value}
+      autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => onChange(e.target.value)} /></label>
+    <button type="button" className="password-eye" aria-label={shown ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} aria-pressed={shown}
+      title={shown ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} onMouseDown={(e) => e.preventDefault()} onClick={() => setShown((s) => !s)}>
+      {shown ? <IconEyeOff /> : <IconEye />}
+    </button>
+  </div>;
 }
 
 export function ChangePasswordForm() {
@@ -94,6 +109,7 @@ export function ChangePasswordForm() {
     setBusy(true);
     const { error } = await createClient().auth.updateUser({ password });
     setBusy(false);
+    if (error?.name === 'AuthSessionMissingError') return void signOut(); // session ended elsewhere: clear the cookie, sign in again
     if (error) return setMsg({ ok: false, text: 'เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + error.message });
     setPassword('');
     setConfirm('');
@@ -104,10 +120,8 @@ export function ChangePasswordForm() {
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <h1>เปลี่ยนรหัสผ่าน</h1>
-      <label>รหัสผ่านใหม่<input className="field" type="password" autoComplete="new-password" required value={password}
-        onChange={(e) => setPassword(e.target.value)} /></label>
-      <label>ยืนยันรหัสผ่านใหม่<input className="field" type="password" autoComplete="new-password" required value={confirm}
-        onChange={(e) => setConfirm(e.target.value)} /></label>
+      <PasswordField label="รหัสผ่านใหม่" autoComplete="new-password" value={password} onChange={setPassword} />
+      <PasswordField label="ยืนยันรหัสผ่านใหม่" autoComplete="new-password" value={confirm} onChange={setConfirm} />
       {msg && <p className={msg.ok ? 'auth-ok' : 'auth-error'} role="alert">{msg.text}</p>}
       <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}</button>
       <button className="btn btn-tertiary" type="button" onClick={() => go('/')}>← กลับไป Lolo</button>
@@ -115,16 +129,39 @@ export function ChangePasswordForm() {
   );
 }
 
-// ปุ่มออกจากระบบ (แถบบนของ Lolo)
+// ปุ่มออกจากระบบ (แถบบนของ Lolo) · this browser only: the default ('global') ends the account's sessions everywhere,
+// so one person signing out of a shared invite code would sign out everyone using it
 export async function signOut() {
-  await createClient().auth.signOut();
+  await createClient().auth.signOut({ scope: 'local' });
   go('/login');
 }
 
-// ปุ่มมุมขวาบนของทุกหน้า · จอมือถือเหลือแค่ไอคอน (.sign-out-text ซ่อนใน globals.css) ให้แถบบนพอดีจอ
-export function SignOutButton() {
+// top-right account menu on every page: name, change password (email accounts only: a code account's password is
+// derived from its code) and sign out. Phones show only the icon (.account-name hidden in globals.css)
+export function AccountMenu() {
+  const me = useMe();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
   if (!authEnabled) return null;
-  return <button className="btn btn-tertiary sign-out" aria-label="ออกจากระบบ" title="ออกจากระบบ" onClick={() => void signOut()}>
-    <IconSignOut /><span className="sign-out-text">ออกจากระบบ</span>
-  </button>;
+  const name = me?.label?.trim() || me?.email || 'บัญชีของฉัน';
+  const sub = me?.login === 'code' ? 'เข้าด้วยโค้ดเชิญ' : me?.email && me.email !== name ? me.email : '';
+  return <div className="account-menu" ref={box}>
+    <button className="btn btn-tertiary account-button" aria-haspopup="menu" aria-expanded={open} title={name}
+      onClick={() => setOpen((o) => !o)}>
+      <IconAccount /><span className="account-name">{name}</span>
+    </button>
+    {open && <div className="account-pop" role="menu" aria-label="บัญชี">
+      <div className="account-who"><b>{name}</b>{sub && <span>{sub}</span>}</div>
+      {me?.login === 'email' && <button role="menuitem" onClick={() => go('/account')}><IconKey />เปลี่ยนรหัสผ่าน</button>}
+      <button role="menuitem" onClick={() => void signOut()}><IconSignOut />ออกจากระบบ</button>
+    </div>}
+  </div>;
 }

@@ -15,7 +15,9 @@ export const USAGE_EVENT = 'looklet:usage';
 // signed-in account (/api/me): ONE request per page load, shared by every useMe() and Analytics; fetched again once after
 // each image request (USAGE_EVENT). Plain fetch, not api(): api() sends a 401 to /login, which would loop on /login itself.
 // Timeout: a hung /api/me must not hold up the header or GA. A failed load is not kept, so the next caller retries.
-export type Me = { role: 'superadmin' | 'customer' | 'team'; aid?: string; label?: string; tokens?: number; tokenQuota?: number };
+export type Me = {
+  role: 'superadmin' | 'customer'; aid?: string; login?: 'code' | 'email'; email?: string; label?: string; tokens?: number; tokenQuota?: number;
+};
 let meRequest: Promise<Me | null> | null = null;
 const meListeners = new Set<(me: Me | null) => void>();
 export function loadMe(fresh = false): Promise<Me | null> {

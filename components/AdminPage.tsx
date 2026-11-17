@@ -2,7 +2,7 @@
 // AdminPage.tsx — หน้า /admin (superadmin): การใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี (โค้ดและอีเมล) — ข้อมูลจาก app/api/admin
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/browser';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
 type Tally = { ok: number; error: number; cost: number; tokens: number; measured: number; measuredTokens: number; model: number; product: number; last: string | null };
@@ -56,7 +56,7 @@ export default function AdminPage() {
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{status}</div>
-      <div className="top-actions"><GalleryLink /><SignOutButton /></div>
+      <div className="top-actions"><GalleryLink /><AccountMenu /></div>
     </header>
     <main className="admin-main">
       <AdminTabs current="overview" />

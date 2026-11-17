@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
+import { appLoader } from './lib/load-app.mjs';
 const require = createRequire(import.meta.url);
 
 // ---------- Supabase จำลอง: ตาราง images / accounts / usage + auth admin ----------
@@ -135,8 +136,18 @@ const request = (body) => new Request('http://test/api', { method: 'POST', body:
 
 const alice = { id: 'alice', email: 'a@x', role: 'customer' };
 const bob = { id: 'bob', email: 'b@x', role: 'customer' };
-const team = { id: 'team', email: 'team@x', role: 'team' };
+const team = { id: 'team', email: 'team@x', role: 'customer' }; // a customer signing in with email
 const boss = { id: 'boss', email: 'boss@x', role: 'superadmin' };
+
+// ---------- role (lib/auth.ts, 16 Nov): superadmin or customer, whichever way the account signs in ----------
+{
+  const { roleOf } = appLoader()('lib/auth.ts');
+  const c = (app_metadata) => ({ app_metadata });
+  assert.equal(roleOf(c({ looklet: true, role: 'superadmin' })), 'superadmin');
+  assert.equal(roleOf(c({ looklet: true })), 'customer'); // email account: no stored role
+  assert.equal(roleOf(c({ looklet: true, role: 'customer' })), 'customer'); // older code accounts
+  assert.equal(roleOf(c({ looklet: true, role: 'team' })), 'customer'); // no team any more
+}
 
 // ---------- โค้ดเชิญ ----------
 for (let n = 0; n < 50; n++) assert.match(newInviteCode(), /^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/);
@@ -230,9 +241,10 @@ db.accounts.find((a) => a.user_id === 'team').token_quota = 1000;
 await withAccount(team, () => recordUsage({ page: 'model', action: 'generate', model: 'openai:gpt-image-2.5-sunburst', quality: 'high', status: 'ok', tokens: 1200 }));
 assert.equal((await withAccount(team, () => quotaBlock())).status, 429);
 db.accounts.find((a) => a.user_id === 'team').token_quota = 300000;
-// code account without a row stays disabled (no row made for it)
-assert.equal((await withAccount(bob, () => quotaBlock())).status, 403);
-assert(!db.accounts.some((a) => a.user_id === 'bob'));
+// any account without a row gets one on first use (a code account's row comes from /admin; one deleted by hand comes back with code null)
+assert.equal(await withAccount(bob, () => quotaBlock()), null);
+assert.deepEqual(db.accounts.filter((a) => a.user_id === 'bob').map((a) => a.code), [null]);
+db.accounts = db.accounts.filter((a) => a.user_id !== 'bob');
 assert.equal(await withAccount(boss, () => quotaBlock()), null); // superadmin: no quota, no row
 assert(!db.accounts.some((a) => a.user_id === 'boss'));
 db.usage = db.usage.filter((u) => u.user_id !== 'team');
@@ -264,10 +276,15 @@ assert.equal(await withAccount(team, () => uploadBlock()), null);
 // ---------- /api/me: every limited account gets its token bar ----------
 caller = team;
 let mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
-assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['team', 'team@x', 300000, 0]);
+assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['customer', 'team@x', 300000, 0]);
+assert.deepEqual([mine.login, mine.email], ['email', 'team@x']); // account menu: change password shown
+caller = alice; // code account: no change password, its internal email is never sent
+mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
+assert.deepEqual([mine.login, mine.email, mine.label], ['code', undefined, 'ร้าน A']);
 caller = boss;
 mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
 assert.equal(mine.tokenQuota, undefined);
+assert.deepEqual([mine.login, mine.email], ['email', 'boss@x']);
 
 // ---------- admin: เฉพาะ superadmin ออกโค้ด / แก้ / ปิด ----------
 caller = alice;
@@ -281,7 +298,7 @@ const [code1, code2] = (await res.json()).codes;
 assert.equal(db.accounts.filter((i) => [code1, code2].includes(i.code) && i.token_quota === 300000).length, 2);
 const user1 = users.get(db.accounts.find((i) => i.code === code1).user_id);
 const user2 = users.get(db.accounts.find((i) => i.code === code2).user_id);
-assert.deepEqual(user1.app_metadata, { looklet: true, role: 'customer' });
+assert.deepEqual(user1.app_metadata, { looklet: true }); // role is not stored for customers; accounts.code marks a code account
 res = await admin.GET(new Request('http://test/api/admin'), {});
 const summary = await res.json();
 const aliceRow = summary.invites.find((i) => i.code === 'AAAA-BBBB');
@@ -312,7 +329,7 @@ assert.equal(await login(code1.toLowerCase().replace('-', ' ')), 200);
 assert.equal(signIns.at(-1).email, user1.email);
 caller = boss;
 assert.equal((await admin.POST(request({ action: 'update', userId: user1.id, disabled: true }))).status, 200);
-assert.deepEqual(user1.app_metadata, { looklet: false, role: 'customer' }); // ปิดแล้วถอดสิทธิ์ + แบน
+assert.deepEqual(user1.app_metadata, { looklet: false }); // ปิดแล้วถอดสิทธิ์ + แบน
 assert.equal(user1.ban_duration, '876000h');
 caller = undefined;
 assert.equal(await login(code1), 401);
