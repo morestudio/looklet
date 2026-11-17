@@ -1104,6 +1104,78 @@ textarea {
   cursor: pointer;
 }
 
+/* magnifier (PreviewButton, 17 Nov): a clear hit area on the card's top-right corner; the chip shows only while the
+   pointer is in that corner (user: showing it on the whole card's hover clutters the grid) · always on touch */
+.preview-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: grid;
+  place-items: start end;
+  width: min(40px, 50%);
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.preview-btn > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  background: var(--float-bg);
+  color: var(--ink);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.preview-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.preview-btn:hover > span,
+.preview-btn:focus-visible > span {
+  opacity: 1;
+}
+.preview-btn:focus-visible {
+  outline: none;
+}
+.preview-btn:focus-visible > span {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+/* small thumbnails (product photos, paper doll): smaller chip */
+.current-product-photos .preview-btn > span,
+.doll-card-wrap .preview-btn > span {
+  width: 20px;
+  height: 20px;
+}
+.current-product-photos .preview-btn svg,
+.doll-card-wrap .preview-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.current-product-photos .preview-btn,
+.doll-card-wrap .preview-btn {
+  padding: 3px;
+}
+@media (hover: none) {
+  .preview-btn > span {
+    opacity: 1;
+  }
+}
+.doll-card-wrap {
+  position: relative;
+  width: fit-content;
+}
+.wear-slot-wrap {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
 /* ของเสริมที่เลือก (แผงขวา) */
 
 /* สรุปที่เลือก (ล่างแผงขวา) — กดแต่ละบรรทัดเพื่อไปขั้นนั้น */
@@ -2896,7 +2968,7 @@ dialog.shot-choice-dialog {
 .current-product-remove {
   position: absolute;
   top: -6px;
-  right: -6px;
+  left: -6px; /* top-left like .del on cards; top-right = magnifier */
   width: 20px;
   height: 20px;
   padding: 0;

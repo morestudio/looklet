@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { thumbSrc } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
+import { PreviewButton } from './ui';
 
 // item.src -> photo; item without src -> its name as text; keep -> "keep as is" text; neither -> dashed "+"
 // changed: differs from the past image this draft started from (Go list item 4)
@@ -23,7 +24,7 @@ function DollCard({ slot, bare = false }: { slot: DollSlot; bare?: boolean }) {
   const { item, keep, label } = slot;
   const empty = !item && !keep;
   const text = item?.name ?? keep;
-  return (
+  const button = (
     <button
       type="button"
       className={'doll-card' + (empty ? ' empty' : '') + (bare ? ' bare' : '') + (slot.changed ? ' changed' : '')}
@@ -36,6 +37,13 @@ function DollCard({ slot, bare = false }: { slot: DollSlot; bare?: boolean }) {
       </span>
       {!bare && <b>{label}</b>}
     </button>
+  );
+  if (!item?.src) return button;
+  return (
+    <div className="doll-card-wrap">
+      {button}
+      <PreviewButton src={item.src} alt={text ?? label} />
+    </div>
   );
 }
 

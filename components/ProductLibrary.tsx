@@ -4,7 +4,7 @@
 import { useState, type ChangeEvent } from 'react';
 import { isSampleGroup, type ProductGroup } from '@/lib/product-groups';
 import { thumbSrc } from '@/lib/browser';
-import { DeleteButton, PendingCard } from './ui';
+import { DeleteButton, PendingCard, PreviewButton } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
 
@@ -138,13 +138,12 @@ export default function ProductLibrary({
             </button>
           );
           // own uploads get × like the model page's Card; samples aren't in storage · no × while busy (generating / saving)
-          // wrapper stays while busy so the card isn't remounted (thumbnail reload, lost focus)
-          return isSampleGroup(g) ? (
-            card
-          ) : (
+          // wrapper always there (magnifier; while busy so the card isn't remounted: thumbnail reload, lost focus)
+          return (
             <div className="deletable" key={g.id}>
               {card}
-              {!busy && <DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} />}
+              {g.main?.src && <PreviewButton src={g.main.src} alt={g.name} />}
+              {!isSampleGroup(g) && !busy && <DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} />}
             </div>
           );
         })}
@@ -233,6 +232,7 @@ export default function ProductLibrary({
                     img(p.src!, `${selected.name} รูปที่ ${i + 1}`)
                   )}
                   {main && <span className="current-product-main">รูปหลัก</span>}
+                  <PreviewButton src={p.src!} alt={`${selected.name} รูปที่ ${i + 1}`} />
                   {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
                   {!sample && selected.photos.length > 1 && (
                     <button
