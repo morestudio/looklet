@@ -27,7 +27,7 @@ const fakeSupabase = {
     }) },
   }),
 };
-let role = 'team', owner = null; // owner = บัญชีลูกค้าที่เรียก (null = ทีม)
+let role = 'customer', owner = null; // owner = the calling account (null = owner-less files)
 const app = appLoader({ env: { ...process.env, SUPABASE_URL: 'https://fake.supabase.co', SUPABASE_SECRET_KEY: 'test-only' }, overrides: {
   'lib/account.ts': { me: () => ({ role }), ownerMeta: () => (owner ? { owner } : {}), visibleTo: (meta) => (owner ? meta?.owner === owner : !meta?.owner) },
   '@supabase/supabase-js': fakeSupabase,
@@ -78,7 +78,7 @@ assert.equal(await storage.readThumb(['results', 'alice.jpg'], 512), null);
 assert.deepEqual(downloads, []);
 role = 'superadmin';
 assert(await storage.readThumb(['results', 'alice.jpg'], 400));
-role = 'team';
+role = 'customer';
 // path แปลก / ไฟล์เสีย -> null ไม่พัง
 assert.equal(await storage.readThumb(['..', 'etc', 'passwd'], 512), null);
 objects.set('results/broken.jpg', Buffer.from('not an image'));
@@ -126,7 +126,7 @@ role = 'superadmin';
 assert.equal(String((await storage.readImage(parts(guideSrc))).data), 'red-guide');
 assert.equal(String((await storage.readThumb(parts(guideSrc), 512)).data), 'red-guide', 'The audit page thumbnail is the saved guide itself');
 assert.equal(await storage.deleteImage(guideSrc), false);
-role = 'team';
+role = 'customer';
 assert.equal(await storage.readImage(['guides', '..', 'x.jpg']), null);
 
 // 7) route: ?w=512 ใช้ readThumb เท่านั้น (ไม่อ่านรูปเต็ม) · ขนาดอื่นได้รูปเต็ม

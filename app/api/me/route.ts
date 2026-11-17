@@ -15,7 +15,7 @@ const analyticsId = (id: string | undefined) => {
 export const GET = get(async () => {
   const account = me();
   const aid = analyticsId(account?.id);
-  if (!isLimited(account) || !supabaseEnabled) return json(200, { role: account?.role ?? 'team', aid });
+  if (!isLimited(account) || !supabaseEnabled) return json(200, { role: account?.role ?? 'customer', aid });
   // every limited account (email or code) gets its token bar; first call makes an email account's row
   const row = await accountOf(account!);
   return json(200, { role: account!.role, aid, label: row?.label ?? '', tokenQuota: row?.token_quota ?? 0, tokens: await usedTokens(account!.id) });

@@ -24,7 +24,9 @@ export default function Welcome() {
   const router = useRouter();
   const enter = useCallback(() => router.push('/'), [router]); // เข้าสตูดิโอ (session ตั้งไว้แล้วตอนเข้าด้วยโค้ด)
   const me = useMe();
-  const name = me?.role === 'customer' ? me.label?.trim() ?? '' : '';
+  // every sign-in (code or email) lands here; the label set in /admin, not an email (an email account's label starts as its email)
+  const label = me?.label?.trim() ?? '';
+  const name = label.includes('@') ? '' : label;
   const [fontsReady, setFontsReady] = useState(false);
   const [waited, setWaited] = useState(false); // ไม่รู้ชื่อภายในเวลานี้ (เช่นในเครื่องไม่มี login) -> เขียนแค่ Welcome
   const [leaving, setLeaving] = useState(false);

@@ -52,7 +52,7 @@
 
 ## 3. รายงานที่ต้องสร้าง (Explore)
 
-ทุกรายงานให้ใส่ **User segment: `role` exactly matches `customer`** (ทีมใช้ทดสอบหนักมาก ถ้าไม่กรองตัวเลขจะเพี้ยน) ใช้ *segment แบบ user* ไม่ใช่ filter ราย event เพราะ `page_view` แรกของแต่ละหน้าไม่มี role ติดไป (ดูข้อจำกัด) segment แบบ user จะนับทุก event ของลูกค้าคนนั้นรวม page_view ด้วย
+ทุกรายงานให้ใส่ **User segment: `role` exactly matches `customer`** (ตัด superadmin ที่ใช้ทดสอบหนักออก) ตั้งแต่ 16 พ.ย. `role` มีแค่ 2 ค่า: `superadmin` กับ `customer` (ลูกค้าทุกคน ไม่ว่าเข้าด้วยโค้ดหรืออีเมล ไม่มี `team` แล้ว บัญชีทดสอบก็นับเป็น customer) ข้อมูลก่อน 16 พ.ย. ยังมีค่า `team` ของบัญชีอีเมลเดิมอยู่ ใช้ *segment แบบ user* ไม่ใช่ filter ราย event เพราะ `page_view` แรกของแต่ละหน้าไม่มี role ติดไป (ดูข้อจำกัด) segment แบบ user จะนับทุก event ของลูกค้าคนนั้นรวม page_view ด้วย
 
 1. **Funnel หน้านางแบบ** (Funnel exploration, open funnel):
    `page_view` (page path = `/`) → `step_done` (page = model) → `generate_start` (page = model) → `generate_success` (page = model) → `image_kept` (page = model)

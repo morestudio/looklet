@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
+import { appLoader } from './lib/load-app.mjs';
 const require = createRequire(import.meta.url);
 
 // ---------- Supabase จำลอง: ตาราง images / accounts / usage + auth admin ----------
@@ -133,10 +134,24 @@ const admin = load('app/api/admin/route.ts');
 const audit = load('app/api/admin/audit/route.ts');
 const request = (body) => new Request('http://test/api', { method: 'POST', body: JSON.stringify(body) });
 
-const alice = { id: 'alice', email: 'a@x', role: 'customer' };
-const bob = { id: 'bob', email: 'b@x', role: 'customer' };
-const team = { id: 'team', email: 'team@x', role: 'team' };
-const boss = { id: 'boss', email: 'boss@x', role: 'superadmin' };
+const alice = { id: 'alice', email: 'a@x', role: 'customer', login: 'code' };
+const bob = { id: 'bob', email: 'b@x', role: 'customer', login: 'code' };
+const team = { id: 'team', email: 'team@x', role: 'customer', login: 'email' }; // a customer signing in with email
+const boss = { id: 'boss', email: 'boss@x', role: 'superadmin', login: 'email' };
+
+// ---------- role vs login (lib/auth.ts, 16 Nov): role = what an account may do, login = how it signs in ----------
+{
+  const { roleOf, loginOf } = appLoader()('lib/auth.ts');
+  const c = (app_metadata) => ({ app_metadata });
+  assert.equal(roleOf(c({ looklet: true, role: 'superadmin' })), 'superadmin');
+  assert.equal(roleOf(c({ looklet: true })), 'customer'); // email account: no stored role
+  assert.equal(roleOf(c({ looklet: true, login: 'code' })), 'customer');
+  assert.equal(roleOf(c({ looklet: true, role: 'team' })), 'customer'); // no team any more
+  assert.equal(loginOf(c({ looklet: true, login: 'code' })), 'code');
+  assert.equal(loginOf(c({ looklet: true, role: 'customer' })), 'code'); // older code accounts / sessions before login-flag.mjs
+  assert.equal(loginOf(c({ looklet: true })), 'email');
+  assert.equal(loginOf(c({ looklet: true, role: 'superadmin' })), 'email');
+}
 
 // ---------- โค้ดเชิญ ----------
 for (let n = 0; n < 50; n++) assert.match(newInviteCode(), /^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/);
@@ -264,7 +279,7 @@ assert.equal(await withAccount(team, () => uploadBlock()), null);
 // ---------- /api/me: every limited account gets its token bar ----------
 caller = team;
 let mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
-assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['team', 'team@x', 300000, 0]);
+assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['customer', 'team@x', 300000, 0]);
 caller = boss;
 mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
 assert.equal(mine.tokenQuota, undefined);
@@ -281,7 +296,7 @@ const [code1, code2] = (await res.json()).codes;
 assert.equal(db.accounts.filter((i) => [code1, code2].includes(i.code) && i.token_quota === 300000).length, 2);
 const user1 = users.get(db.accounts.find((i) => i.code === code1).user_id);
 const user2 = users.get(db.accounts.find((i) => i.code === code2).user_id);
-assert.deepEqual(user1.app_metadata, { looklet: true, role: 'customer' });
+assert.deepEqual(user1.app_metadata, { looklet: true, login: 'code' }); // role is not stored for customers
 res = await admin.GET(new Request('http://test/api/admin'), {});
 const summary = await res.json();
 const aliceRow = summary.invites.find((i) => i.code === 'AAAA-BBBB');
@@ -312,7 +327,7 @@ assert.equal(await login(code1.toLowerCase().replace('-', ' ')), 200);
 assert.equal(signIns.at(-1).email, user1.email);
 caller = boss;
 assert.equal((await admin.POST(request({ action: 'update', userId: user1.id, disabled: true }))).status, 200);
-assert.deepEqual(user1.app_metadata, { looklet: false, role: 'customer' }); // ปิดแล้วถอดสิทธิ์ + แบน
+assert.deepEqual(user1.app_metadata, { looklet: false, login: 'code' }); // ปิดแล้วถอดสิทธิ์ + แบน
 assert.equal(user1.ban_duration, '876000h');
 caller = undefined;
 assert.equal(await login(code1), 401);

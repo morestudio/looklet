@@ -11,15 +11,22 @@ export const SUPABASE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISH
 const devNoLogin = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_LOOKLET_DEV_NO_LOGIN === '1';
 export const authEnabled = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) && !devNoLogin;
 
+const appMeta = (claims: JwtPayload | null | undefined) => claims?.app_metadata as Record<string, unknown> | undefined;
+
 // สมาชิก = บัญชีที่ admin เปิดสิทธิ์ให้ (app_metadata.looklet = true ตั้งด้วย secret key เท่านั้น)
 // สมัครเองผ่าน Supabase API ได้บัญชีก็จริง แต่ไม่มีสิทธิ์นี้ เข้าเว็บไม่ได้ — ห้ามใช้ user_metadata (ผู้ใช้แก้เองได้)
-export const isMember = (claims: JwtPayload | null | undefined) =>
-  (claims?.app_metadata as Record<string, unknown> | undefined)?.looklet === true;
+export const isMember = (claims: JwtPayload | null | undefined) => appMeta(claims)?.looklet === true;
 
-// บทบาท (app_metadata.role ตั้งด้วย secret key เท่านั้น): superadmin = ดูการใช้งาน/ออกโค้ดเชิญที่ /admin,
-// customer = ลูกค้าที่เข้าด้วยโค้ดเชิญ (เห็นเฉพาะรูปของตัวเอง มีโควตา), team = บัญชีทีมเดิม (คลังรูปร่วมกัน)
-export type Role = 'superadmin' | 'customer' | 'team';
-export const roleOf = (claims: JwtPayload | null | undefined): Role => {
-  const role = (claims?.app_metadata as Record<string, unknown> | undefined)?.role;
-  return role === 'superadmin' || role === 'customer' ? role : 'team';
+// role = what the account may do (app_metadata.role, set with the secret key only), 16 Nov: no "team" any more
+// superadmin = /admin, audit, no quota · customer = everyone else, whichever way they sign in
+export type Role = 'superadmin' | 'customer';
+export const roleOf = (claims: JwtPayload | null | undefined): Role => (appMeta(claims)?.role === 'superadmin' ? 'superadmin' : 'customer');
+
+// login = how the account signs in, separate from role: 'code' = invite code (its password is derived from the code,
+// so it can't be changed at /account), 'email' = email + password. Code accounts carry app_metadata.login = 'code';
+// role 'customer' on older code accounts counts too (sessions issued before scripts/login-flag.mjs marked them).
+export type Login = 'code' | 'email';
+export const loginOf = (claims: JwtPayload | null | undefined): Login => {
+  const meta = appMeta(claims);
+  return meta?.login === 'code' || meta?.role === 'customer' ? 'code' : 'email';
 };

@@ -74,7 +74,7 @@ export const POST = post(async (req) => {
     for (let n = 0; n < count; n++) {
       const code = newInviteCode();
       const created = await sb.auth.admin.createUser({
-        email: inviteEmail(), password: invitePassword(code), email_confirm: true, app_metadata: { looklet: true, role: 'customer' },
+        email: inviteEmail(), password: invitePassword(code), email_confirm: true, app_metadata: { looklet: true, login: 'code' },
       });
       if (created.error || !created.data.user) return json(500, { error: 'สร้างบัญชีไม่สำเร็จ: ' + created.error?.message, codes });
       const row = await sb.from('accounts').insert({ code, user_id: created.data.user.id, token_quota: tokenQuota, label: typeof req.label === 'string' ? req.label.trim().slice(0, 80) : '' });
@@ -100,7 +100,7 @@ export const POST = post(async (req) => {
       patch.disabled = req.disabled;
       // ปิด = ถอดสิทธิ์ + แบนไม่ให้ต่ออายุ session (token เดิมยังใช้ได้จนหมดอายุ ~1 ชม. แต่สร้างรูปไม่ได้ทันที: quotaBlock เช็ก disabled)
       // only looklet: Supabase merges app_metadata keys, so the stored role stays (checked on local Supabase 16 Nov);
-      // sending role: 'customer' would turn an email account into a code account (no /account)
+      // sending login/role here would turn an email account into a code account (no /account)
       const { error } = await sb.auth.admin.updateUserById(invite.user_id, {
         app_metadata: { looklet: !req.disabled }, ban_duration: req.disabled ? '876000h' : 'none',
       });
