@@ -5,7 +5,7 @@ import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 import { DEFAULT_TOKEN_QUOTA, tokensOf, type AccountRow } from '@/lib/usage';
 
 // หน้า /admin (superadmin เท่านั้น): สรุปการใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี — ตาราง accounts / usage ใน supabase/schema.sql
-// accounts = every account (code or email); email accounts appear after their first use (accountOf in lib/usage.ts)
+// accounts = every account (code or email); pending rows (sign-ups at /signup) are listed apart until approved or removed
 type UsageRow = { user_id: string | null; email: string | null; page: string; action: string; status: string; cost_thb: number | string; tokens: number | null; created: string };
 // measured / measuredTokens = เฉพาะรูปที่รู้โทเคนจริง (ไว้หาค่าเฉลี่ยต่อรูปโดยไม่ปนค่าประมาณ)
 type Tally = { ok: number; error: number; cost: number; tokens: number; measured: number; measuredTokens: number; model: number; product: number; last: string | null };
@@ -37,7 +37,13 @@ export const GET = get(async () => {
   ]);
   if (usage.error || invites.error) throw new Error((usage.error ?? invites.error)!.message);
   const rows = usage.data as UsageRow[];
-  const list = invites.data as AccountRow[];
+  const all = invites.data as AccountRow[];
+  const list = all.filter((i) => !i.pending);
+  // sign-ups waiting (at most MAX_PENDING): their email lives in auth only
+  const waiting = await Promise.all(all.filter((i) => i.pending).map(async (i) => {
+    const { data } = await sb.auth.admin.getUserById(i.user_id);
+    return { userId: i.user_id, label: i.label, email: data.user?.email ?? '', phone: i.phone ?? '', line: i.line ?? '', created: i.created };
+  }));
   const byUser = new Map<string, Tally>();
   const team = new Map<string, Tally>();
   const total = tally();
@@ -52,6 +58,7 @@ export const GET = get(async () => {
   const labelOf = new Map(list.map((i) => [i.user_id, i.label || i.code || '']));
   return json(200, {
     total,
+    pending: waiting.reverse(), // newest first
     invites: list.map((i) => ({ userId: i.user_id, code: i.code, label: i.label, tokenQuota: i.token_quota, disabled: i.disabled, created: i.created, ...(byUser.get(i.user_id) ?? tally()) })),
     team: [...team].map(([email, t]) => ({ email, ...t })),
     recent: rows.slice(0, 40).map((r) => ({
@@ -107,6 +114,27 @@ export const POST = post(async (req) => {
     }
     const { error } = await sb.from('accounts').update(patch).eq('user_id', invite.user_id);
     if (error) return json(500, { error: 'แก้บัญชีไม่สำเร็จ: ' + error.message });
+    return json(200, { ok: true });
+  }
+  // sign-ups (/signup): only pending rows, so these two can never touch a live account
+  if (req.action === 'approve' || req.action === 'remove') {
+    const { data: row } = await sb.from('accounts').select('*').eq('user_id', String(req.userId)).maybeSingle();
+    if (!row?.pending) return json(404, { error: 'ไม่พบคำขอนี้ (อาจอนุมัติหรือลบไปแล้ว)' });
+    if (req.action === 'approve') {
+      const tokenQuota = req.tokenQuota == null ? DEFAULT_TOKEN_QUOTA : Number(req.tokenQuota);
+      if (!validTokenQuota(tokenQuota)) return json(400, { error: TOKEN_QUOTA_ERROR });
+      // member flag first: if the row update then fails the row stays pending (quotaBlock still blocks) and approve can be retried
+      const { error } = await sb.auth.admin.updateUserById(row.user_id, { app_metadata: { looklet: true } });
+      if (error) return json(500, { error: 'อนุมัติไม่สำเร็จ: ' + error.message });
+      const { error: rowError } = await sb.from('accounts').update({ pending: false, token_quota: tokenQuota }).eq('user_id', row.user_id);
+      if (rowError) return json(500, { error: 'อนุมัติไม่สำเร็จ: ' + rowError.message });
+      return json(200, { ok: true });
+    }
+    // remove: the person's data goes too (PDPA: nothing kept about someone we don't serve)
+    const { error } = await sb.auth.admin.deleteUser(row.user_id);
+    if (error && error.status !== 404) return json(500, { error: 'ลบไม่สำเร็จ: ' + error.message });
+    const { error: rowError } = await sb.from('accounts').delete().eq('user_id', row.user_id);
+    if (rowError) return json(500, { error: 'ลบไม่สำเร็จ: ' + rowError.message });
     return json(200, { ok: true });
   }
   return json(400, { error: 'ไม่มีคำสั่งนี้' });

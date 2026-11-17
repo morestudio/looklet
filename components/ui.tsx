@@ -180,7 +180,7 @@ export function useChosenSteps<K extends string>(current: K, page: StudioPage) {
   return { chosen, mark: markAs(current), markAs, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
 }
 
-// บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นแท็บแอดมิน · บัญชีที่มีโควตาเห็นแถบโทเคน (TokenUsage มุมขวาบน)
+// บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นเมนูแอดมิน (AccountMenu) · บัญชีที่มีโควตาเห็นแถบโทเคน (TokenUsage มุมขวาบน)
 // one shared request per page (loadMe in lib/browser.ts), not one per component
 export function useMe() {
   const [me, setMe] = useState<Me | null>(null);
@@ -194,14 +194,13 @@ export function useMe() {
 }
 
 // 'gallery' -> no active tab
+// แอดมิน lives in AccountMenu (components/AuthForm.tsx) since 17 Nov
 export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' | 'gallery' }) {
-  const me = useMe();
-  const tab = (id: 'model' | 'product' | 'admin', href: string, label: string) => (
+  const tab = (id: 'model' | 'product', href: string, label: ReactNode) => (
     <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
   );
   return <nav className="page-switch" aria-label="เลือกหน้า">
     {tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}
-    {me?.role === 'superadmin' && tab('admin', '/admin', 'แอดมิน')}
   </nav>;
 }
 

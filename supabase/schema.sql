@@ -70,6 +70,13 @@ create index if not exists usage_user_created on public.usage (user_id, created 
 alter table public.accounts add column if not exists token_quota int not null default 300000 check (token_quota >= 0);
 alter table public.accounts alter column token_quota set default 300000; -- เพิ่มจาก 200,000 (28 ต.ค.) · แอปส่งค่าเองทุกครั้งที่สร้างโค้ด
 
+-- 17 Nov: sign-up at /signup waits for a superadmin: pending = true and no looklet flag yet (proxy keeps it out).
+-- phone / line = how to reach the applicant (personal data: superadmin only, never sent to analytics).
+-- approve = looklet flag + pending false; remove = delete the auth user and this row
+alter table public.accounts add column if not exists pending boolean not null default false;
+alter table public.accounts add column if not exists phone text;
+alter table public.accounts add column if not exists line text;
+
 -- 16 Nov: every existing email (team) account gets its row now, so /admin can see it and raise its quota before the deploy
 -- (its earlier token use counts); members only, not code accounts or superadmin; accounts added later get a row on first use
 insert into public.accounts (user_id, code, label, token_quota)
