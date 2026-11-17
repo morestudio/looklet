@@ -5,6 +5,7 @@
 // บัญชีที่ไม่มีสิทธิ์ (isMember) เข้าไม่ได้แม้รหัสถูก
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { noteLogin, track } from '@/lib/analytics';
+import { errorMessageOf } from '@/lib/api-error';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
 import { IconAccount, IconEye, IconEyeOff, IconKey, IconShield, IconSignOut } from './icons';
@@ -31,7 +32,7 @@ export function LoginForm() {
       .catch(() => null);
     if (res?.ok) { noteLogin('invite_code'); return go('/welcome'); } // หน้าต้อนรับ (components/Welcome.tsx) ก่อนเข้าสตูดิโอ ทั้งเข้าด้วยโค้ดและอีเมล
     setBusy(false);
-    setError(((await res?.json().catch(() => null)) as { error?: string } | null)?.error ?? 'เข้าใช้ไม่สำเร็จ ลองอีกครั้ง');
+    setError(errorMessageOf(await res?.json().catch(() => null)) ?? 'เข้าใช้ไม่สำเร็จ ลองอีกครั้ง');
   }
 
   async function submit(e: FormEvent) {
@@ -104,7 +105,7 @@ export function SignupForm() {
       .catch(() => null);
     setBusy(false);
     if (res?.ok) { track('sign_up', { method: 'password' }); return setDone(true); }
-    setError(((await res?.json().catch(() => null)) as { error?: string } | null)?.error ?? 'สมัครไม่สำเร็จ ลองอีกครั้ง');
+    setError(errorMessageOf(await res?.json().catch(() => null)) ?? 'สมัครไม่สำเร็จ ลองอีกครั้ง');
   }
 
   if (done) return <div className="auth-card">

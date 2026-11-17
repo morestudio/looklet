@@ -622,8 +622,10 @@ export default function TryOn() {
         const needsReview = batch.results.filter((r) => r.posePlan.review?.status !== 'passed').length;
         // ไอเดียที่ไม่สำเร็จไม่หยุดไอเดียอื่น (lib/shot-batch.ts) -> บอกชื่อไอเดียที่พังพร้อมเหตุผล
         const titleOf = (id: string) => proposal.plan.candidates.find((c) => c.id === id)?.title ?? id;
-        const failedText = batch.errors.map((e) => `${titleOf(e.id)}: ${friendlyError(e, true)}`).join(' · ');
-        if (batch.errors.length) toast.error(`สร้างได้ ${batch.results.length}/${selected.length} รูป${batch.results.length ? ' (เก็บไว้ในคลังแล้ว)' : ''} · ไม่สำเร็จ ${failedText}`);
+        // the quota note once for the whole line, and only when the server answered every failure (lib/errors.ts)
+        const failedText = batch.errors.map((e) => `${titleOf(e.id)}: ${friendlyError(e)}`).join(' · ');
+        const free = batch.errors.every((e) => e.status) ? ' · รูปที่ไม่สำเร็จไม่เสียโควตา' : '';
+        if (batch.errors.length) toast.error(`สร้างได้ ${batch.results.length}/${selected.length} รูป${batch.results.length ? ' (เก็บไว้ในคลังแล้ว)' : ''} · ไม่สำเร็จ ${failedText}${free}`);
         else toast.ok(`สร้างครบ ${batch.results.length} รูป${needsReview ? ` · ${needsReview} รูปควรตรวจภาพก่อนใช้` : ' · ผ่านการตรวจด้วย AI'}`);
         if (batch.results.length) frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;

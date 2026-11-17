@@ -3,26 +3,28 @@ import 'server-only';
 import { withAccount, type Account } from './account';
 import { ApiError } from './ai';
 import { DEFAULT_AI_MODEL } from './catalog';
-import { aiFailReason, type FailReason } from './fail-reason';
+import { aiFailReason } from './fail-reason';
+import { errorResponse } from './api-error';
 import { isSignedInMember, signedInAccount } from './supabase/server';
 
 export const json = (status: number, obj: unknown) => Response.json(obj, { status });
+export { errorResponse }; // every error response: { error: { code, message } } (lib/api-error.ts)
 
 // ทุก API: ยังไม่เข้าสู่ระบบ = 401 (proxy.ts กันไว้แล้ว เช็กซ้ำเผื่อ proxy ถูกข้าม)
-export const signedIn = async () => (await isSignedInMember() ? null : json(401, { error: 'ต้องเข้าสู่ระบบก่อน' }));
+export const signedIn = async () => (await isSignedInMember() ? null : errorResponse(401, 'ต้องเข้าสู่ระบบก่อน'));
 
-// `error` keeps the raw text (logs, audit page, superadmin pages); `reason` is what the browser words for customers
+// `message` keeps the raw text (logs, audit page, superadmin pages); the reason (`code`) is what customers see worded
 const failed = (e: unknown) => {
-  if (e instanceof ApiError) return json(502, { error: e.message, reason: aiFailReason(e.message, e.providerStatus) });
+  if (e instanceof ApiError) return errorResponse(502, e.message, { reason: aiFailReason(e.message, e.providerStatus) });
   const err = e as Error;
-  return json(500, { error: `${err.name}: ${err.message}`, reason: 'server' satisfies FailReason });
+  return errorResponse(500, `${err.name}: ${err.message}`, { reason: 'unexpected_error' });
 };
 
 // เช็กสิทธิ์แล้วจำว่าใครเรียก (lib/account.ts me()) ตลอด request — storage ใช้กรองรูปของแต่ละบัญชี
 async function asCaller(run: (account: Account) => Promise<Response>) {
   try {
     const account = await signedInAccount();
-    if (account === undefined) return json(401, { error: 'ต้องเข้าสู่ระบบก่อน' });
+    if (account === undefined) return errorResponse(401, 'ต้องเข้าสู่ระบบก่อน');
     return await withAccount(account, () => run(account));
   } catch (e) {
     return failed(e);

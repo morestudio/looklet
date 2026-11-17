@@ -1,6 +1,7 @@
 'use client';
 // AdminPage.tsx — หน้า /admin (superadmin): การใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี (โค้ดและอีเมล) — ข้อมูลจาก app/api/admin
 import { useEffect, useState } from 'react';
+import { errorMessageOf } from '@/lib/api-error';
 import { api, loadMe } from '@/lib/browser';
 import { toast } from '@/lib/toast';
 import { AccountMenu } from './AuthForm';
@@ -21,7 +22,7 @@ const num = (n: number) => Math.round(n).toLocaleString('th-TH');
 async function fetchAdmin(): Promise<{ data?: Data; error?: string }> {
   const res = await fetch('/api/admin').catch(() => null);
   const out = await res?.json().catch(() => ({}));
-  return res?.ok ? { data: out } : { error: out?.error ?? `โหลดข้อมูลไม่สำเร็จ (HTTP ${res?.status ?? 'ไม่มีเน็ต'})` };
+  return res?.ok ? { data: out } : { error: errorMessageOf(out) ?? `โหลดข้อมูลไม่สำเร็จ (HTTP ${res?.status ?? 'ไม่มีเน็ต'})` };
 }
 
 // sign-ups from /signup (app/api/signup): approve with a token quota, or remove (deletes the user and their details)
@@ -78,7 +79,12 @@ export default function AdminPage() {
       done?.(out);
       await load();
       void loadMe(true); // AccountMenu's waiting count
-    } catch (err) { toast.error((err as Error).message); }
+    } catch (err) {
+      toast.error((err as Error).message);
+      // create stopped part-way: highlight the codes it did make
+      const made = (err as { details?: { codes?: unknown } }).details?.codes;
+      if (Array.isArray(made) && made.length) { done?.({ codes: made as string[] }); await load(); }
+    }
     finally { setBusy(false); }
   }
   const copy = (text: string, what: string) => { void navigator.clipboard.writeText(text).then(() => toast.ok(`คัดลอก${what}แล้ว`), () => toast.error('คัดลอกไม่สำเร็จ')); };

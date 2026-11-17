@@ -1,5 +1,6 @@
-// Error text for customers (browser). Server failures carry `reason` (lib/fail-reason.ts) and `status` from api();
-// a route's own `error` text without a reason is already written for the user. Raw text goes to the console only.
+// Error text for customers (browser). api() puts the response's `code` as `reason` when it is a FailReason
+// (lib/fail-reason.ts), its HTTP `status`, and its `message`; a message without a reason is written for the user.
+// Raw text goes to the console only.
 import type { FailReason } from './fail-reason';
 
 const WORDING: Record<FailReason, string> = {
@@ -7,7 +8,7 @@ const WORDING: Record<FailReason, string> = {
   ai_busy: 'AI ไม่ว่างชั่วคราว รอสักครู่แล้วลองอีกครั้ง',
   ai_rejected: 'AI ไม่รับรูปหรือการตั้งค่านี้ ลองเปลี่ยนรูปที่เลือก ถ้ายังไม่ได้ให้ติดต่อผู้ดูแล',
   ai_unavailable: 'ระบบ AI ใช้งานไม่ได้ตอนนี้ ติดต่อผู้ดูแล',
-  server: 'ระบบขัดข้อง ลองอีกครั้ง ถ้ายังไม่ได้ให้ติดต่อผู้ดูแล',
+  unexpected_error: 'ระบบขัดข้อง ลองอีกครั้ง ถ้ายังไม่ได้ให้ติดต่อผู้ดูแล',
 };
 
 const NO_BODY = /^HTTP \d{3}$/; // api()'s text when a response had no JSON error

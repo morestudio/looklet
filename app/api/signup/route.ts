@@ -1,5 +1,5 @@
 import { authEnabled } from '@/lib/auth';
-import { json } from '@/lib/route';
+import { errorResponse, json } from '@/lib/route';
 import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 import { createClient } from '@/lib/supabase/server';
 import { DEFAULT_TOKEN_QUOTA } from '@/lib/usage';
@@ -14,7 +14,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: Request) {
   try {
-    if (!authEnabled || !supabaseEnabled) return json(400, { error: 'เว็บนี้ไม่ได้เปิดระบบสมัครใช้งาน' });
+    if (!authEnabled || !supabaseEnabled) return errorResponse(400, 'เว็บนี้ไม่ได้เปิดระบบสมัครใช้งาน');
     const body = await req.json().catch(() => ({}));
     // honeypot: a field people never see; bots fill every input. Pretend it worked so they don't retry differently
     if (clean(body?.website, 200)) return json(200, { ok: true });
@@ -23,19 +23,19 @@ export async function POST(req: Request) {
     const label = clean(body?.shop, 80);
     const phone = clean(body?.phone, 30);
     const line = clean(body?.line, 50);
-    if (!EMAIL.test(email)) return json(400, { error: 'อีเมลไม่ถูกต้อง' });
-    if (password.length < 10 || password.length > 72) return json(400, { error: 'รหัสผ่านต้องยาว 10–72 ตัว' });
-    if (!label) return json(400, { error: 'กรอกชื่อร้านหรือแบรนด์' });
-    if (!/^\d{9,15}$/.test(phone.replace(/[\s\-()+.]/g, ''))) return json(400, { error: 'เบอร์โทรไม่ถูกต้อง' });
+    if (!EMAIL.test(email)) return errorResponse(400, 'อีเมลไม่ถูกต้อง');
+    if (password.length < 10 || password.length > 72) return errorResponse(400, 'รหัสผ่านต้องยาว 10–72 ตัว');
+    if (!label) return errorResponse(400, 'กรอกชื่อร้านหรือแบรนด์');
+    if (!/^\d{9,15}$/.test(phone.replace(/[\s\-()+.]/g, ''))) return errorResponse(400, 'เบอร์โทรไม่ถูกต้อง');
 
     const sb = serviceClient();
     const { count, error: countError } = await sb.from('accounts').select('user_id', { count: 'exact', head: true }).eq('pending', true);
     if (countError) throw new Error(countError.message);
-    if ((count ?? 0) >= MAX_PENDING) return json(503, { error: 'ปิดรับสมัครชั่วคราว ลองใหม่ภายหลัง' });
+    if ((count ?? 0) >= MAX_PENDING) return errorResponse(503, 'ปิดรับสมัครชั่วคราว ลองใหม่ภายหลัง');
 
     const { data, error } = await sb.auth.admin.createUser({ email, password, email_confirm: true });
-    if (error?.code === 'email_exists') return json(409, { error: 'อีเมลนี้มีบัญชีอยู่แล้ว ลองเข้าสู่ระบบ หรือติดต่อผู้ดูแล' });
-    if (error?.code === 'weak_password') return json(400, { error: 'รหัสผ่านง่ายเกินไป ลองตั้งให้ยากขึ้น' });
+    if (error?.code === 'email_exists') return errorResponse(409, 'อีเมลนี้มีบัญชีอยู่แล้ว ลองเข้าสู่ระบบ หรือติดต่อผู้ดูแล');
+    if (error?.code === 'weak_password') return errorResponse(400, 'รหัสผ่านง่ายเกินไป ลองตั้งให้ยากขึ้น');
     if (error || !data.user) throw new Error(error?.message ?? 'no user');
     const row = { user_id: data.user.id, code: null, label, token_quota: DEFAULT_TOKEN_QUOTA, pending: true, phone, line: line || null };
     const { error: rowError } = await sb.from('accounts').insert(row);
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     }
     return json(200, { ok: true });
   } catch (e) {
-    return json(500, { error: 'สมัครไม่สำเร็จ: ' + (e as Error).message });
+    return errorResponse(500, 'สมัครไม่สำเร็จ: ' + (e as Error).message);
   }
 }
 

@@ -103,6 +103,18 @@ const store = () => {
   b();
 }
 
+// a busy note never pushes out an unread error, and doesn't count toward TOAST_MAX
+{
+  const { toast, shown } = store();
+  toast.error('e1'); toast.error('e2'); toast.error('e3');
+  const done = toast.busy('converting…');
+  assert.deepEqual(shown(), ['error:e1', 'error:e2', 'error:e3', 'busy:converting…']);
+  toast.ok('saved'); // a 4th counted toast still makes room the usual way: the oldest error goes, the busy note stays
+  assert.deepEqual(shown(), ['error:e2', 'error:e3', 'busy:converting…', 'ok:saved']);
+  done();
+  assert.deepEqual(shown(), ['error:e2', 'error:e3', 'ok:saved']);
+}
+
 // offline clicks: every retry fails the same way at once; the box must stay put (same id, never fading), not blink
 // or stack. No keys (17 Nov): a later success doesn't clear it, the screen shows the success; × closes it
 {
@@ -144,23 +156,52 @@ assert.equal(aiFailReason('OpenAI ตอบกลับ 401: Incorrect API key',
 assert.equal(aiFailReason('OpenAI ตอบกลับ 403: no access to model', 403), 'ai_unavailable');
 assert.equal(aiFailReason('OpenAI ตอบกลับ 400: Invalid image', 400), 'ai_rejected');
 assert.equal(aiFailReason('Gemini ไม่ยอมประมวลผลรูปนี้ (OTHER)'), undefined, 'our own wording: shown as written');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 400: billing_hard_limit_reached: Billing hard limit has been reached', 400), 'ai_unavailable', 'no credit as a 400 is not "change the photo"');
+// lib/ai.ts post(): no answer from the provider becomes 504 (timeout) / 503 (network), so it reads like an outage
+assert.equal(aiFailReason('OpenAI ไม่ตอบ: TimeoutError: The operation was aborted due to timeout', 504), 'ai_busy');
+assert.equal(aiFailReason('OpenAI ไม่ตอบ: TypeError: fetch failed', 503), 'ai_busy');
+
+// ---------- error responses (lib/api-error.ts): { error: { code, message } }, the Vercel REST API shape ----------
+{
+  const { errorBody, errorResponse, failReasonOf } = load('api-error.ts');
+  // a route's own error: the status's generic code, the route's text as message
+  assert.deepEqual(errorBody(400, 'ข้อมูลไม่ถูกต้อง'), { error: { code: 'bad_request', message: 'ข้อมูลไม่ถูกต้อง' } });
+  assert.equal(errorBody(500, 'x').error.code, 'internal_server_error');
+  assert.equal(errorBody(418, 'x').error.code, 'error', 'unknown status: a generic code');
+  // a reason becomes the code; extra fields ride along but never override code / message
+  const body = errorBody(502, 'OpenAI ตอบกลับ 429: Rate limit', { reason: 'ai_busy', extra: { codes: ['A'], code: 'x', message: 'y' } });
+  assert.deepEqual(body, { error: { codes: ['A'], code: 'ai_busy', message: 'OpenAI ตอบกลับ 429: Rate limit' } });
+  const res = errorResponse(429, 'ใช้โทเคนครบแล้ว');
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).error.message, 'ใช้โทเคนครบแล้ว');
+  // reading the reason back: only our FailReasons, never a generic code
+  assert.equal(failReasonOf(body), 'ai_busy');
+  assert.equal(failReasonOf(errorBody(500, 'x', { reason: 'unexpected_error' })), 'unexpected_error');
+  const { errorMessageOf, errorOf } = load('api-error.ts');
+  assert.equal(errorMessageOf(errorBody(404, 'ไม่พบรูปนี้')), 'ไม่พบรูปนี้');
+  assert.deepEqual(errorOf(errorBody(500, 'x', { extra: { codes: ['A'] } })).codes, ['A'], 'extra fields reach the client');
+  for (const other of [{ error: 'flat text' }, { error: { message: 5 } }, {}, null, '<html>']) assert.equal(errorMessageOf(other), undefined, JSON.stringify(other));
+  for (const other of [errorBody(500, 'บันทึกไม่สำเร็จ'), errorBody(400, 'x'), { error: 'old flat text' }, { error: { code: 'made_up' } }, {}, null, 'text']) {
+    assert.equal(failReasonOf(other), undefined, JSON.stringify(other));
+  }
+}
 
 // ---------- browser wording (lib/errors.ts) ----------
 const { friendlyError, failText } = load('errors.ts', { console: { warn() {} } });
-// what api() throws: message = the route's `error`, plus status and the server's reason
+// what api() throws: the response's message, its status, and its code as `reason` when that is a FailReason
 const err = (message, status, reason) => Object.assign(new Error(message), { status, reason });
 const RAW = /OpenAI|Rate limit|TypeError|fetch failed|HTTP \d|Supabase/;
 
 // a reason replaces the raw text; the server answered, so a paid action says it was free
-for (const [reason, pattern] of [['ai_busy', /AI ไม่ว่างชั่วคราว/], ['ai_unavailable', /ติดต่อผู้ดูแล/], ['ai_rejected', /เปลี่ยนรูป/], ['server', /ระบบขัดข้อง/], ['safety', /AI ปฏิเสธภาพนี้/]]) {
-  const e = err(reason === 'server' ? 'TypeError: fetch failed' : 'OpenAI ตอบกลับ 429: Rate limit reached', reason === 'server' ? 500 : 502, reason);
+for (const [reason, pattern] of [['ai_busy', /AI ไม่ว่างชั่วคราว/], ['ai_unavailable', /ติดต่อผู้ดูแล/], ['ai_rejected', /เปลี่ยนรูป/], ['unexpected_error', /ระบบขัดข้อง/], ['safety', /AI ปฏิเสธภาพนี้/]]) {
+  const e = err(reason === 'unexpected_error' ? 'TypeError: fetch failed' : 'OpenAI ตอบกลับ 429: Rate limit reached', reason === 'unexpected_error' ? 500 : 502, reason);
   const text = friendlyError(e);
   assert.match(text, pattern, reason);
   assert.doesNotMatch(text, RAW, text);
   assert.doesNotMatch(text, /โควตา/, 'no quota note unless the action spends tokens');
   assert.equal((friendlyError(e, true).match(/ไม่เสียโควตา/g) ?? []).length, 1, 'said once, at the end');
 }
-assert.notEqual(friendlyError(err('x', 502, 'ai_busy')), friendlyError(err('x', 500, 'server')), 'AI busy and our own failure read differently');
+assert.notEqual(friendlyError(err('x', 502, 'ai_busy')), friendlyError(err('x', 500, 'unexpected_error')), 'AI busy and our own failure read differently');
 
 // no reason: the route wrote the text for the user (quota, upload cap, our own 503s), shown as is
 for (const [message, status] of [

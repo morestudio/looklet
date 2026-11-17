@@ -25,7 +25,7 @@ function load(file) {
     'server-only': {}, '@/lib/ai': ai,
     '@/lib/catalog': { isGpt25: () => false, GPT25_SIZES: {} },
     '@/lib/images': { cropTo: async (o) => o, servable: async (o) => o, svgJpeg: async (svg) => (svg.startsWith('<svg') ? 'guide-jpeg' : 'bad-svg') },
-    '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }) },
+    '@/lib/route': { post: (handler) => handler, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) },
     '@/lib/storage': { saveImage: async (_where, _data, _mime, meta) => { saved.push(meta); return '/test/result.jpg'; } },
     '@/lib/usage': { quotaBlock: async () => null, recordUsage: async () => {} },
     '@/lib/genlog': { localTime: () => 'test', sentences: (s) => s, writeGenerateLog: async (entry) => { logs.push(entry); } },

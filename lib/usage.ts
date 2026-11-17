@@ -1,6 +1,7 @@
 // usage.ts — นับการใช้งานและโควตาของทุกบัญชี (ตาราง usage / accounts ใน supabase/schema.sql) ใช้ฝั่ง server เท่านั้น
 // route ที่สร้างรูป (generate / packshot / local-edit / refine-skin): quotaBlock() ก่อนเรียก AI, recordUsage() หลังได้ผล (สำเร็จหรือพัง)
 import 'server-only';
+import { errorResponse } from './api-error';
 import { isLimited, me, type Account } from './account';
 import type { GenerateLog, PackshotLog } from './genlog';
 import { sbCountUploads, serviceClient, supabaseEnabled } from './storage-supabase';
@@ -44,7 +45,7 @@ export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | n
   return read();
 }
 
-const DISABLED = () => Response.json({ error: 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล' }, { status: 403 });
+const DISABLED = () => errorResponse(403, 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล');
 
 // โทเคนของรูปที่สร้างสำเร็จ (นับโควตา) — รูปที่พังไม่นับ
 // PostgREST returns at most 1,000 rows per request: page by id (email accounts can have long histories)
@@ -69,7 +70,7 @@ export async function quotaBlock(pendingTokens = 0): Promise<Response | null> {
   if (!row || row.disabled || row.pending) return DISABLED(); // pending: not approved yet (proxy blocks it too)
   const used = await usedTokens(account!.id);
   if (used + Math.max(0, pendingTokens) >= row.token_quota) {
-    return Response.json({ error: `ใช้โทเคนครบ ${row.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
+    return errorResponse(429, `ใช้โทเคนครบ ${row.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา`);
   }
   return null;
 }
@@ -83,7 +84,7 @@ export async function uploadBlock(): Promise<Response | null> {
   const [row, uploads] = await Promise.all([accountOf(account!), sbCountUploads(account!.id)]);
   if (!row || row.disabled || row.pending) return DISABLED(); // pending: not approved yet (proxy blocks it too)
   if (uploads >= MAX_UPLOADS) {
-    return Response.json({ error: `อัปโหลดครบ ${MAX_UPLOADS} รูปแล้ว ลบรูปที่ไม่ใช้ก่อนเพิ่มใหม่` }, { status: 409 });
+    return errorResponse(409, `อัปโหลดครบ ${MAX_UPLOADS} รูปแล้ว ลบรูปที่ไม่ใช้ก่อนเพิ่มใหม่`);
   }
   return null;
 }

@@ -4,6 +4,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { authEnabled, isMember, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/auth';
+import { errorBody } from '@/lib/api-error';
 import { serviceClient } from '@/lib/storage-supabase';
 
 // code accounts can't change their password: it is derived from the code. accounts.code says how an account signs in
@@ -54,7 +55,7 @@ export async function proxy(request: NextRequest) {
     }
     return response;
   }
-  if (pathname.startsWith('/api/')) return carry(NextResponse.json({ error: 'ต้องเข้าสู่ระบบก่อน' }, { status: 401 }));
+  if (pathname.startsWith('/api/')) return carry(NextResponse.json(errorBody(401, 'ต้องเข้าสู่ระบบก่อน'), { status: 401 }));
   return carry(NextResponse.redirect(new URL('/login', request.url)));
 }
 

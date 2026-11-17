@@ -3,37 +3,37 @@ import { defaultQuality, GPT25_SIZES, isGpt25 } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type GenerateLog } from '@/lib/genlog';
 import { LOCAL_EDIT_PROMPT, supportsMaskedEdit } from '@/lib/local-edit';
 import { blendLocalEdit, editCanvas, finishRoughEdit, fromEditCanvas, guidePreview, highlightAreas, maskToEditCanvas, prepareLocalEdit, roughEditGuide, toEditCanvas } from '@/lib/local-edit-images';
-import { json, post } from '@/lib/route';
+import { errorResponse, json, post } from '@/lib/route';
 import { storableRecipe } from '@/lib/recipe';
 import { listImages, readImage, saveGuide, saveImage } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
 
 export const maxDuration = 300;
 export const POST = post(async (req) => {
-  if (typeof req.src !== 'string' || !/^\/api\/files\/results\/[\w-]+\.(?:png|jpe?g|webp)$/.test(req.src)) return json(400, { error: 'เลือกรูปที่สร้างไว้ก่อนแก้เฉพาะจุด' });
+  if (typeof req.src !== 'string' || !/^\/api\/files\/results\/[\w-]+\.(?:png|jpe?g|webp)$/.test(req.src)) return errorResponse(400, 'เลือกรูปที่สร้างไว้ก่อนแก้เฉพาะจุด');
   const instruction = typeof req.instruction === 'string' ? req.instruction.trim() : '';
-  if (!instruction || instruction.length > 1200) return json(400, { error: 'ระบุสิ่งที่ต้องการแก้ ไม่เกิน 1,200 ตัวอักษร' });
-  if (typeof req.model !== 'string' || !supportsMaskedEdit(req.model) || !availableModels().some((m) => m.id === req.model)) return json(400, { error: 'เลือกโมเดล OpenAI ที่รองรับการแก้เฉพาะจุด' });
+  if (!instruction || instruction.length > 1200) return errorResponse(400, 'ระบุสิ่งที่ต้องการแก้ ไม่เกิน 1,200 ตัวอักษร');
+  if (typeof req.model !== 'string' || !supportsMaskedEdit(req.model) || !availableModels().some((m) => m.id === req.model)) return errorResponse(400, 'เลือกโมเดล OpenAI ที่รองรับการแก้เฉพาะจุด');
   const mode = req.mode ?? 'precise'; // Older clients retain exact-mask behavior.
-  if (mode !== 'rough' && mode !== 'precise') return json(400, { error: 'โหมดการแก้ไม่ถูกต้อง' });
+  if (mode !== 'rough' && mode !== 'precise') return errorResponse(400, 'โหมดการแก้ไม่ถูกต้อง');
   // ระบายชี้จุดไม่บังคับในแบบไฮไลต์ (พิมพ์อย่างเดียวก็แก้ได้) · แบบละเอียดต้องมีพื้นที่ระบาย
   const hasMask = req.mask != null && req.mask !== '';
-  if (mode === 'precise' && !hasMask) return json(400, { error: 'ระบายพื้นที่ที่ต้องการแก้ก่อน' });
-  if (hasMask && (typeof req.mask !== 'string' || req.mask.length > 5_333_336 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(req.mask))) return json(400, { error: 'ข้อมูลพื้นที่เลือกไม่ถูกต้อง หรือใหญ่เกิน 4 MB' });
+  if (mode === 'precise' && !hasMask) return errorResponse(400, 'ระบายพื้นที่ที่ต้องการแก้ก่อน');
+  if (hasMask && (typeof req.mask !== 'string' || req.mask.length > 5_333_336 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(req.mask))) return errorResponse(400, 'ข้อมูลพื้นที่เลือกไม่ถูกต้อง หรือใหญ่เกิน 4 MB');
   const feather = req.feather == null ? 6 : Number(req.feather);
-  if (!Number.isInteger(feather) || feather < 0 || feather > 24) return json(400, { error: 'ค่าความนุ่มขอบไม่ถูกต้อง' });
+  if (!Number.isInteger(feather) || feather < 0 || feather > 24) return errorResponse(400, 'ค่าความนุ่มขอบไม่ถูกต้อง');
   const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI
   if (blocked) return blocked;
   const image = await readImage(req.src.slice('/api/files/'.length).split('/'));
-  if (!image) return json(404, { error: 'ไม่พบรูปต้นฉบับ อาจถูกลบไปแล้ว' });
+  if (!image) return errorResponse(404, 'ไม่พบรูปต้นฉบับ อาจถูกลบไปแล้ว');
   const original = (await listImages({ area: 'results' })).find((item) => item.src === req.src);
   const product = original?.page === 'product';
   const mask = hasMask ? Buffer.from(req.mask, 'base64') : null;
-  if (mask && mask.length > 4_000_000) return json(400, { error: 'พื้นที่เลือกมีขนาดเกิน 4 MB' });
+  if (mask && mask.length > 4_000_000) return errorResponse(400, 'พื้นที่เลือกมีขนาดเกิน 4 MB');
   let source;
   try { source = await prepareLocalEdit(image.data, mask); }
-  catch (err) { return json(400, { error: (err as Error).message }); }
-  if (mode === 'precise' && !source.selectedPixels) return json(400, { error: 'ระบายพื้นที่ที่ต้องการแก้ก่อน' });
+  catch (err) { return errorResponse(400, (err as Error).message); }
+  if (mode === 'precise' && !source.selectedPixels) return errorResponse(400, 'ระบายพื้นที่ที่ต้องการแก้ก่อน');
   const highlighted = mode === 'rough' && source.selectedPixels > 0; // ระบายว่าง = แก้จากคำสั่งอย่างเดียว
   const baseSize = source.width === source.height ? '1024x1024' : source.width < source.height ? '1024x1536' : '1536x1024';
   const size = isGpt25(req.model) ? GPT25_SIZES[baseSize] : baseSize;

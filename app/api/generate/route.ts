@@ -7,7 +7,7 @@ import { ACCESSORY_TYPES, GPT25_SIZES, isGpt25, MAX_ACCESSORIES, MAX_WEAR, pickH
 import { localTime, sentences, writeGenerateLog, type GenerateLog, type LogImage } from '@/lib/genlog';
 import { AI_ASPECTS, aspectBaseSize, isPlatformAspect, PLATFORM_ASPECTS } from '@/lib/aspects';
 import { buildPrompt, buildRoomPrompt, buildSetPrompt, cropLine, harmonizePrompt, pickPlacement, roomCropLine, wearCount, type Wear } from '@/lib/prompts';
-import { json, post } from '@/lib/route';
+import { errorResponse, json, post } from '@/lib/route';
 import { cropTo, inputJpeg, servable } from '@/lib/images';
 import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
@@ -38,17 +38,17 @@ const toRef = (v: unknown): Ref => {
 };
 
 export const POST = post(async (req) => {
-  if (!availableModels().some((m) => m.id === req.model)) return json(400, { error: 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env' });
+  if (!availableModels().some((m) => m.id === req.model)) return errorResponse(400, 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env');
   const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI
   if (blocked) return blocked;
-  if (!req.person) return json(400, { error: 'ไม่มีรูปนางแบบ' });
+  if (!req.person) return errorResponse(400, 'ไม่มีรูปนางแบบ');
   const accessories: Accessory[] = (Array.isArray(req.accessories) ? req.accessories : []).filter((a: Accessory) => a?.data);
-  if (accessories.length > MAX_ACCESSORIES) return json(400, { error: `ของเสริมใส่ได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป` });
+  if (accessories.length > MAX_ACCESSORIES) return errorResponse(400, `ของเสริมใส่ได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป`);
   // เสื้อผ้าแยกชิ้น: ทั้งชุด (outfit) หรือ เสื้อ/ท่อนล่าง + รองเท้า — ทั้งชุดคู่กับเสื้อ/ท่อนล่างแยกไม่ได้ (คำสั่งจะขัดกัน)
   const has = (v: unknown) => typeof v === 'string' && v.length > 0;
   const wear: Wear = { outfit: has(req.outfit), top: has(req.top), bottom: has(req.bottom), shoes: has(req.shoes) };
-  if (wear.outfit && (wear.top || wear.bottom)) return json(400, { error: 'เลือกทั้งชุดแล้ว เลือกเสื้อหรือท่อนล่างแยกอีกไม่ได้' });
-  if (wearCount(wear) + accessories.length > MAX_WEAR) return json(400, { error: `เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป` });
+  if (wear.outfit && (wear.top || wear.bottom)) return errorResponse(400, 'เลือกทั้งชุดแล้ว เลือกเสื้อหรือท่อนล่างแยกอีกไม่ได้');
+  if (wearCount(wear) + accessories.length > MAX_WEAR) return errorResponse(400, `เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป`);
   const firstWear: string | undefined = [req.outfit, req.top, req.bottom].find(has); // รูปเสื้อผ้ารูปแรก ให้ตัววางแผนดูว่าใส่อะไร
   const poseMode: PoseMode = POSE_MODES.find((m) => m.id === req.pose_mode)?.id ?? 'pose';
   const shotScene = Boolean(req.pose) && poseMode === 'shot-scene'; // ฉากมาจากรูปท่าโพสต์ ไม่ใช้ฉากที่เลือก
@@ -60,12 +60,12 @@ export const POST = post(async (req) => {
     ? { id: req.set.id, index: req.set.index } : null;
   const finish = req.finish === 'phone' || req.finish === 'film' ? req.finish : null; // ลุคที่เหมาะกับรูปนี้ (lib/film.ts) เก็บกับรูป
   const recipe = storableRecipe(req.recipe); // steps 1–8 choices (lib/recipe.ts), stored with the image
-  if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
+  if (setRef && (!text(setShot?.framing) || !text(setShot?.angle))) return errorResponse(400, 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้');
   const aspect = isPlatformAspect(req.aspect) ? String(req.aspect) : '2:3';
   // ลอกทั้งช็อตลงฉากที่เลือก (POSE_MODES 'shot-room'): ขั้น 1 ถ่ายรูปฉากที่ผู้ใช้เลือกใหม่ตามรูปท่า -> ขั้น 2 ลอกทั้งช็อตลงฉากใหม่ (เรียก AI สร้างรูป 2 ครั้ง)
   // โหมดอื่นไม่ผ่านโค้ดส่วนนี้ (ลอกทั้งช็อต + ฉาก ต้องเหมือนเดิม — ผู้ใช้ขอ)
   const shotRoom = Boolean(req.pose) && poseMode === 'shot-room' && !setRef;
-  if (shotRoom && !req.scene_image) return json(400, { error: 'ยังไม่มีรูปฉาก เลือกฉากในขั้นฉากหลังก่อน' });
+  if (shotRoom && !req.scene_image) return errorResponse(400, 'ยังไม่มีรูปฉาก เลือกฉากในขั้นฉากหลังก่อน');
   // รูปท่าตัดเป็นสัดส่วนของรูปสุดท้ายก่อน (ตัดกลางภาพ ไม่ใช้ AI): "จัดกรอบเหมือนรูปท่า" = รูปที่จะได้จริง (ทดสอบ 6 พ.ย. ขนาดคนใกล้รูปท่าขึ้น)
   const poseData: string | null = shotRoom ? (await cropTo({ data: req.pose, mime: 'image/jpeg' }, aspect)).data : req.pose;
 
@@ -110,11 +110,11 @@ export const POST = post(async (req) => {
     expression: null, gaze: null, props: [], extra: null, previous: texts(req.previous_shots),
   } : null;
   const planningOnly = req.plan_only === true;
-  if (planningOnly && !directorInput) return json(400, { error: 'เลือก AI จัดท่าและมุมกล้องก่อนขอไอเดียภาพ' });
+  if (planningOnly && !directorInput) return errorResponse(400, 'เลือก AI จัดท่าและมุมกล้องก่อนขอไอเดียภาพ');
   const hasSelection = req.shot_proposal !== undefined || req.shot_id !== undefined;
   const caller = me()?.id ?? 'local-team';
   const selectedPlan = hasSelection && directorInput ? readShotProposal(req.shot_proposal, req.shot_id, directorInput, caller) : null;
-  if (hasSelection && (!selectedPlan || planningOnly)) return json(400, { error: 'ไอเดียภาพหมดอายุหรือไม่ตรงกับรูปที่เลือก กรุณาคิดไอเดียใหม่' });
+  if (hasSelection && (!selectedPlan || planningOnly)) return errorResponse(400, 'ไอเดียภาพหมดอายุหรือไม่ตรงกับรูปที่เลือก กรุณาคิดไอเดียใหม่');
   // สุ่มจังหวะของท่า 1 แบบ (POSE_PRESETS moments) — ไม่สุ่ม = AI ตัววางแผนให้ท่าเดิมซ้ำทุกรูป
   const presetDef = POSE_PRESETS.find((p) => p.id === posePreset);
   const moment = presetDef ? pickMoment(presetDef) : null;
@@ -141,7 +141,7 @@ export const POST = post(async (req) => {
     }) : null,
     directorInput ? selectedPlan ?? directPhoto(directorInput) : null,
   ]);
-  if (directorInput && !director) return json(503, { error: 'AI ยังวางแผนภาพที่ใช้ได้ไม่สำเร็จ กรุณาลองอีกครั้ง (ยังไม่ได้สร้างรูป)' });
+  if (directorInput && !director) return errorResponse(503, 'AI ยังวางแผนภาพที่ใช้ได้ไม่สำเร็จ กรุณาลองอีกครั้ง (ยังไม่ได้สร้างรูป)');
   if (planningOnly && director && directorInput) return json(200, { proposal: createShotProposal(director, directorInput, caller) });
   const directedShot = director ? selectedShot(director) : null;
   const planName = directedShot?.title ?? (plan ? (POSE_PRESETS.find((p) => p.id === plan.preset)?.name ?? POSE_AUTO.name) : null);

@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { AccountMenu } from './AuthForm';
 import { IconCopy } from './icons';
+import { errorMessageOf } from '@/lib/api-error';
 import { thumbSrc } from '@/lib/browser';
 import { toast } from '@/lib/toast';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
@@ -45,7 +46,7 @@ function auditUrl(f: Filters, before?: number) {
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url).catch(() => null);
   const out = await res?.json().catch(() => ({}));
-  if (!res?.ok) throw new Error(out?.error ?? `โหลดไม่สำเร็จ (HTTP ${res?.status ?? 'ไม่มีเน็ต'})`);
+  if (!res?.ok) throw new Error(errorMessageOf(out) ?? `โหลดไม่สำเร็จ (HTTP ${res?.status ?? 'ไม่มีเน็ต'})`);
   return out as T;
 }
 

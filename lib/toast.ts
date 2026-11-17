@@ -32,10 +32,13 @@ function show(kind: ToastKind, message: string): number | undefined {
   }
   const toast: Toast = { id: nextId++, kind, text };
   let next = [...items, toast];
-  // over the cap: drop the oldest timed toast first, then the oldest of all
-  while (next.filter((t) => !t.leaving).length > TOAST_MAX) {
-    const shown = next.filter((t) => !t.leaving && t !== toast);
+  // over the cap: drop the oldest timed toast first, then the oldest of all. Busy notes don't count and are never
+  // dropped: they close themselves, and a "working…" note must not push out an unread error
+  const counted = (t: Toast) => !t.leaving && t.kind !== 'busy';
+  while (next.filter(counted).length > TOAST_MAX) {
+    const shown = next.filter((t) => counted(t) && t !== toast);
     const drop = shown.find((t) => !stays(t.kind)) ?? shown[0];
+    if (!drop) break;
     next = next.filter((t) => t !== drop);
   }
   if (!stays(kind)) left.set(toast.id, TOAST_TTL);

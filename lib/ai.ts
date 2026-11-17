@@ -31,7 +31,10 @@ export class ApiError extends Error {
 }
 
 async function post(url: string, init: RequestInit, who: string, timeout = 300_000) {
-  const res = await fetch(url, { ...init, method: 'POST', signal: AbortSignal.timeout(timeout) });
+  // no answer (timeout, network): reported like the provider's own outage (504 / 503 -> ai_busy in lib/fail-reason.ts)
+  const res = await fetch(url, { ...init, method: 'POST', signal: AbortSignal.timeout(timeout) }).catch((e: Error) => {
+    throw new ApiError(`${who} ไม่ตอบ: ${e.name}: ${e.message}`, e.name === 'TimeoutError' ? 504 : 503);
+  });
   if (!res.ok) {
     const msg = await res.json().then((d) => d?.error?.message ?? '', () => '');
     throw new ApiError(`${who} ตอบกลับ ${res.status}: ${msg}`, res.status);

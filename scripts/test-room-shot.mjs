@@ -10,7 +10,7 @@ const img = (data) => ({ data, mime: 'image/jpeg' });
 function setup() {
   const calls = [], lights = [], usage = [];
   const app = appLoader({ env: { OPENAI_API_KEY: 'room-test-only' }, overrides: {
-    'lib/route.ts': { post: (fn) => fn, json: (status, body) => ({ status, body }) },
+    'lib/route.ts': { post: (fn) => fn, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) },
     'lib/ai.ts': {
       availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
       describeLighting: async (i) => { lights.push(i.data); return `light of ${i.data}`; },

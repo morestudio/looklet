@@ -20,7 +20,7 @@ function load(file) {
   }).outputText;
   new Function('require', 'module', 'exports', 'process', 'fetch', code)((id) => {
     if (id === 'server-only') return {};
-    if (id === '@/lib/route') return { post: (fn) => fn, json: (status, body) => ({ status, body }) };
+    if (id === '@/lib/route') return { post: (fn) => fn, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) };
     if (id.startsWith('@/')) return load(id.slice(2) + '.ts');
     if (id.startsWith('.')) return load(path.posix.normalize(path.posix.join(path.posix.dirname(file), id)) + '.ts');
     return require(id);

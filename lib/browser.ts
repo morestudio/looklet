@@ -2,6 +2,7 @@
 import type { AccessoryInfo } from './catalog';
 import { track } from './analytics';
 import { friendlyError } from './errors';
+import { errorMessageOf, errorOf, failReasonOf } from './api-error';
 import { applyFilm, filmOn, type Film } from './film';
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
@@ -39,13 +40,14 @@ export async function api<T = { src: string }>(path: string, body: unknown): Pro
   // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ตั้งใจโหลดทั้งหน้า
   if (res.status === 401) window.location.assign('/login');
-  // error ที่ไม่ได้มาจาก route ของเรา (เช่น Vercel ตอบ 413 ไฟล์ใหญ่เกิน / 504 หมดเวลา) ไม่ใช่ JSON -> บอกเป็นข้อความที่อ่านรู้เรื่อง
+  // errors: lib/api-error.ts (read with errorOf); the host's own 413 / 504 pages are not JSON. friendlyError words 504
   const out = await res.json().catch(() => ({}));
   // สร้างรูปแล้ว (สำเร็จหรือพัง) -> หัวเว็บอัปเดตจำนวนรูปที่เหลือของลูกค้า (useMe ใน components/ui.tsx)
   if (USAGE_ROUTES.includes(path)) window.dispatchEvent(new Event(USAGE_EVENT));
   // quotaBlock(): 403 = code disabled, 429 = tokens used up
   if (USAGE_ROUTES.includes(path) && (res.status === 403 || res.status === 429)) track('quota_blocked', { route: path.slice(5), status: res.status });
-  if (!res.ok) throw Object.assign(new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`)), { status: res.status, reason: out.reason });
+  // details: the error's extra fields (e.g. the invite codes /api/admin made before it failed)
+  if (!res.ok) throw Object.assign(new Error(errorMessageOf(out) || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : `HTTP ${res.status}`)), { status: res.status, reason: failReasonOf(out), details: errorOf(out) });
   return out;
 }
 

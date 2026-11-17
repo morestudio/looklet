@@ -265,7 +265,7 @@ assert.equal(await withAccount(team, () => uploadBlock()), null);
 fill('team', 1);
 let blocked = await withAccount(team, () => uploadBlock());
 assert.equal(blocked.status, 409);
-assert.match((await blocked.json()).error, /100/);
+assert.match((await blocked.json()).error.message, /100/); // { error: { code, message } } (lib/api-error.ts)
 const uploadRoute = load('app/api/upload/route.ts');
 caller = team;
 assert.equal((await uploadRoute.POST(request({ kind: 'models', data: 'AA==', mime: 'image/png' }))).status, 409);

@@ -1,5 +1,5 @@
 import { isSuperadmin, me } from '@/lib/account';
-import { get, json } from '@/lib/route';
+import { errorResponse, get, json } from '@/lib/route';
 import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 
 // หน้าตรวจงาน /admin/audit (superadmin เท่านั้น): ทุกการสร้างรูป + สิ่งที่ส่งให้ AI (usage.log เก็บตั้งแต่ 2 พ.ย.)
@@ -14,7 +14,7 @@ type Row = {
 type ImageRow = { path: string; meta: Record<string, unknown>; created: string };
 type Plan = { name?: string; th?: string };
 
-const denied = () => (isSuperadmin(me()) ? (supabaseEnabled ? null : json(400, { error: 'หน้าตรวจงานต้องใช้ Supabase' })) : json(403, { error: 'เฉพาะ superadmin' }));
+const denied = () => (isSuperadmin(me()) ? (supabaseEnabled ? null : errorResponse(400, 'หน้าตรวจงานต้องใช้ Supabase')) : errorResponse(403, 'เฉพาะ superadmin'));
 // ยังไม่ได้รัน db-apply (ไม่มีคอลัมน์ result/log) -> อ่านแบบเดิม หน้ายังเปิดได้ แค่ไม่มีพรอมต์
 const missingColumn = (e: { message: string } | null) => Boolean(e && /column.*\b(result|log)\b|\b(result|log)\b.*column/i.test(e.message));
 const BASE = 'id, created, user_id, email, page, action, model, quality, status, tokens, cost_thb';
