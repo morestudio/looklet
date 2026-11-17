@@ -9,7 +9,7 @@ import { errorMessageOf } from '@/lib/api-error';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
 import { IconAccount, IconEye, IconEyeOff, IconKey, IconShield, IconSignOut } from './icons';
-import { useMe } from './ui';
+import { Brand, useMe } from './ui';
 
 // หลังเข้าสู่ระบบ/เปลี่ยนรหัส: โหลดหน้าใหม่ทั้งหน้า ให้ proxy.ts เห็น cookie ใหม่
 const go = (path: string) => window.location.assign(path);
@@ -70,9 +70,7 @@ export function LoginForm() {
 
   return (
     <div className="auth-card">
-      <div className="brand">
-        Lolo <span className="beta">Beta</span>
-      </div>
+      <Brand />
       <h1>เข้าใช้งาน</h1>
       <div className="page-switch auth-tabs" role="tablist" aria-label="วิธีเข้าใช้งาน">
         {(
@@ -195,9 +193,7 @@ export function SignupForm() {
   if (done)
     return (
       <div className="auth-card">
-        <div className="brand">
-          Lolo <span className="beta">Beta</span>
-        </div>
+        <Brand />
         <h1>ส่งคำขอแล้ว</h1>
         <p className="auth-text">
           ผู้ดูแลจะตรวจสอบและอาจติดต่อกลับทางเบอร์ที่ให้ไว้ เมื่ออนุมัติแล้ว เข้าใช้งานด้วยอีเมลและรหัสผ่านที่สมัครไว้ได้ทันที
@@ -210,9 +206,7 @@ export function SignupForm() {
 
   return (
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
-      <div className="brand">
-        Lolo <span className="beta">Beta</span>
-      </div>
+      <Brand />
       <h1>สมัครใช้งาน</h1>
       <p className="auth-text">สมัครแล้วรอผู้ดูแลอนุมัติก่อนเริ่มใช้งาน</p>
       <label>
@@ -357,9 +351,7 @@ export function ChangePasswordForm() {
 
   return (
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
-      <div className="brand">
-        Lolo <span className="beta">Beta</span>
-      </div>
+      <Brand />
       <h1>เปลี่ยนรหัสผ่าน</h1>
       <PasswordField label="รหัสผ่านใหม่" autoComplete="new-password" value={password} onChange={setPassword} />
       <PasswordField label="ยืนยันรหัสผ่านใหม่" autoComplete="new-password" value={confirm} onChange={setConfirm} />

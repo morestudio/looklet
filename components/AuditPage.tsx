@@ -7,7 +7,7 @@ import { IconCopy } from './icons';
 import { errorMessageOf } from '@/lib/api-error';
 import { thumbSrc } from '@/lib/browser';
 import { toast } from '@/lib/toast';
-import { AdminTabs, GalleryLink, PageSwitch } from './ui';
+import { AdminTabs, Brand, GalleryLink, PageSwitch } from './ui';
 
 type Row = {
   id: number;
@@ -182,9 +182,7 @@ export default function AuditPage() {
   return (
     <div className="admin-page">
       <header className="topbar">
-        <div className="brand">
-          Lolo <span className="beta">Beta</span>
-        </div>
+        <Brand />
         <PageSwitch current="admin" />
         <div className="top-actions">
           <GalleryLink />

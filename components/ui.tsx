@@ -9,6 +9,7 @@ import { loadMe, onMe, thumbSrc, type Me } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
 import { IconBookmark, IconZoom } from './icons';
 import ImageViewer from './ImageViewer';
+import logo from './lolo-logo.png';
 
 // แถบเลื่อน (input range): Chrome/Safari ระบายส่วนที่เลือกเป็นสีหมึกไม่ได้เอง ต้องบอกเปอร์เซ็นต์ผ่าน --fill (globals.css)
 export function rangeFill(value: number, min: number, max: number): CSSProperties {
@@ -365,6 +366,16 @@ export function useMe() {
     return off;
   }, []);
   return me;
+}
+
+// bundled import, not public/: proxy.ts gates public files behind sign-in, and /login shows the logo
+export function Brand() {
+  return (
+    <div className="brand">
+      <img src={logo.src} width={logo.width} height={logo.height} alt="Lolo" />
+      <span className="beta">Beta</span>
+    </div>
+  );
 }
 
 // 'gallery' -> no active tab
