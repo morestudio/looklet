@@ -18,15 +18,29 @@ export const GET = get(async () => {
   // account menu: login (code accounts get no change-password item) and the email, never a code account's internal email
   if (!isLimited(account) || !supabaseEnabled) {
     // superadmin: how many sign-ups wait (count in AccountMenu)
-    const pending = account?.role === 'superadmin' && supabaseEnabled
-      ? (await serviceClient().from('accounts').select('user_id', { count: 'exact', head: true }).eq('pending', true)).count ?? 0 : undefined;
-    return json(200, { role: account?.role ?? 'customer', aid, ...(account && { login: 'email', email: account.email }), ...(pending != null && { pending }) });
+    const pending =
+      account?.role === 'superadmin' && supabaseEnabled
+        ? ((
+            await serviceClient().from('accounts').select('user_id', { count: 'exact', head: true }).eq('pending', true)
+          ).count ?? 0)
+        : undefined;
+    return json(200, {
+      role: account?.role ?? 'customer',
+      aid,
+      ...(account && { login: 'email', email: account.email }),
+      ...(pending != null && { pending }),
+    });
   }
   // every limited account (email or code) gets its token bar; first call makes an email account's row
   const row = await accountOf(account!);
   const login = row?.code ? 'code' : 'email';
   return json(200, {
-    role: account!.role, aid, login, ...(login === 'email' && { email: account!.email }),
-    label: row?.label ?? '', tokenQuota: row?.token_quota ?? 0, tokens: await usedTokens(account!.id),
+    role: account!.role,
+    aid,
+    login,
+    ...(login === 'email' && { email: account!.email }),
+    label: row?.label ?? '',
+    tokenQuota: row?.token_quota ?? 0,
+    tokens: await usedTokens(account!.id),
   });
 });

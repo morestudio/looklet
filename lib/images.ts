@@ -25,7 +25,10 @@ export async function servable(img: Img): Promise<Img> {
 // รูปเต็ม PNG ~6 MB ส่งต่อตรงๆ ช้าและเปลืองโทเคนรูปเข้า · ย่อไม่ได้ = ใช้รูปเดิม
 export async function inputJpeg(img: Img): Promise<Img> {
   try {
-    const buf = await sharp(Buffer.from(img.data, 'base64')).resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    const buf = await sharp(Buffer.from(img.data, 'base64'))
+      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 90 })
+      .toBuffer();
     return { data: buf.toString('base64'), mime: 'image/jpeg' };
   } catch (e) {
     console.error('ย่อรูปก่อนส่งให้ AI ไม่สำเร็จ ใช้รูปเดิม', e);
@@ -35,7 +38,12 @@ export async function inputJpeg(img: Img): Promise<Img> {
 
 // รูปย่อสำหรับตาราง/ประวัติรูป (/api/files?w=): JPEG พื้นขาว (รูปสินค้าพื้นใส) ไม่ขยายรูปที่เล็กกว่า — lib/storage.ts readThumb / saveImage
 export async function thumbJpeg(data: Buffer, width: number): Promise<Buffer> {
-  return sharp(data).rotate().resize({ width, withoutEnlargement: true }).flatten({ background: '#fff' }).jpeg({ quality: 80 }).toBuffer();
+  return sharp(data)
+    .rotate()
+    .resize({ width, withoutEnlargement: true })
+    .flatten({ background: '#fff' })
+    .jpeg({ quality: 80 })
+    .toBuffer();
 }
 
 // ภาพ SVG ที่เราวาดเอง (ไกด์มุมของ "ตั้งมุมเอง" lib/turntable.ts) -> JPEG base64 สำหรับส่งให้ AI
@@ -54,7 +62,12 @@ export async function cropTo(img: Img, aspect: string): Promise<Img> {
     const wide = width / height > target; // กว้างเกิน = ตัดข้าง, สูงเกิน = ตัดบน/ล่าง
     const w = wide ? Math.round(height * target) : width;
     const h = wide ? height : Math.round(width / target);
-    const out = sharp(data).extract({ left: Math.round((width - w) / 2), top: Math.round((height - h) / 2), width: w, height: h });
+    const out = sharp(data).extract({
+      left: Math.round((width - w) / 2),
+      top: Math.round((height - h) / 2),
+      width: w,
+      height: h,
+    });
     const jpeg = img.mime === 'image/jpeg';
     const buf = await (jpeg ? out.jpeg({ quality: 97 }) : out.png()).toBuffer();
     return { data: buf.toString('base64'), mime: jpeg ? 'image/jpeg' : 'image/png' };

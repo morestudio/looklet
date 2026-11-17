@@ -19,22 +19,36 @@ const THAI = /[฀-๿]/; // our own browser-side errors are Thai; browser/runti
 // no HTTP answer: the failure happened in the browser
 function browserWording(message: string, name: string | undefined, paid: boolean) {
   // paid + connection lost: the server may still finish and count the image, so no "free" promise
-  if (NETWORK.test(message)) return paid
-    ? 'เชื่อมต่ออินเทอร์เน็ตไม่ได้ เช็กสัญญาณแล้วรีเฟรชหน้า ถ้า AI ทำเสร็จก่อนหลุด รูปจะอยู่ในแถวรูปที่สร้างแล้ว'
-    : 'เชื่อมต่ออินเทอร์เน็ตไม่ได้ เช็กสัญญาณแล้วลองอีกครั้ง';
+  if (NETWORK.test(message))
+    return paid
+      ? 'เชื่อมต่ออินเทอร์เน็ตไม่ได้ เช็กสัญญาณแล้วรีเฟรชหน้า ถ้า AI ทำเสร็จก่อนหลุด รูปจะอยู่ในแถวรูปที่สร้างแล้ว'
+      : 'เชื่อมต่ออินเทอร์เน็ตไม่ได้ เช็กสัญญาณแล้วลองอีกครั้ง';
   if (name === 'EncodingError' || IMAGE_LOAD.test(message)) return 'โหลดรูปที่เลือกไม่ได้ เช็กอินเทอร์เน็ตแล้วลองอีกครั้ง';
   if (message && !THAI.test(message)) return 'หน้าเว็บขัดข้อง ลองรีเฟรชหน้าแล้วลองอีกครั้ง';
 }
 
 // paid: the action spends tokens; a failure the server answered is never counted (lib/usage.ts), so say so
 export function friendlyError(err: unknown, paid = false): string {
-  const { message = '', status, reason, name } = (typeof err === 'string' ? { message: err } : err ?? {}) as
-    { message?: string; status?: number; reason?: FailReason; name?: string };
-  const text = reason ? WORDING[reason]
-    : !status ? browserWording(message, name, paid)
-    : status === 504 ? 'ใช้เวลานานเกินไป ลองอีกครั้ง' // the host's timeout page, not one of our routes
-    : NO_BODY.test(message) ? `ทำรายการไม่ได้ (รหัส ${status}) ลองอีกครั้ง`
-    : undefined;
+  const {
+    message = '',
+    status,
+    reason,
+    name,
+  } = (typeof err === 'string' ? { message: err } : (err ?? {})) as {
+    message?: string;
+    status?: number;
+    reason?: FailReason;
+    name?: string;
+  };
+  const text = reason
+    ? WORDING[reason]
+    : !status
+      ? browserWording(message, name, paid)
+      : status === 504
+        ? 'ใช้เวลานานเกินไป ลองอีกครั้ง' // the host's timeout page, not one of our routes
+        : NO_BODY.test(message)
+          ? `ทำรายการไม่ได้ (รหัส ${status}) ลองอีกครั้ง`
+          : undefined;
   if (!text) return message || 'เกิดข้อผิดพลาด ลองอีกครั้ง';
   console.warn('[error]', status ?? '', reason ?? '', message); // warn: Next's dev overlay counts console.error as an issue
   return paid && status ? text + ' ไม่เสียโควตา' : text;

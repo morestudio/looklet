@@ -5,65 +5,71 @@ import type { PoseMode } from './catalog';
 
 // ใช้เมื่อเลือก "แสงสี" — คำว่า photorealistic มักได้ผิวพลาสติกแบบ CG เลยบรรยายสิ่งที่กล้องจริงเห็นแทน
 export const REALISM =
-  'It must look like an unretouched photo of a real person taken with a real camera, not a CGI render or an AI image. '
-  + 'Skin: real texture with visible pores and fine facial hair, a little natural unevenness and a subtle sheen; '
-  + 'not sweaty or oily, no airbrushing, no beauty filter, no plastic or waxy skin. '
-  + 'Hair: individual strands and a few flyaway hairs, not a smooth solid mass. '
-  + 'Clothes: real fabric texture and weight, wrinkles and creases where the body bends, visible seams and stitching. '
+  'It must look like an unretouched photo of a real person taken with a real camera, not a CGI render or an AI image. ' +
+  'Skin: real texture with visible pores and fine facial hair, a little natural unevenness and a subtle sheen; ' +
+  'not sweaty or oily, no airbrushing, no beauty filter, no plastic or waxy skin. ' +
+  'Hair: individual strands and a few flyaway hairs, not a smooth solid mass. ' +
+  'Clothes: real fabric texture and weight, wrinkles and creases where the body bends, visible seams and stitching. ' +
   // เงา: เดิมสั่ง "dark contact shadows" + "not flat or evenly lit" ทุกรูป -> ในห้องแสงนุ่ม (ออฟฟิศ) AI ใส่เงาเข้มเกินของจริง
   // เทียบกับรูป iPhone จริง 20 ต.ค.: ของจริงเงาจางมาก หน้าต่างเกือบขาวจ้า -> ให้เงา/ความสว่างเป็นไปตามแสงในฉาก
-  + 'Light: one consistent light setup falls on both the person and the surroundings: real shadows and highlights on the face, body '
-  + 'and clothes with natural falloff; the person casts a shadow on the floor or nearby walls in the same direction and softness as '
-  + 'the other shadows in the scene, with contact shadows where they touch the ground that are only as dark as the other contact '
-  + 'shadows in the scene; nearby surfaces bounce a little of their color onto the skin and clothes. Shadows are only as dark and '
-  + 'sharp as the scene\'s light would really make them: under soft, diffuse light they stay soft and faint. Very bright areas such '
-  + 'as windows may clip to white as on a real camera, while white clothes keep their texture. '
-  + 'Color: natural, slightly muted color like a real camera, true-to-life skin tones, subtle grain; '
-  + 'not oversaturated, not over-sharpened, no glow.';
+  'Light: one consistent light setup falls on both the person and the surroundings: real shadows and highlights on the face, body ' +
+  'and clothes with natural falloff; the person casts a shadow on the floor or nearby walls in the same direction and softness as ' +
+  'the other shadows in the scene, with contact shadows where they touch the ground that are only as dark as the other contact ' +
+  'shadows in the scene; nearby surfaces bounce a little of their color onto the skin and clothes. Shadows are only as dark and ' +
+  "sharp as the scene's light would really make them: under soft, diffuse light they stay soft and faint. Very bright areas such " +
+  'as windows may clip to white as on a real camera, while white clothes keep their texture. ' +
+  'Color: natural, slightly muted color like a real camera, true-to-life skin tones, subtle grain; ' +
+  'not oversaturated, not over-sharpened, no glow.';
 
 // สีผิว (3 พ.ย.): ผู้ใช้บอกว่าผิวออกมาสว่าง/ขาวเกินจริงตลอด ดูไม่เป็นธรรมชาติ ขอให้สีผิวสำคัญที่สุด และให้ไว้ต้นคำสั่ง (AI สนใจต้นคำสั่งมากกว่า)
 // รูปล่าสุด (ลอกทั้งช็อต + ฉาก) ผิวขาวอมชมพูแบบกระเบื้องตามคนในรูปท่า: คำสั่งให้ลอก "แสงและโทนสี" จากรูปท่า + คำบรรยายแสง
 // (describeLighting) เขียนว่า "luminous, even complexion" + เดิมมีแค่ "Keep the model's natural skin tone, only as affected by the
 // scene lighting" กลางคำสั่ง -> เป็นประโยคที่สองของทุกโหมด ต่อจากประโยคแรก (ประโยคแรกมีระยะภาพ ต้องอยู่ก่อน)
-export const SKIN_TONE = 'Most important, skin tone: keep the real skin tone of the model in image 1, with the same depth, warmth and undertone, '
-  + 'as a natural, healthy skin color seen through a real camera. Never whiten, brighten or pale her skin, and never make it pink, grey, '
-  + 'porcelain or glowing; no skin-whitening or beauty-filter look. A bright or high-key exposure, soft or flash light, a white background '
-  + 'or a pastel color grade changes the light falling on her, not the color of her skin. Her face, neck, arms, hands and legs share one '
-  + 'consistent tone with the natural variation of real skin: slightly deeper and warmer at the knees, elbows and knuckles and where skin folds. '
-  + 'If image 1 itself looks brightened or beauty-filtered, use the natural tone of her real skin under the filter, never a paler one.';
+export const SKIN_TONE =
+  'Most important, skin tone: keep the real skin tone of the model in image 1, with the same depth, warmth and undertone, ' +
+  'as a natural, healthy skin color seen through a real camera. Never whiten, brighten or pale her skin, and never make it pink, grey, ' +
+  'porcelain or glowing; no skin-whitening or beauty-filter look. A bright or high-key exposure, soft or flash light, a white background ' +
+  'or a pastel color grade changes the light falling on her, not the color of her skin. Her face, neck, arms, hands and legs share one ' +
+  'consistent tone with the natural variation of real skin: slightly deeper and warmer at the knees, elbows and knuckles and where skin folds. ' +
+  'If image 1 itself looks brightened or beauty-filtered, use the natural tone of her real skin under the filter, never a paler one.';
 
 // ขนาดคนกับฉาก: สไตล์สั่ง "เต็มความสูงภาพ" AI ขยายคนแทนที่จะขยับกล้องเข้าใกล้ ฉากยังไกลเท่ารูปฉาก คนเลยดูตัวใหญ่ผิดธรรมชาติ
 // (เจอ 20–21 ต.ค.: โซฟา/เก้าอี้ออฟฟิศดูเล็กกว่าตัวคน) -> บอกขนาดจริงของคนและของรอบตัว + ให้ขยับกล้องเข้าใกล้แทนการขยายคน
 // ลอกทั้งช็อต (framed = true): ระยะภาพมาจากรูปต้นแบบ ไม่บอก "ขอบบนเหนือหัว" ไม่งั้นรูปต้นแบบที่เป็นภาพใกล้หน้า AI ถอยกล้องออก (3 พ.ย.)
 // ฉากที่เลือก + รูปท่า (roomAt = เลขรูปฉากที่ทำใหม่แล้ว): ฉากถ่ายระยะ/มุมตามรูปท่ามาแล้ว ห้ามขยับกล้องเข้าใกล้ (ทดสอบ 6 พ.ย. AI ซูมเข้าเองจนคนใหญ่กว่ารูปท่า)
-const scaleLine = (framed = false, roomAt: number | null = null) => 'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to '
-  + `her: doors about 2 m tall${framed ? '' : ' with the top of the frame well above her head'}, ceilings about 2.7 m high, the seats of chairs and sofas at `
-  + 'about knee height, tables at about hip height and counters at about waist height. '
-  + (roomAt
+const scaleLine = (framed = false, roomAt: number | null = null) =>
+  'Real-world scale: she is an adult about 1.65 to 1.70 m tall, and everything in the location keeps its true size next to ' +
+  `her: doors about 2 m tall${framed ? '' : ' with the top of the frame well above her head'}, ceilings about 2.7 m high, the seats of chairs and sofas at ` +
+  'about knee height, tables at about hip height and counters at about waist height. ' +
+  (roomAt
     ? `Never enlarge her against the background: her size comes only from her real height and the camera distance of image ${roomAt}.`
-    : 'Never enlarge her against an unchanged background: '
-      + 'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer '
-      + 'and larger background objects and natural perspective.');
+    : 'Never enlarge her against an unchanged background: ' +
+      'if she has to look larger in the frame, the camera is closer to her, so the location is seen from that closer viewpoint, with fewer ' +
+      'and larger background objects and natural perspective.');
 
 // ตำแหน่งในภาพ (ลอกทั้งช็อตใช้ตำแหน่งจากรูปต้นแบบแทน): ทดสอบ 21 ต.ค. สั่งกว้างๆ ว่า "ไม่ต้องอยู่กลาง" AI ยังวางกลางภาพทุกรูป (48–53%)
 // -> server สุ่มข้างให้ (placement) แล้วบอกเป็นตำแหน่งชัดๆ ในบรรทัดแรก + ย้ำท้ายคำสั่ง (แบบเดียวกับระยะ/มุมกล้อง)
 // ผู้ใช้เลือกเองในขั้นตำแหน่ง (PLACEMENTS ใน catalog) หรือ "อัตโนมัติ" = สุ่มต่อรูป
 export type Placement = 'left' | 'center' | 'right';
 // อัตโนมัติ: ซ้าย 40% ขวา 40% ไม่สั่ง (AI วางกลางเอง) 20% — ทดสอบ 21 ต.ค. สั่งข้างแล้วตัวคนย้ายไปราว 40% / 60% ของความกว้าง
-export const pickPlacement = (): Placement | null => { const r = Math.random(); return r < 0.4 ? 'left' : r < 0.8 ? 'right' : null; };
+export const pickPlacement = (): Placement | null => {
+  const r = Math.random();
+  return r < 0.4 ? 'left' : r < 0.8 ? 'right' : null;
+};
 const placedAt = (p: Placement) => (p === 'center' ? 'in the center of the frame' : `in the ${p} third of the frame`);
-export const placementLine = (p: Placement) => p === 'center'
-  ? 'Composition: place her in the center of the frame, with balanced space of the location on both sides. Keep the outfit clearly visible.'
-  : `Composition: place her off-center, in the ${p} third of the frame: the middle of her body is about one third of the way in from the `
-    + `${p} edge, and the other side of the frame is open space of the location, like a real fashion photographer would compose it. `
-    + 'Keep the outfit clearly visible.';
+export const placementLine = (p: Placement) =>
+  p === 'center'
+    ? 'Composition: place her in the center of the frame, with balanced space of the location on both sides. Keep the outfit clearly visible.'
+    : `Composition: place her off-center, in the ${p} third of the frame: the middle of her body is about one third of the way in from the ` +
+      `${p} edge, and the other side of the frame is open space of the location, like a real fashion photographer would compose it. ` +
+      'Keep the outfit clearly visible.';
 
 // ของเสริม: AI ชอบวาดสินค้าใหม่ให้ "คล้ายๆ" ต้องสั่งให้เหมือนรูปสินค้าทุกรายละเอียด
 export const ACCESSORY_RULES =
-  'Add these accessories to the model exactly as they look in their product photos: same shape, proportions, '
-  + 'color, material, texture, logos and hardware; do not redesign or simplify them. Wear or hold each one naturally '
-  + 'where it belongs, at a realistic size relative to the body, lit by the same light as the rest of the photo with '
-  + 'matching shadows. Ignore any people, hands, mannequins, packaging or background in the product photos.';
+  'Add these accessories to the model exactly as they look in their product photos: same shape, proportions, ' +
+  'color, material, texture, logos and hardware; do not redesign or simplify them. Wear or hold each one naturally ' +
+  'where it belongs, at a realistic size relative to the body, lit by the same light as the rest of the photo with ' +
+  'matching shadows. Ignore any people, hands, mannequins, packaging or background in the product photos.';
 
 // เสื้อผ้าที่เปลี่ยน (ขั้นเสื้อผ้าแยกชิ้น 29 ต.ค.): outfit = ทั้งชุด, top / bottom / shoes = แยกชิ้น — รูปเรียงตามลำดับนี้ต่อจากนางแบบ
 export type Wear = { outfit?: boolean; top?: boolean; bottom?: boolean; shoes?: boolean };
@@ -109,9 +115,31 @@ export function cropLine(aspect: string, fullBody: boolean) {
 }
 
 export function buildPrompt({
-  wear, hasSceneImage, sceneText, extra, look, fullBody = true, accessories = [], hasPose = false, autoPose = false, poseHints = [],
-  poseMode = 'pose', framing = null, gaze = null, headGaze = null, props = [], face = null, faceFromRef = false, refLight = null, skinLight = null, sceneLight = null,
-  posePlan = null, camera = null, placement = null, crop = null, directed,
+  wear,
+  hasSceneImage,
+  sceneText,
+  extra,
+  look,
+  fullBody = true,
+  accessories = [],
+  hasPose = false,
+  autoPose = false,
+  poseHints = [],
+  poseMode = 'pose',
+  framing = null,
+  gaze = null,
+  headGaze = null,
+  props = [],
+  face = null,
+  faceFromRef = false,
+  refLight = null,
+  skinLight = null,
+  sceneLight = null,
+  posePlan = null,
+  camera = null,
+  placement = null,
+  crop = null,
+  directed,
 }: PromptInput) {
   // ลอกทั้งช็อต: มุมกล้อง/ระยะ/การมอง/แสง/โทนสีเอาจากรูปต้นแบบ -> ไม่ใช้ framing/look ของสไตล์ถ่ายภาพ (คำสั่งจะขัดกัน)
   const shot = hasPose && poseMode !== 'pose';
@@ -129,14 +157,19 @@ export function buildPrompt({
   } else if (shot) {
     // ลอกทั้งช็อต (3 พ.ย.): เดิมประโยคแรกแค่ "Create one fashion photograph." รูปท่าเป็นภาพใกล้หน้าตรง แต่รูปนางแบบท้าวคางมองข้าง
     // -> AI เอาท่า/ระยะ/สีหน้าจากรูปนางแบบ ลอกแค่ฉากกับแสง · บอกตั้งแต่ประโยคแรกว่ารูปนี้คือลอกช็อตจากรูปต้นแบบ
-    first = `Create one fashion photograph that recreates the shot of image ${poseAt} with the model from image 1: `
-      + `the same pose, head angle and gaze, framing, camera angle${shotScene ? ', camera distance and location' : ' and camera distance'} as image ${poseAt}.`;
+    first =
+      `Create one fashion photograph that recreates the shot of image ${poseAt} with the model from image 1: ` +
+      `the same pose, head angle and gaze, framing, camera angle${shotScene ? ', camera distance and location' : ' and camera distance'} as image ${poseAt}.`;
   } else if (framing) {
     first = `Create one fashion photograph, ${framing}${at}.`;
-  } else if (!fullBody) { // ต้องบอกตั้งแต่บรรทัดแรก ไม่งั้น AI ยึดรูปนางแบบเต็มตัวแล้วออกมาเต็มตัวเหมือนเดิม
+  } else if (!fullBody) {
+    // ต้องบอกตั้งแต่บรรทัดแรก ไม่งั้น AI ยึดรูปนางแบบเต็มตัวแล้วออกมาเต็มตัวเหมือนเดิม
     first = `Create one close-up fashion photograph, framed from the waist up with the legs and feet out of frame${at}.`;
   } else {
-    first = (look ? 'Create one full-body fashion photograph' : 'Create one photorealistic full-body fashion photograph') + at + '.';
+    first =
+      (look ? 'Create one full-body fashion photograph' : 'Create one photorealistic full-body fashion photograph') +
+      at +
+      '.';
   }
   // เปลี่ยนท่า -> ห้ามสั่ง "ท่าเดิม" ไม่งั้นคำสั่งขัดกันเอง, แค่หันหน้า/ถือพร็อพ -> ท่าคล้ายเดิม ขยับเฉพาะที่สั่ง
   const smallPoseChange = !shot && (gaze || props.length);
@@ -144,57 +177,74 @@ export function buildPrompt({
     first,
     SKIN_TONE,
     hasPose
-      // รูปท่า: รูปนางแบบใช้แค่ว่าเป็นใคร ห้ามเอาท่า/ระยะจากรูปนั้น (เดิมไม่ได้บอก รูปนางแบบที่โพสท่าชัดๆ ชนะรูปท่า 3 พ.ย.)
-      ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape. '
-        + 'Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression'
-        + (shot ? ', or its framing or camera distance.' : '.')
+      ? // รูปท่า: รูปนางแบบใช้แค่ว่าเป็นใคร ห้ามเอาท่า/ระยะจากรูปนั้น (เดิมไม่ได้บอก รูปนางแบบที่โพสท่าชัดๆ ชนะรูปท่า 3 พ.ย.)
+        'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape. ' +
+        'Image 1 is only for who she is: do not copy its pose, arm and hand position, head angle, gaze or expression' +
+        (shot ? ', or its framing or camera distance.' : '.')
       : autoPose || posePlan
-      ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape.'
-      : smallPoseChange
-        ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape, '
-          + 'and a similar pose, changed only as described below.'
-        : 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle, body shape and pose.',
+        ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape.'
+        : smallPoseChange
+          ? 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle and body shape, ' +
+            'and a similar pose, changed only as described below.'
+          : 'Image 1 is the model. Keep the same person: identical face, facial features, skin tone, hairstyle, body shape and pose.',
   ];
   if (look || shot) {
     // สั่งให้ทำผิวใหม่เฉยๆ AI จะวาดหน้าใหม่ทั้งหน้าจนเป็นคนอื่น ต้องบอกว่าเปลี่ยนได้แค่ผิวกับแสง
     lines.push(
-      'The face must stay recognizably the same person: same face shape, eye shape, eyelids, eyebrows, nose, lips, '
-      + 'jawline, cheek fullness and age. Only the skin surface and the lighting may look different from image 1: '
-      + 'do not copy its airbrushed skin or flat lighting, but never change the facial structure.');
+      'The face must stay recognizably the same person: same face shape, eye shape, eyelids, eyebrows, nose, lips, ' +
+        'jawline, cheek fullness and age. Only the skin surface and the lighting may look different from image 1: ' +
+        'do not copy its airbrushed skin or flat lighting, but never change the facial structure.',
+    );
   }
   let n = 2;
   if (wear.outfit) {
-    lines.push(`Image ${n} shows an outfit worn by someone else: dress the model in exactly this outfit `
-      + `(same garments, colors, patterns and fit). Ignore the face, body, skin tone and background of image ${n}. `
-      + 'Completely replace the clothes the model wears in image 1: none of the original garments '
-      + '(for example shorts under a skirt) may remain visible.' + (wear.shoes ? ' Her shoes come from the shoe photo below.' : ''));
+    lines.push(
+      `Image ${n} shows an outfit worn by someone else: dress the model in exactly this outfit ` +
+        `(same garments, colors, patterns and fit). Ignore the face, body, skin tone and background of image ${n}. ` +
+        'Completely replace the clothes the model wears in image 1: none of the original garments ' +
+        '(for example shorts under a skirt) may remain visible.' +
+        (wear.shoes ? ' Her shoes come from the shoe photo below.' : ''),
+    );
     n += 1;
   }
   // แยกชิ้น: บอกว่าเอาแค่ส่วนไหนจากรูป (รูปอาจเป็นคนใส่ทั้งชุด) และส่วนที่ไม่ได้เลือกให้คงของเดิมในรูปนางแบบ
   if (wear.top) {
-    lines.push(`Image ${n} shows a top (a shirt, T-shirt, blouse, sweater or jacket), possibly worn by someone else: dress the model in `
-      + `exactly this top (same garment, color, pattern, details, length and fit) in place of the top she wears in image 1. `
-      + `Use only the top from image ${n}: ignore any other clothes, the face, body, skin tone and background in it.`);
+    lines.push(
+      `Image ${n} shows a top (a shirt, T-shirt, blouse, sweater or jacket), possibly worn by someone else: dress the model in ` +
+        `exactly this top (same garment, color, pattern, details, length and fit) in place of the top she wears in image 1. ` +
+        `Use only the top from image ${n}: ignore any other clothes, the face, body, skin tone and background in it.`,
+    );
     n += 1;
   }
   if (wear.bottom) {
-    lines.push(`Image ${n} shows a bottom garment (pants, jeans, shorts or a skirt), possibly worn by someone else: dress the model in `
-      + `exactly this bottom (same garment, color, pattern, details, length and fit) in place of the bottoms she wears in image 1. `
-      + `Use only the bottoms from image ${n}: ignore any other clothes, the face, body, skin tone and background in it.`);
+    lines.push(
+      `Image ${n} shows a bottom garment (pants, jeans, shorts or a skirt), possibly worn by someone else: dress the model in ` +
+        `exactly this bottom (same garment, color, pattern, details, length and fit) in place of the bottoms she wears in image 1. ` +
+        `Use only the bottoms from image ${n}: ignore any other clothes, the face, body, skin tone and background in it.`,
+    );
     n += 1;
   }
   if (wear.shoes) {
-    lines.push(`Image ${n} is a photo of a pair of shoes: put exactly these shoes on both of her feet in place of the shoes she wears in `
-      + `image 1 (same design, colors, materials, logos and details). Ignore any people, feet, hands or background in image ${n}.`);
+    lines.push(
+      `Image ${n} is a photo of a pair of shoes: put exactly these shoes on both of her feet in place of the shoes she wears in ` +
+        `image 1 (same design, colors, materials, logos and details). Ignore any people, feet, hands or background in image ${n}.`,
+    );
     n += 1;
   }
   if (!wear.outfit && !wear.top && !wear.bottom) {
-    lines.push(wear.shoes ? 'Keep the outfit the model is wearing in image 1; only her shoes change.' : 'Keep the outfit the model is wearing in image 1.');
+    lines.push(
+      wear.shoes
+        ? 'Keep the outfit the model is wearing in image 1; only her shoes change.'
+        : 'Keep the outfit the model is wearing in image 1.',
+    );
   } else if (!wear.outfit) {
     if (!wear.top) lines.push('Keep the top she wears in image 1 exactly as it is.');
     if (!wear.bottom) lines.push('Keep the bottoms she wears in image 1 exactly as they are.');
-    if (wear.top && wear.bottom) lines.push('Style the top and the bottoms together naturally, tucked in or left out as suits the two '
-      + 'garments, each keeping its own length and fit.');
+    if (wear.top && wear.bottom)
+      lines.push(
+        'Style the top and the bottoms together naturally, tucked in or left out as suits the two ' +
+          'garments, each keeping its own length and fit.',
+      );
     if (!wear.shoes) lines.push('Keep the shoes she wears in image 1.');
   }
   if (accessories.length) {
@@ -207,99 +257,142 @@ export function buildPrompt({
   if (hasPose) {
     // รูปท่ามักเป็นรูปแฟชั่นที่มีแว่น/กระเป๋า/ชุดของคนอื่น ต้องบอกชัดว่าเอาอะไร ไม่งั้น AI ลอกของติดมาด้วย
     if (!shot) {
-      lines.push(`Image ${n} is only a pose reference: pose the model exactly like the person in image ${n} `
-        + '(stance, weight shift, leg and foot position, arm and hand placement, torso turn, head tilt and gaze direction). '
-        + `Copy only the pose. Do not copy anything else from image ${n}: not the face, skin tone, hair, body shape, clothes, `
-        + 'accessories such as sunglasses, jewelry or bags, or the background.'
-        // ไม่ลอกกรอบภาพ/ตำแหน่งคนในรูปท่าเสมอ (ไม่ใช่แค่ตอนเลือกระยะ/มุมเอง) ผู้ใช้ต้องการแค่ท่า ตำแหน่งให้จัดใหม่ตามฉาก (COMPOSITION)
-        + ` Copy only the body pose, not how image ${n} is framed, where the person stands in it, or the height and angle of its camera.`
-        + (camera?.framing && !fullBody ? ' Any part of the pose outside the chosen framing, such as the legs and feet, is simply cropped out of the frame.' : ''));
+      lines.push(
+        `Image ${n} is only a pose reference: pose the model exactly like the person in image ${n} ` +
+          '(stance, weight shift, leg and foot position, arm and hand placement, torso turn, head tilt and gaze direction). ' +
+          `Copy only the pose. Do not copy anything else from image ${n}: not the face, skin tone, hair, body shape, clothes, ` +
+          'accessories such as sunglasses, jewelry or bags, or the background.' +
+          // ไม่ลอกกรอบภาพ/ตำแหน่งคนในรูปท่าเสมอ (ไม่ใช่แค่ตอนเลือกระยะ/มุมเอง) ผู้ใช้ต้องการแค่ท่า ตำแหน่งให้จัดใหม่ตามฉาก (COMPOSITION)
+          ` Copy only the body pose, not how image ${n} is framed, where the person stands in it, or the height and angle of its camera.` +
+          (camera?.framing && !fullBody
+            ? ' Any part of the pose outside the chosen framing, such as the legs and feet, is simply cropped out of the frame.'
+            : ''),
+      );
     } else {
       // เลือกสีหน้าเอง -> ไม่ลอกสีหน้า, เลือกแสงของสไตล์ถ่ายภาพ (look) -> ไม่ลอกแสง/โทนสี (คำสั่งจะขัดกัน)
-      const copy = ['its pose', 'camera angle and height', 'lens and framing', 'how large the person is and where they stand in the frame',
-        'gaze direction', ...(face ? [] : ['expression']), ...(look ? [] : ['lighting and color grading'])];
-      lines.push(`Image ${n} is a reference photo for the whole shot: recreate ${copy.slice(0, -1).join(', ')}, and ${copy.at(-1)}. `
-        + `Use only the shot from image ${n}: do not copy that person's face, skin tone, hair, body shape, clothes or accessories.`
-        + (look ? '' : ` Its lighting and color grading change the light on the model, never her skin tone, however pale the skin in image ${n} looks.`)
-        + ` Frame it exactly like image ${n}: show the same part of her body at the same size in the frame.`
-        + (roomShot ? ` Image ${n + 1} already has this framing, so keep it as it is; she takes the place of the person in image ${n} at her real size.` : '')
-        + ` If image ${n} is a close-up of `
-        + 'the head and shoulders, the result is the same close-up; never zoom out to show more of her body than image '
-        + `${n} shows, and never crop in tighter.`
-        + (shotScene
-          ? ` Place the model in the same location as image ${n}: same background, setting, time of day${look ? '' : ' and light'}.`
-          : ` Do not copy the background of image ${n}.`)
-        + (look ? ` Use the lighting described below instead of the lighting of image ${n}.` : ''));
+      const copy = [
+        'its pose',
+        'camera angle and height',
+        'lens and framing',
+        'how large the person is and where they stand in the frame',
+        'gaze direction',
+        ...(face ? [] : ['expression']),
+        ...(look ? [] : ['lighting and color grading']),
+      ];
+      lines.push(
+        `Image ${n} is a reference photo for the whole shot: recreate ${copy.slice(0, -1).join(', ')}, and ${copy.at(-1)}. ` +
+          `Use only the shot from image ${n}: do not copy that person's face, skin tone, hair, body shape, clothes or accessories.` +
+          (look
+            ? ''
+            : ` Its lighting and color grading change the light on the model, never her skin tone, however pale the skin in image ${n} looks.`) +
+          ` Frame it exactly like image ${n}: show the same part of her body at the same size in the frame.` +
+          (roomShot
+            ? ` Image ${n + 1} already has this framing, so keep it as it is; she takes the place of the person in image ${n} at her real size.`
+            : '') +
+          ` If image ${n} is a close-up of ` +
+          'the head and shoulders, the result is the same close-up; never zoom out to show more of her body than image ' +
+          `${n} shows, and never crop in tighter.` +
+          (shotScene
+            ? ` Place the model in the same location as image ${n}: same background, setting, time of day${look ? '' : ' and light'}.`
+            : ` Do not copy the background of image ${n}.`) +
+          (look ? ` Use the lighting described below instead of the lighting of image ${n}.` : ''),
+      );
       // สั่งแค่ "recreate its lighting" AI ทำแสงนุ่ม/มืดลงเสมอ -> ส่งคำบรรยายแสงจริงที่ AI อ่านจากรูปต้นแบบมาด้วย (ทดสอบ 19 ต.ค.)
       if (!look && refLight) {
-        lines.push(`Lighting exactly like image ${n}: ${refLight} Match this lighting closely; do not make it softer, dimmer or flatter than in image ${n}.`);
+        lines.push(
+          `Lighting exactly like image ${n}: ${refLight} Match this lighting closely; do not make it softer, dimmer or flatter than in image ${n}.`,
+        );
       }
       // แสงบนผิว (3 พ.ย. ทดสอบ 2 เคสแล้วผู้ใช้ให้ใส่): ไฮไลต์นุ่มกระจายแบบรูปท่าแทนจุดมันเล็กๆ ผิวไม่ขาวขึ้น · ย้ำว่าลอกแค่แสง ไม่ใช่สีผิว
       if (!look && skinLight) {
-        lines.push(`Light on her skin exactly like on the person in image ${n}: ${skinLight} Copy only how the light falls on the skin `
-          + '(where the highlights sit, how large and soft they are, the sheen and how the light turns into shadow), never that person\'s skin color: '
-          + 'her skin tone stays exactly as in image 1.');
+        lines.push(
+          `Light on her skin exactly like on the person in image ${n}: ${skinLight} Copy only how the light falls on the skin ` +
+            "(where the highlights sit, how large and soft they are, the sheen and how the light turns into shadow), never that person's skin color: " +
+            'her skin tone stays exactly as in image 1.',
+        );
       }
     }
     // หน้าตรงแปะบนตัว: รูปนางแบบมักหันหน้าตรงกล้อง AI เลยวาดหน้าตรงบนตัวที่หัน/เอียง ดูไม่เป็นธรรมชาติ
     // ต้องบอกตรงๆ ว่าห้ามลอกมุมหน้าจากรูปนางแบบ (ทดสอบ 19 ต.ค.: ใส่บรรทัดนี้แล้วมุมหัว/หน้าเป็นธรรมชาติทันที)
     // 3 พ.ย.: กลับกันก็เจอ รูปท่าหน้าตรงมองกล้อง แต่รูปนางแบบหันข้าง -> ผลหันข้างมองไกลตามรูปนางแบบ เพราะบรรทัดเดิมบอกแค่
     // "image 1 อาจหน้าตรง" + "ห้ามเป็นหน้าตรงแปะบนตัว" -> บอกเป็นกลาง ไม่ว่ารูปไหนหันแบบไหน + สายตาตามรูปท่า (ถ้าไม่ได้เลือกการมองเอง)
-    lines.push(`Image 1 may show the model with a different head angle and gaze; do not copy them. Turn and tilt her head exactly like `
-      + `the person in image ${n}`
-      + (shot || !gaze ? `, point her eyes exactly where that person's eyes look (straight into the lens if she looks into the lens),` : '')
-      + ' and show her face naturally from that angle as seen by the camera, with natural foreshortening and '
-      + 'the neck and shoulders connecting naturally to the head. It must not look like the face from image 1 placed on a turned or tilted body.');
+    lines.push(
+      `Image 1 may show the model with a different head angle and gaze; do not copy them. Turn and tilt her head exactly like ` +
+        `the person in image ${n}` +
+        (shot || !gaze
+          ? `, point her eyes exactly where that person's eyes look (straight into the lens if she looks into the lens),`
+          : '') +
+        ' and show her face naturally from that angle as seen by the camera, with natural foreshortening and ' +
+        'the neck and shoulders connecting naturally to the head. It must not look like the face from image 1 placed on a turned or tilted body.',
+    );
     if (faceFromRef && !face) {
-      lines.push(`Expression: copy the facial expression of the person in image ${n} (how much she smiles, how open the mouth is and `
-        + 'the mood of the eyes), not the expression in image 1.');
+      lines.push(
+        `Expression: copy the facial expression of the person in image ${n} (how much she smiles, how open the mouth is and ` +
+          'the mood of the eyes), not the expression in image 1.',
+      );
     }
     // เสื้อผ้าคนในรูปท่าติดมา: ทดสอบ 19 ต.ค. ชายกระโปรงลูกไม้ยาวในรูปท่าที่ตกลงพื้นข้างสุนัข AI นึกว่าเป็นของในฉาก โผล่มาทุกรอบ
     // บอกกว้างๆ ว่าห้ามติดมายังไม่พอ ต้องบอกว่าส่วนที่ห้อยลงพื้น/เฟอร์นิเจอร์ก็เป็นเสื้อผ้า ไม่ใช่ของในฉาก
-    lines.push(`None of the clothing, fabric or accessories of the person in image ${n} (for example a dress, lace or straps) `
-      + `may appear anywhere in the image. Any part of that person's clothing that drapes onto the furniture or hangs down to the floor `
-      + '(for example the hem of a long dress beside an animal or a chair) belongs to her outfit, not to the location: leave it out completely.');
+    lines.push(
+      `None of the clothing, fabric or accessories of the person in image ${n} (for example a dress, lace or straps) ` +
+        `may appear anywhere in the image. Any part of that person's clothing that drapes onto the furniture or hangs down to the floor ` +
+        '(for example the hem of a long dress beside an animal or a chair) belongs to her outfit, not to the location: leave it out completely.',
+    );
     // ท่าต้องตรงเป๊ะ: ฉากที่เลือกไม่มีที่นั่ง/ที่พิง AI มักเปลี่ยนเป็นท่ายืน -> สั่งให้เติมของที่เข้ากับฉากแทน (ไม่ต้องเหมือนในรูปท่า)
     // ต้องเป็นของชนิดเดียวกัน: ทดสอบ 15 ต.ค. ท่านั่งโซฟาแขนพาดพนัก ในสตูดิโอโล่ง AI ให้นั่งพื้นแทน แขนเลยลอยพาดอากาศ
-    lines.push('The pose must match exactly, including whether the person is standing, walking, sitting, leaning or crouching; '
-      + 'never switch to a different or easier pose. If the pose relies on something to sit on, lean against or hold '
-      + '(such as a chair, sofa, armchair, steps, ledge, wall, door or railing) and the location has nothing suitable, add one that belongs '
-      + 'naturally in the location, matching its style, materials, colors, scale, perspective and lighting, '
-      + 'with real contact and shadows where the body touches it. '
-      + `Use the same kind of support as in image ${n}, with the same seat height and the same parts the body rests on `
-      + '(for example a backrest, or armrests for arms draped over them): never sit on the floor instead, '
-      + 'and never leave an arm or leg resting on empty air. In a studio, a set piece placed on the backdrop belongs naturally. '
-      + `It does not have to look like the one in image ${n}.`);
+    lines.push(
+      'The pose must match exactly, including whether the person is standing, walking, sitting, leaning or crouching; ' +
+        'never switch to a different or easier pose. If the pose relies on something to sit on, lean against or hold ' +
+        '(such as a chair, sofa, armchair, steps, ledge, wall, door or railing) and the location has nothing suitable, add one that belongs ' +
+        'naturally in the location, matching its style, materials, colors, scale, perspective and lighting, ' +
+        'with real contact and shadows where the body touches it. ' +
+        `Use the same kind of support as in image ${n}, with the same seat height and the same parts the body rests on ` +
+        '(for example a backrest, or armrests for arms draped over them): never sit on the floor instead, ' +
+        'and never leave an arm or leg resting on empty air. In a studio, a set piece placed on the backdrop belongs naturally. ' +
+        `It does not have to look like the one in image ${n}.`,
+    );
     // รูปท่ามักแคปจากมือถือ (IG/Pinterest) ติดแถบแอป ชื่อบัญชี ปุ่มไลก์มาด้วย
     lines.push(`Image ${n} may be a phone screenshot: ignore any app interface, text, icons or buttons in it.`);
     n += 1;
   } else if (posePlan) {
     // ท่าที่วางแผนจากฉากจริง (ท่าสำเร็จรูป) — รูปนางแบบมักยืนตรงหน้าตรงในสตูดิโอ ต้องบอกว่าห้ามลอกท่า/มุมหัว/สีหน้าจากรูปนั้น
-    lines.push(`Pose and body language, planned for this location: ${posePlan} `
-      + 'Image 1 may show the model in a straight studio pose facing the camera; do not copy her pose, head angle or expression from image 1. '
-      + 'Keep the face clearly visible: hands must not cover the eyes, nose or mouth.');
+    lines.push(
+      `Pose and body language, planned for this location: ${posePlan} ` +
+        'Image 1 may show the model in a straight studio pose facing the camera; do not copy her pose, head angle or expression from image 1. ' +
+        'Keep the face clearly visible: hands must not cover the eyes, nose or mouth.',
+    );
   } else if (autoPose) {
     // ให้ AI คิดท่าเอง แต่บอกไอเดียตามของที่ใส่ (แว่น -> จับแว่น, กระเป๋า -> ถือขึ้นมา) ไม่งั้นมักยืนตรงเฉยๆ
     // ให้เลือกแค่ 1–2 อย่าง: ใส่ของ 3 ชิ้นแล้วสั่งทำทุกท่าพร้อมกัน มือไม่พอ ท่าจะดูฝืน
     // ห้ามมือบังหน้า: ขั้นใส่หน้าจริงแปะทั้งกรอบหน้า มือที่บังอยู่จะหายไป
     const hints = [...new Set(poseHints)];
-    lines.push('Choose a new, natural and confident fashion pose that shows off the products, '
-      + "with the outfit's fit, silhouette and details clearly visible."
-      + (hints.length ? ` Interact with the accessories naturally, using one or two of these ideas that work well together: ${hints.join('; ')}.` : '')
-      + ' Keep the face clearly visible: hands must not cover the eyes, nose or mouth.');
+    lines.push(
+      'Choose a new, natural and confident fashion pose that shows off the products, ' +
+        "with the outfit's fit, silhouette and details clearly visible." +
+        (hints.length
+          ? ` Interact with the accessories naturally, using one or two of these ideas that work well together: ${hints.join('; ')}.`
+          : '') +
+        ' Keep the face clearly visible: hands must not cover the eyes, nose or mouth.',
+    );
   }
   if (shotScene) {
     // ฉากมาจากรูปต้นแบบ (บอกไว้แล้วด้านบน)
   } else if (hasSceneImage) {
-    lines.push(`Image ${n} is the location: place the model in this scene.`
-      + (roomShot ? ` Image ${n} was already photographed with the camera, framing and light of image ${n - 1}: keep its camera position, angle, `
-        + `framing and zoom exactly as they are, and do not crop in, zoom in or move the camera closer: the room stays framed exactly as in image ${n}. `
-        + `She takes the place of the person in image ${n - 1}, at her real size in this room.` : '')
-      + ` Ignore any people in image ${n}.`);
+    lines.push(
+      `Image ${n} is the location: place the model in this scene.` +
+        (roomShot
+          ? ` Image ${n} was already photographed with the camera, framing and light of image ${n - 1}: keep its camera position, angle, ` +
+            `framing and zoom exactly as they are, and do not crop in, zoom in or move the camera closer: the room stays framed exactly as in image ${n}. ` +
+            `She takes the place of the person in image ${n - 1}, at her real size in this room.`
+          : '') +
+        ` Ignore any people in image ${n}.`,
+    );
     // แสงในรูปฉากจริง: ไม่บอก AI ใส่แสง/เงาแบบช่างภาพเอง (เทียบกับรูป iPhone จริง 20 ต.ค. ห้องแสงนุ่ม แต่ AI ใส่เงาเข้ม)
     if (sceneLight) {
-      lines.push(`The light in image ${n}: ${sceneLight} Light the model with this same light so she belongs in the scene; `
-        + 'do not add stronger, darker or sharper shadows than this light would make.');
+      lines.push(
+        `The light in image ${n}: ${sceneLight} Light the model with this same light so she belongs in the scene; ` +
+          'do not add stronger, darker or sharper shadows than this light would make.',
+      );
     }
   } else if (sceneText) {
     lines.push(`Place the model in this location: ${sceneText}.`);
@@ -311,48 +404,70 @@ export function buildPrompt({
     // เลือกมุมกล้องเอง: ไม่สั่งให้ตรงระดับสายตาของรูปฉาก (ไม่งั้นมุมไม่เปลี่ยน) ให้วาดฉากเดิมจากตำแหน่งกล้องใหม่แทน
     // ระยะใกล้ไม่เห็นเท้า: ไม่สั่งเงาที่เท้า
     lines.push(
-      'It must look like a single real photo taken on location, not a cut-out pasted onto a background: '
-      + 'do not keep the studio lighting of image 1. Relight the model to match the scene '
-      + '(light direction, color temperature, brightness and contrast), '
-      + (directed ? 'add natural contact shadows at the planned body contact surfaces (mattress, seat, wall or floor), '
-        // ลอกทั้งช็อต: ระยะตามรูปต้นแบบ อาจไม่เห็นเท้า -> ไม่พูดถึงเท้า (เดิมสั่งเงาที่เท้า AI ถอยกล้องให้เห็นเท้า)
-        : shot ? 'add natural contact shadows wherever her body touches the floor or furniture in the frame and soft shadows cast away from the light, '
-        : fullBody ? 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
-        : 'add soft shadows cast away from the light, ')
-      + (directed === 'keep'
-        ? 'preserve the location reference viewpoint, perspective and furniture layout, matching its scale, depth of field, sharpness, color grading and grain. '
-        : camera?.angle
-        ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its '
-          + 'scale, depth of field, sharpness, color grading and grain. '
-        : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ')
-      + scaleLine(shot, roomShot ? n : null)); // สีผิว: SKIN_TONE ต้นคำสั่ง (เดิม "only as affected by the scene lighting" เปิดช่องให้ฉากสว่างแล้วผิวขาวตาม)
+      'It must look like a single real photo taken on location, not a cut-out pasted onto a background: ' +
+        'do not keep the studio lighting of image 1. Relight the model to match the scene ' +
+        '(light direction, color temperature, brightness and contrast), ' +
+        (directed
+          ? 'add natural contact shadows at the planned body contact surfaces (mattress, seat, wall or floor), '
+          : // ลอกทั้งช็อต: ระยะตามรูปต้นแบบ อาจไม่เห็นเท้า -> ไม่พูดถึงเท้า (เดิมสั่งเงาที่เท้า AI ถอยกล้องให้เห็นเท้า)
+            shot
+            ? 'add natural contact shadows wherever her body touches the floor or furniture in the frame and soft shadows cast away from the light, '
+            : fullBody
+              ? 'add natural contact shadows where the feet touch the ground and soft shadows cast away from the light, '
+              : 'add soft shadows cast away from the light, ') +
+        (directed === 'keep'
+          ? 'preserve the location reference viewpoint, perspective and furniture layout, matching its scale, depth of field, sharpness, color grading and grain. '
+          : camera?.angle
+            ? 'show the location from the chosen camera position, re-creating its perspective for that camera height and angle, and match its ' +
+              'scale, depth of field, sharpness, color grading and grain. '
+            : 'and match the camera perspective, eye level, scale, depth of field, sharpness, color grading and grain of the scene. ') +
+        scaleLine(shot, roomShot ? n : null),
+    ); // สีผิว: SKIN_TONE ต้นคำสั่ง (เดิม "only as affected by the scene lighting" เปิดช่องให้ฉากสว่างแล้วผิวขาวตาม)
   }
-  if (shot) lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
+  if (shot)
+    lines.push(REALISM, ...(look ? [look] : [])); // ลอกทั้งช็อต: look = แค่แสง/โทนสีของสไตล์ (presetLightPrompt) ถ้าเลือก
   else if (look) lines.push(REALISM, look);
   // สีหน้าที่เลือก: ต้องบอกว่าไม่เอาสีหน้าจากรูปนางแบบ ไม่งั้น AI ยึดรอยยิ้มในรูปนางแบบ
-  if (face) lines.push(face, posePlan ? 'This expression replaces any expression in the pose plan.' : 'Do not keep the expression of image 1.');
+  if (face)
+    lines.push(
+      face,
+      posePlan ? 'This expression replaces any expression in the pose plan.' : 'Do not keep the expression of image 1.',
+    );
   if (!shot && gaze) lines.push(gaze);
   // ทิศหน้า/สายตา (2 พ.ย.): ตัววางแผนชอบให้หันหน้ามองกล้องทุกรูป รูปเลยดูแข็ง · ย้ำอีกครั้งท้ายคำสั่ง พร้อมกฎหน้าเอียงตามคอ (บทเรียน 19 ต.ค.)
   if (!shot && headGaze) {
-    lines.push(`Head and gaze: ${headGaze.trim().replace(/\.$/, '')}. Show her face naturally from this angle as the camera sees it, with natural `
-      + 'foreshortening and the neck and shoulders connecting naturally to the head; do not turn her face squarely to the camera unless this says so.');
+    lines.push(
+      `Head and gaze: ${headGaze.trim().replace(/\.$/, '')}. Show her face naturally from this angle as the camera sees it, with natural ` +
+        'foreshortening and the neck and shoulders connecting naturally to the head; do not turn her face squarely to the camera unless this says so.',
+    );
   }
   if (props.length) lines.push(`Props: the model is ${props.join(' and ')}.`);
   if (fullBody && !shot && !directed) lines.push('Show the full body from head to feet.'); // Directed framing comes from the selected shot.
   // ตำแหน่งคนในภาพ: ไม่สั่งเลย AI วางคนกลางภาพเกือบทุกรูป — ท่าเดิม + ฉากเดิม (แค่เปลี่ยนชุด) ไม่สั่ง จะได้ไม่ย้ายคนในรูปเดิม
   if (place) lines.push(placementLine(placement!));
   if (camera && !shot && (camera.framing || camera.angle)) {
-    lines.push('Camera and framing chosen for this photo, more important than the framing or camera of any reference image '
-      + '(the pose photo, the model photo or the location photo): '
-      + [camera.framing && `frame it as ${camera.framing}`, camera.angle && `with the ${camera.angle}`].filter(Boolean).join(', ') + '.');
+    lines.push(
+      'Camera and framing chosen for this photo, more important than the framing or camera of any reference image ' +
+        '(the pose photo, the model photo or the location photo): ' +
+        [camera.framing && `frame it as ${camera.framing}`, camera.angle && `with the ${camera.angle}`]
+          .filter(Boolean)
+          .join(', ') +
+        '.',
+    );
   }
   if (crop) lines.push(crop);
-  if (directed) lines.push('Framing safety: leave generous clearance around every body part required by the selected shot inside the final aspect ratio. '
-    + 'If the shot includes feet, show both complete feet including every toe and heel with clear space below them after cropping. '
-    + 'Pull the camera back rather than cutting off required body parts at the image boundary.');
-  if (directed && crop) lines.push('Crop-safe composition is essential: keep the entire requested subject extent within the central 70% of the uncropped image height '
-    + 'and central 80% of its width. Fill the surrounding safety margins with the real location. The final crop will remove these margins; '
-    + 'do not place required feet, toes, hands or head in them.');
+  if (directed)
+    lines.push(
+      'Framing safety: leave generous clearance around every body part required by the selected shot inside the final aspect ratio. ' +
+        'If the shot includes feet, show both complete feet including every toe and heel with clear space below them after cropping. ' +
+        'Pull the camera back rather than cutting off required body parts at the image boundary.',
+    );
+  if (directed && crop)
+    lines.push(
+      'Crop-safe composition is essential: keep the entire requested subject extent within the central 70% of the uncropped image height ' +
+        'and central 80% of its width. Fill the surrounding safety margins with the real location. The final crop will remove these margins; ' +
+        'do not place required feet, toes, hands or head in them.',
+    );
   if (extra) lines.push('Additional instruction: ' + extra);
   return lines.join(' ');
 }
@@ -371,27 +486,28 @@ export function roomCropLine(aspect: string) {
 
 export function buildRoomPrompt({ refLight = null, crop = null }: { refLight?: string | null; crop?: string | null }) {
   return [
-    'Create one photograph of the room in image 1, taken exactly the way image 2 was taken: the same camera position, angle and height, '
-      + 'the same lens and framing, the same composition and exactly the same light.',
+    'Create one photograph of the room in image 1, taken exactly the way image 2 was taken: the same camera position, angle and height, ' +
+      'the same lens and framing, the same composition and exactly the same light.',
     'There is no person in this photo.',
-    'Camera and composition: place the camera in the room of image 1 so that the photo is composed like image 2, with the same viewpoint and '
-      + 'the same kind of things in the same places in the frame (for example what is behind and beside the person in image 2), and the same amount of the room visible.',
-    'Image 2 already has the exact shape and framing this photo must have: frame it exactly like image 2. Camera distance: keep the camera as far '
-      + 'from the place where the person is in image 2 as in image 2, so that a person in that place would look exactly as large in the frame as the person in image 2. '
-      + 'Where the edges of image 2 cut the furniture or the room, cut this room at about the same places.',
-    'Everything in the photo comes from image 1: its furniture, bedding, cushions, rugs, curtains, lamps, plants, walls and floor, with their real look, '
-      + 'materials and colors, at their real size and in their real positions relative to each other. You may only move the camera, never the furniture.',
-    'Never add furniture or objects that are not in image 1, and never copy anything from image 2: not its furniture, bedding, cushions, blankets, props, '
-      + 'lamps, plants or decor. Image 2 is only a guide for the camera, the composition and the light.',
-    'The person in image 2 lies, sits or stands somewhere: use the matching place in this room (the bed if she lies or sits on a bed, a chair, sofa or bench '
-      + 'if she sits, open floor if she stands) and leave it empty and uncluttered, so a person can be placed there later. '
-      + 'Nobody is in the photo: no body, no clothing, no shadow of a person.',
-    'Light: relight the whole room with exactly the light of image 2' + (refLight ? ': ' + refLight : '.')
-      + ' Keep the same light direction in the frame, the same softness, brightness and contrast, the same white balance and color grading, '
-      + 'with shadows and highlights falling the same way as in image 2. Do not keep the light of image 1.',
+    'Camera and composition: place the camera in the room of image 1 so that the photo is composed like image 2, with the same viewpoint and ' +
+      'the same kind of things in the same places in the frame (for example what is behind and beside the person in image 2), and the same amount of the room visible.',
+    'Image 2 already has the exact shape and framing this photo must have: frame it exactly like image 2. Camera distance: keep the camera as far ' +
+      'from the place where the person is in image 2 as in image 2, so that a person in that place would look exactly as large in the frame as the person in image 2. ' +
+      'Where the edges of image 2 cut the furniture or the room, cut this room at about the same places.',
+    'Everything in the photo comes from image 1: its furniture, bedding, cushions, rugs, curtains, lamps, plants, walls and floor, with their real look, ' +
+      'materials and colors, at their real size and in their real positions relative to each other. You may only move the camera, never the furniture.',
+    'Never add furniture or objects that are not in image 1, and never copy anything from image 2: not its furniture, bedding, cushions, blankets, props, ' +
+      'lamps, plants or decor. Image 2 is only a guide for the camera, the composition and the light.',
+    'The person in image 2 lies, sits or stands somewhere: use the matching place in this room (the bed if she lies or sits on a bed, a chair, sofa or bench ' +
+      'if she sits, open floor if she stands) and leave it empty and uncluttered, so a person can be placed there later. ' +
+      'Nobody is in the photo: no body, no clothing, no shadow of a person.',
+    'Light: relight the whole room with exactly the light of image 2' +
+      (refLight ? ': ' + refLight : '.') +
+      ' Keep the same light direction in the frame, the same softness, brightness and contrast, the same white balance and color grading, ' +
+      'with shadows and highlights falling the same way as in image 2. Do not keep the light of image 1.',
     'Image 1 and image 2 may be phone screenshots: ignore any app interface, text, icons or buttons in them.',
-    'It must look like an unretouched photo taken with a real camera in a real place, not a CGI render or an AI image: real textures, '
-      + 'natural light falloff, subtle grain, natural slightly muted color.',
+    'It must look like an unretouched photo taken with a real camera in a real place, not a CGI render or an AI image: real textures, ' +
+      'natural light falloff, subtle grain, natural slightly muted color.',
     ...(crop ? [crop] : []),
   ].join(' ');
 }
@@ -400,24 +516,44 @@ export function buildRoomPrompt({ refLight = null, crop = null }: { refLight?: s
 // รูปหลักมีคน ชุด ฉาก แสงครบแล้ว ให้ AI ลอกทุกอย่างจากรูปนั้น เปลี่ยนแค่มุมกล้อง/ระยะ/ท่า
 // ไม่ใส่ REALISM/แสงของสไตล์ถ่ายภาพซ้ำ: สั่งทำผิว/แสงใหม่แล้วหน้าเพี้ยนจากรูปหลัก (เหมือนรอบสองของ harmonize)
 export type SetPromptInput = {
-  framing: string; angle: string; fullBody: boolean; wear: Wear; accessories?: string[]; extra?: string | null;
+  framing: string;
+  angle: string;
+  fullBody: boolean;
+  wear: Wear;
+  accessories?: string[];
+  extra?: string | null;
   crop?: string | null; // cropLine() เมื่อ server จะตัดรูป
 };
 
-export function buildSetPrompt({ framing, angle, fullBody, wear, accessories = [], extra, crop = null }: SetPromptInput) {
+export function buildSetPrompt({
+  framing,
+  angle,
+  fullBody,
+  wear,
+  accessories = [],
+  extra,
+  crop = null,
+}: SetPromptInput) {
   const lines = [
     `Create one fashion photograph, ${framing}.`,
-    'Image 1 is a photo from the same photo shoot. Keep everything from image 1 the same: the same person (face, hairstyle, '
-      + 'body shape, skin and the exact same skin tone, never lighter), the same outfit and accessories, the same location and background, the same light direction, '
-      + 'color grading, lens look and image quality.',
+    'Image 1 is a photo from the same photo shoot. Keep everything from image 1 the same: the same person (face, hairstyle, ' +
+      'body shape, skin and the exact same skin tone, never lighter), the same outfit and accessories, the same location and background, the same light direction, ' +
+      'color grading, lens look and image quality.',
     'Image 2 shows the same model: use it to keep the face identical.',
   ];
   let n = 3;
   // เสื้อผ้าทุกชิ้นที่เปลี่ยน (ลำดับเดียวกับ buildPrompt): ใช้ให้ส่วนที่มองไม่เห็นในรูปหลักถูกต้อง
-  for (const [on, what] of [[wear.outfit, 'the outfit'], [wear.top, 'the top'], [wear.bottom, 'the bottoms'], [wear.shoes, 'the shoes']] as const) {
+  for (const [on, what] of [
+    [wear.outfit, 'the outfit'],
+    [wear.top, 'the top'],
+    [wear.bottom, 'the bottoms'],
+    [wear.shoes, 'the shoes'],
+  ] as const) {
     if (!on) continue;
-    lines.push(`Image ${n} shows ${what}: use it to keep ${what} accurate, including parts that are not visible in image 1. `
-      + `Ignore the face, body and background of image ${n}.`);
+    lines.push(
+      `Image ${n} shows ${what}: use it to keep ${what} accurate, including parts that are not visible in image 1. ` +
+        `Ignore the face, body and background of image ${n}.`,
+    );
     n += 1;
   }
   if (accessories.length) {
@@ -427,9 +563,13 @@ export function buildSetPrompt({ framing, angle, fullBody, wear, accessories = [
     }
     lines.push(ACCESSORY_RULES);
   }
-  lines.push(`Only the camera angle, framing and pose change. ${angle} Choose a natural, relaxed fashion pose that suits this angle.`);
-  lines.push('It must look like the next frame from the same real photo shoot, not a new composite. '
-    + 'Keep the existing skin texture; do not smooth it.');
+  lines.push(
+    `Only the camera angle, framing and pose change. ${angle} Choose a natural, relaxed fashion pose that suits this angle.`,
+  );
+  lines.push(
+    'It must look like the next frame from the same real photo shoot, not a new composite. ' +
+      'Keep the existing skin texture; do not smooth it.',
+  );
   if (fullBody) lines.push('Show the full body from head to feet.');
   if (crop) lines.push(crop);
   if (extra) lines.push('Additional instruction: ' + extra);
@@ -438,13 +578,15 @@ export function buildSetPrompt({ framing, angle, fullBody, wear, accessories = [
 
 // รอบสอง (ไม่บังคับ): ให้ AI ดูรูปที่ได้อีกรอบแล้วเกลี่ยแสง/เงา/สีให้เป็นรูปเดียวกัน
 export const HARMONIZE_PROMPT =
-  'This photo may look like a composite. Make it look like one natural photograph taken by a single camera: '
-  + 'relight the person so the light direction, color temperature and brightness match the background, '
-  + 'add realistic contact shadows under the feet and soft cast shadows, blend the edges and hair naturally, '
-  + 'and match color grading, contrast, sharpness, depth of field and grain across the whole image. '
-  + "Do not change the person's face, identity, skin tone, hairstyle, outfit, pose, or the background layout; never make her skin lighter or paler.";
+  'This photo may look like a composite. Make it look like one natural photograph taken by a single camera: ' +
+  'relight the person so the light direction, color temperature and brightness match the background, ' +
+  'add realistic contact shadows under the feet and soft cast shadows, blend the edges and hair naturally, ' +
+  'and match color grading, contrast, sharpness, depth of field and grain across the whole image. ' +
+  "Do not change the person's face, identity, skin tone, hairstyle, outfit, pose, or the background layout; never make her skin lighter or paler.";
 
 // รอบสองไม่ใส่ REALISM ซ้ำ: สั่งทำผิวใหม่อีกรอบแล้วหน้าเพี้ยนสะสม (รูปผิวมัน/หน้าตอบ 6 ต.ค.)
 export function harmonizePrompt(look?: string | null) {
-  return look ? [HARMONIZE_PROMPT, 'Keep the existing skin texture; do not smooth it.', look].join(' ') : HARMONIZE_PROMPT;
+  return look
+    ? [HARMONIZE_PROMPT, 'Keep the existing skin texture; do not smooth it.', look].join(' ')
+    : HARMONIZE_PROMPT;
 }

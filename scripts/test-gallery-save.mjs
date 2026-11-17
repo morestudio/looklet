@@ -22,13 +22,20 @@ function load(file) {
     if (id === './images') return load('lib/images.ts');
     if (id === './account') return load('lib/account.ts');
     if (id === 'node:os') return { ...require('node:os'), homedir: () => root }; // no root/.Trash -> deleteImage unlinks inside the temp dir
-    if (id === '@/lib/route') return { post: (fn) => fn, json, errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) };
+    if (id === '@/lib/route')
+      return {
+        post: (fn) => fn,
+        json,
+        errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }),
+      };
     if (id.startsWith('@/lib/')) return load(id.slice(2) + '.ts');
     if (id === './aspects') return load('lib/aspects.ts');
     if (id === './turntable') return load('lib/turntable.ts');
     return require(id);
   };
-  new Function('require', 'module', 'exports', 'process', code)(customRequire, loaded, loaded.exports, { cwd: () => root });
+  new Function('require', 'module', 'exports', 'process', code)(customRequire, loaded, loaded.exports, {
+    cwd: () => root,
+  });
   modules.set(file, loaded.exports);
   return loaded.exports;
 }

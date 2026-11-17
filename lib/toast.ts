@@ -58,22 +58,35 @@ export const toast = {
   ok: (text: string) => void show('ok', text),
   info: (text: string) => void show('info', text),
   /** "working…": returns the function that closes it */
-  busy: (text: string) => { const id = show('busy', text); return () => dismiss(id); },
+  busy: (text: string) => {
+    const id = show('busy', text);
+    return () => dismiss(id);
+  },
 };
 
 // for components/Toaster.tsx (and the tests) only
 export const toastStore = {
   get: () => items,
-  subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  subscribe: (listener: () => void) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
   stays: (t: Toast) => stays(t.kind),
   dismiss,
-  remove: (id: number) => { if (items.some((t) => t.id === id)) set(items.filter((t) => t.id !== id)); },
-  clear: () => { if (items.length) set([]); },
+  remove: (id: number) => {
+    if (items.some((t) => t.id === id)) set(items.filter((t) => t.id !== id));
+  },
+  clear: () => {
+    if (items.length) set([]);
+  },
   // advance the timers by ms; Toaster calls it only while nothing holds them
   tick(ms: number) {
     const due: number[] = [];
     for (const [id, rest] of left) {
-      if (rest - ms <= 0) due.push(id); else left.set(id, rest - ms);
+      if (rest - ms <= 0) due.push(id);
+      else left.set(id, rest - ms);
     }
     due.forEach(dismiss);
   },

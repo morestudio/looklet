@@ -13,7 +13,12 @@ const json = (status, body) => ({ status, body });
 // AI เลือกรูปหลัก: แทนด้วยตัวปลอม (ไม่เรียก AI จริง) · picks = ทุกครั้งที่ถูกเรียก
 const picks = [];
 const ai = { pick: async () => null };
-const aiMock = { pickMainPhoto: async (images, what, name) => { picks.push({ n: images.length, what, name }); return ai.pick(images); } };
+const aiMock = {
+  pickMainPhoto: async (images, what, name) => {
+    picks.push({ n: images.length, what, name });
+    return ai.pick(images);
+  },
+};
 function load(file) {
   if (modules.has(file)) return modules.get(file);
   const loaded = { exports: {} };
@@ -25,7 +30,12 @@ function load(file) {
     if (id === './storage-supabase') return { supabaseEnabled: false };
     if (id === './images') return load('lib/images.ts'); // storage.ts ทำรูปย่อตอนเก็บ (เก็บในเครื่องไม่ใช้)
     if (id === './account') return load('lib/account.ts'); // ไม่มีบัญชี (null) = ทีม: เก็บลงเครื่องไม่กรอง
-    if (id === '@/lib/route') return { post: (fn) => fn, json, errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) };
+    if (id === '@/lib/route')
+      return {
+        post: (fn) => fn,
+        json,
+        errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }),
+      };
     if (id === '@/lib/ai') return aiMock;
     if (id === './api-error' || id === './fail-reason') return load('lib/' + id.slice(2) + '.ts'); // lib/usage.ts answers quota errors with errorResponse
     if (id.startsWith('@/lib/')) return load(id.slice(2) + '.ts');
@@ -33,7 +43,9 @@ function load(file) {
     if (id === './turntable') return load('lib/turntable.ts'); // packshot.ts ใช้คำบรรยายมุมของตั้งมุมเอง
     return require(id);
   };
-  new Function('require', 'module', 'exports', 'process', code)(customRequire, loaded, loaded.exports, { cwd: () => root });
+  new Function('require', 'module', 'exports', 'process', code)(customRequire, loaded, loaded.exports, {
+    cwd: () => root,
+  });
   modules.set(file, loaded.exports);
   return loaded.exports;
 }
@@ -45,7 +57,14 @@ try {
   const where = { area: 'uploads', kind: 'products' };
   const read = async () => productGroups(await storage.listImages(where));
   const add = async (name, group) => {
-    const out = await upload({ kind: 'products', name, type: 'bag', data: 'aW1hZ2U=', mime: 'image/jpeg', ...(group ? { productGroup: group } : {}) });
+    const out = await upload({
+      kind: 'products',
+      name,
+      type: 'bag',
+      data: 'aW1hZ2U=',
+      mime: 'image/jpeg',
+      ...(group ? { productGroup: group } : {}),
+    });
     assert.equal(out.status, 200);
     return out.body.src;
   };
@@ -56,7 +75,10 @@ try {
   assert.equal(groups.length, 2);
   assert.equal(groups.find((g) => g.id === black).photos.length, 2);
   assert.equal(groups.find((g) => g.id === cream).photos.length, 1);
-  assert.deepEqual(productSources(groups.find((g) => g.id === black)).map((p) => p.src), [back]);
+  assert.deepEqual(
+    productSources(groups.find((g) => g.id === black)).map((p) => p.src),
+    [back],
+  );
   assert.equal((await change({ action: 'main', group: black, src: cream })).status, 400);
   assert.equal((await change({ action: 'main', group: black, src: back })).status, 200);
   assert.equal((await read()).find((g) => g.id === black).main.src, back);
@@ -77,7 +99,10 @@ try {
   assert.equal(groups.find((g) => g.id === black).name, 'Quilt · Black');
   assert.equal((await change({ action: 'remove', group: black, src: cream })).status, 400);
   assert.equal((await change({ action: 'move', group: black, src: back, target: '/missing' })).status, 400);
-  assert.equal((await upload({ kind: 'products', productGroup: '/missing', data: 'aW1hZ2U=', mime: 'image/jpeg' })).status, 400);
+  assert.equal(
+    (await upload({ kind: 'products', productGroup: '/missing', data: 'aW1hZ2U=', mime: 'image/jpeg' })).status,
+    400,
+  );
   const legacy = await storage.saveImage(where, 'aW1hZ2U=', 'image/jpeg', { name: 'Legacy product', type: 'bag' });
   assert.equal((await read()).find((g) => g.id === legacy).photos.length, 1);
   await change({ action: 'move', group: legacy, src: legacy, target: cream });
@@ -92,9 +117,21 @@ try {
 
   // ---------- AI เลือกรูปหลัก (16 พ.ย.) ----------
   const sharp = require('sharp');
-  const jpg = async (r, g, b) => (await sharp({ create: { width: 16, height: 16, channels: 3, background: { r, g, b } } }).jpeg().toBuffer()).toString('base64');
+  const jpg = async (r, g, b) =>
+    (
+      await sharp({ create: { width: 16, height: 16, channels: 3, background: { r, g, b } } })
+        .jpeg()
+        .toBuffer()
+    ).toString('base64');
   const addJpg = async (name, data, group) => {
-    const out = await upload({ kind: 'products', name, type: 'bag', data, mime: 'image/jpeg', ...(group ? { productGroup: group } : {}) });
+    const out = await upload({
+      kind: 'products',
+      name,
+      type: 'bag',
+      data,
+      mime: 'image/jpeg',
+      ...(group ? { productGroup: group } : {}),
+    });
     assert.equal(out.status, 200);
     return out.body.src;
   };
@@ -138,7 +175,10 @@ try {
   assert.equal((await change({ action: 'auto-main', group: hang })).body.patch.productMain, clean);
   await change({ action: 'restore', group: hang, src: side });
   // ระหว่างรอ AI ผู้ใช้กดเลือกเอง -> ไม่ทับ
-  ai.pick = async (images) => { await change({ action: 'main', group: hang, src: hang }); return byColor(2, 'x')(images); };
+  ai.pick = async (images) => {
+    await change({ action: 'main', group: hang, src: hang });
+    return byColor(2, 'x')(images);
+  };
   assert.deepEqual((await change({ action: 'auto-main', group: hang })).body.patch, {});
   vera = await veraOf();
   assert.equal(vera.main.src, hang);
@@ -163,5 +203,9 @@ try {
   assert.deepEqual((await change({ action: 'auto-main', group: black })).body.patch, {});
   assert.equal(picks.length, calls);
   assert(broken.photos.length >= 2);
-  console.log('Product groups passed: real metadata persistence, legacy uploads, isolated references, main photo, rename, views, move, remove/restore, empty groups, validation, and AI main-photo choice (never over the user\'s own pick).');
-} finally { await fs.rm(root, { recursive: true, force: true }); }
+  console.log(
+    "Product groups passed: real metadata persistence, legacy uploads, isolated references, main photo, rename, views, move, remove/restore, empty groups, validation, and AI main-photo choice (never over the user's own pick).",
+  );
+} finally {
+  await fs.rm(root, { recursive: true, force: true });
+}

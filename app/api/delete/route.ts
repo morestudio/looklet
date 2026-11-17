@@ -10,7 +10,10 @@ export const POST = post(async (req) => {
     if (!meta) return errorResponse(404, 'ไม่พบรูปนี้');
     const inOtherPlace = req.from === 'history' ? meta.inGallery === true : meta.inHistory !== false;
     if (inOtherPlace) {
-      const ok = await updateMeta(src, req.from === 'history' ? { inHistory: false } : { inGallery: false, favorite: false });
+      const ok = await updateMeta(
+        src,
+        req.from === 'history' ? { inHistory: false } : { inGallery: false, favorite: false },
+      );
       return ok ? json(200, { ok: true, fileDeleted: false }) : errorResponse(404, 'ไม่พบรูปนี้');
     }
     if (req.permanent !== true) return errorResponse(409, 'รูปนี้เพิ่งถูกเปลี่ยน ลองรีเฟรชหน้าแล้วทำอีกครั้ง');

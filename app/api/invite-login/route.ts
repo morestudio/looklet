@@ -13,12 +13,18 @@ export async function POST(req: Request) {
     if (!authEnabled || !supabaseEnabled) return errorResponse(400, 'เว็บนี้ไม่ได้เปิดระบบโค้ดเชิญ');
     const code = normalizeInviteCode((await req.json().catch(() => ({})))?.code);
     if (!code) return errorResponse(400, 'โค้ดเชิญมี 8 ตัว เช่น ABCD-2345');
-    const { data: invite, error } = await serviceClient().from('accounts').select('user_id, disabled').eq('code', code).maybeSingle();
+    const { data: invite, error } = await serviceClient()
+      .from('accounts')
+      .select('user_id, disabled')
+      .eq('code', code)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     if (!invite || invite.disabled) return errorResponse(401, WRONG);
     const { data: found } = await serviceClient().auth.admin.getUserById(invite.user_id);
     if (!found.user?.email) return errorResponse(401, WRONG);
-    const { error: signInError } = await (await createClient()).auth.signInWithPassword({ email: found.user.email, password: invitePassword(code) });
+    const { error: signInError } = await (
+      await createClient()
+    ).auth.signInWithPassword({ email: found.user.email, password: invitePassword(code) });
     if (signInError) return errorResponse(401, WRONG);
     return json(200, { ok: true });
   } catch (e) {

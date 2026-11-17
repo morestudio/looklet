@@ -14,22 +14,52 @@ export function rangeFill(value: number, min: number, max: number): CSSPropertie
 }
 
 // ---------- การ์ดให้กดเลือก ----------
-export function Card({ item, active, onClick, zoom = false, onDelete, footer }: {
-  item: Item; active: boolean; onClick: () => void; zoom?: boolean; onDelete?: () => void; footer?: ReactNode;
+export function Card({
+  item,
+  active,
+  onClick,
+  zoom = false,
+  onDelete,
+  footer,
+}: {
+  item: Item;
+  active: boolean;
+  onClick: () => void;
+  zoom?: boolean;
+  onDelete?: () => void;
+  footer?: ReactNode;
 }) {
   // loading = loadedSrc !== item.src; onError counts as loaded
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const loading = !!item.src && loadedSrc !== item.src;
   const done = () => setLoadedSrc(item.src ?? null);
   const card = (
-    <button className={'card' + (active ? ' active' : '') + (loading ? ' loading' : '')} title={item.name} onClick={onClick} aria-busy={loading || undefined}>
+    <button
+      className={'card' + (active ? ' active' : '') + (loading ? ' loading' : '')}
+      title={item.name}
+      onClick={onClick}
+      aria-busy={loading || undefined}
+    >
       {item.src ? (
         // รูปนางแบบเต็มตัว ซูมให้เห็นหน้า
         <div className={'pic' + (zoom && !item.uploaded ? ' zoom' : '')}>
           {/* cached img can complete before hydration attaches onLoad */}
-          <img src={thumbSrc(item.src)} alt={item.name} loading="lazy" decoding="async" onLoad={done} onError={done}
-            ref={(img) => { if (img?.complete && loadedSrc !== item.src) done(); }} />
-          {loading && <div className="pending-spin"><div className="spinner" /></div>}
+          <img
+            src={thumbSrc(item.src)}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            onLoad={done}
+            onError={done}
+            ref={(img) => {
+              if (img?.complete && loadedSrc !== item.src) done();
+            }}
+          />
+          {loading && (
+            <div className="pending-spin">
+              <div className="spinner" />
+            </div>
+          )}
         </div>
       ) : (
         <div className="tile text">ไม่เปลี่ยน</div>
@@ -38,22 +68,45 @@ export function Card({ item, active, onClick, zoom = false, onDelete, footer }: 
     </button>
   );
   if (!onDelete && !footer) return card;
-  return <div className="deletable">{card}{onDelete && <DeleteButton onClick={onDelete} />}{footer}</div>;
+  return (
+    <div className="deletable">
+      {card}
+      {onDelete && <DeleteButton onClick={onDelete} />}
+      {footer}
+    </div>
+  );
 }
 
 // การ์ดรอ ระหว่าง AI ดูว่าของเสริมที่เพิ่งเลือกเป็นอะไร
 export function PendingCard({ src, label = 'AI กำลังดูว่าเป็นอะไร...' }: { src: string; label?: string }) {
   return (
     <div className="card pending">
-      <div className="pic"><img src={thumbSrc(src)} alt="" /><div className="pending-spin"><div className="spinner" /></div></div>
+      <div className="pic">
+        <img src={thumbSrc(src)} alt="" />
+        <div className="pending-spin">
+          <div className="spinner" />
+        </div>
+      </div>
       <span>{label}</span>
     </div>
   );
 }
 
 // modal confirm (DS Dialog): Esc / backdrop close = cancel
-export function ConfirmDialog({ title, body, cancel, confirm, onCancel, onConfirm }: {
-  title: string; body: string; cancel: string; confirm: string; onCancel: () => void; onConfirm: () => void;
+export function ConfirmDialog({
+  title,
+  body,
+  cancel,
+  confirm,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  cancel: string;
+  confirm: string;
+  onCancel: () => void;
+  onConfirm: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const confirmed = useRef(false);
@@ -66,7 +119,14 @@ export function ConfirmDialog({ title, body, cancel, confirm, onCancel, onConfir
       <p className="sub">{body}</p>
       <form method="dialog" className="retouch-actions">
         <button className="btn btn-tertiary">{cancel}</button>
-        <button className="btn btn-primary" onClick={() => { confirmed.current = true; }}>{confirm}</button>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            confirmed.current = true;
+          }}
+        >
+          {confirm}
+        </button>
       </form>
     </dialog>
   );
@@ -82,8 +142,12 @@ export function SaveImageDialog({ src, onClose }: { src: string; onClose: () => 
     <dialog ref={ref} className="save-dialog" onClose={onClose}>
       <h2>บันทึกรูป</h2>
       <img src={src} alt="รูปที่จะบันทึก" />
-      <p className="sub">กดค้างที่รูป แล้วเลือก &quot;บันทึกรูปภาพ&quot; — เบราว์เซอร์ในแอป (เช่น LINE) ดาวน์โหลดไฟล์ไม่ได้ หรือเปิดเว็บนี้ใน Safari / Chrome</p>
-      <form method="dialog" className="retouch-actions"><button className="btn btn-secondary">ปิด</button></form>
+      <p className="sub">
+        กดค้างที่รูป แล้วเลือก &quot;บันทึกรูปภาพ&quot; — เบราว์เซอร์ในแอป (เช่น LINE) ดาวน์โหลดไฟล์ไม่ได้ หรือเปิดเว็บนี้ใน Safari / Chrome
+      </p>
+      <form method="dialog" className="retouch-actions">
+        <button className="btn btn-secondary">ปิด</button>
+      </form>
     </dialog>
   );
 }
@@ -91,14 +155,35 @@ export function SaveImageDialog({ src, onClose }: { src: string; onClose: () => 
 // ปุ่ม × (ลบ) มุมซ้ายบนของการ์ด/รูปย่อ
 export function DeleteButton({ onClick, title = 'ลบรูปนี้ (ย้ายไปถังขยะ)' }: { onClick: () => void; title?: string }) {
   return (
-    <button className="del" title={title} aria-label={title} onClick={(e) => { e.stopPropagation(); onClick(); }}>×</button>
+    <button
+      className="del"
+      title={title}
+      aria-label={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      ×
+    </button>
   );
 }
 
 export function GalleryToggle({ inGallery, onClick }: { inGallery: boolean; onClick: () => void }) {
   return (
-    <button type="button" className={'gallery-toggle' + (inGallery ? ' on' : '')} title={inGallery ? 'เอาออกจากแกลลอรี่' : 'บันทึกลงแกลลอรี่'} aria-label="บันทึกลงแกลลอรี่"
-      aria-pressed={inGallery} onClick={(e) => { e.stopPropagation(); onClick(); }}><IconBookmark filled={inGallery} /></button>
+    <button
+      type="button"
+      className={'gallery-toggle' + (inGallery ? ' on' : '')}
+      title={inGallery ? 'เอาออกจากแกลลอรี่' : 'บันทึกลงแกลลอรี่'}
+      aria-label="บันทึกลงแกลลอรี่"
+      aria-pressed={inGallery}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <IconBookmark filled={inGallery} />
+    </button>
   );
 }
 
@@ -107,20 +192,53 @@ export type Place = 'history' | 'gallery';
 
 // inOtherPlace: /api/delete only takes it out of `from`; otherwise the file goes (Supabase: no trash)
 // copy: เอาออก = still in the other place, ลบ = gone · pageName: the result's studio page, for from="gallery"
-export function RemoveImageDialog({ from, inOtherPlace, pageName = 'นางแบบ', onCancel, onConfirm }: {
-  from: Place; inOtherPlace: boolean; pageName?: string; onCancel: () => void; onConfirm: () => void;
+export function RemoveImageDialog({
+  from,
+  inOtherPlace,
+  pageName = 'นางแบบ',
+  onCancel,
+  onConfirm,
+}: {
+  from: Place;
+  inOtherPlace: boolean;
+  pageName?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
 }) {
-  if (inOtherPlace) return <ConfirmDialog title={from === 'history' ? 'เอาออกจากรูปที่สร้างแล้ว?' : 'เอาออกจากแกลลอรี่?'}
-    body={from === 'history' ? 'รูปยังเก็บไว้ในแกลลอรี่' : `รูปยังอยู่ในหน้า${pageName}`} cancel="ยกเลิก" confirm="เอาออก"
-    onCancel={onCancel} onConfirm={onConfirm} />;
-  return <ConfirmDialog title="ลบรูปนี้ถาวร?"
-    body={(from === 'history' ? 'รูปนี้ไม่ได้บันทึกไว้ในแกลลอรี่' : `รูปนี้ไม่อยู่ในหน้า${pageName}แล้ว`) + ' ลบแล้วกู้คืนไม่ได้'}
-    cancel="ยกเลิก" confirm="ลบถาวร" onCancel={onCancel} onConfirm={onConfirm} />;
+  if (inOtherPlace)
+    return (
+      <ConfirmDialog
+        title={from === 'history' ? 'เอาออกจากรูปที่สร้างแล้ว?' : 'เอาออกจากแกลลอรี่?'}
+        body={from === 'history' ? 'รูปยังเก็บไว้ในแกลลอรี่' : `รูปยังอยู่ในหน้า${pageName}`}
+        cancel="ยกเลิก"
+        confirm="เอาออก"
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+    );
+  return (
+    <ConfirmDialog
+      title="ลบรูปนี้ถาวร?"
+      body={(from === 'history' ? 'รูปนี้ไม่ได้บันทึกไว้ในแกลลอรี่' : `รูปนี้ไม่อยู่ในหน้า${pageName}แล้ว`) + ' ลบแล้วกู้คืนไม่ได้'}
+      cancel="ยกเลิก"
+      confirm="ลบถาวร"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
+  );
 }
 
 export function StartFromImageDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
-  return <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
-    cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={onCancel} onConfirm={onConfirm} />;
+  return (
+    <ConfirmDialog
+      title="เริ่มจากรูปนี้?"
+      body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
+      cancel="ยกเลิก"
+      confirm="เริ่มจากรูปนี้"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
+  );
 }
 
 // การ์ด "+ เพิ่มรูป"
@@ -129,23 +247,41 @@ export function AddCard({ onFile }: { onFile: (f: File) => void }) {
     <label className="card add">
       <div className="tile">+</div>
       <span>เพิ่มรูป</span>
-      <input type="file" accept="image/*,.heic,.heif" onChange={(e) => {
-        const f = e.target.files?.[0];
-        e.target.value = ''; // เลือกไฟล์เดิมซ้ำได้
-        if (f) onFile(f);
-      }} />
+      <input
+        type="file"
+        accept="image/*,.heic,.heif"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = ''; // เลือกไฟล์เดิมซ้ำได้
+          if (f) onFile(f);
+        }}
+      />
     </label>
   );
 }
 
 // ปุ่มกลุ่มเลือกได้ทีละอัน (value = id ที่เลือก)
-export function ChipGroup({ options, value, onChange, disabled }: {
-  options: { id: string; name: ReactNode }[]; value: string; onChange: (id: string) => void; disabled?: boolean;
+export function ChipGroup({
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  options: { id: string; name: ReactNode }[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="chips">
       {options.map((o) => (
-        <button key={o.id} type="button" className={'chip' + (value === o.id ? ' active' : '')} disabled={disabled} onClick={() => onChange(o.id)}>
+        <button
+          key={o.id}
+          type="button"
+          className={'chip' + (value === o.id ? ' active' : '')}
+          disabled={disabled}
+          onClick={() => onChange(o.id)}
+        >
           {o.name}
         </button>
       ))}
@@ -157,7 +293,10 @@ export function ChipGroup({ options, value, onChange, disabled }: {
 export function Section({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
     <section className="sec">
-      <h3>{title}{note && <small>{note}</small>}</h3>
+      <h3>
+        {title}
+        {note && <small>{note}</small>}
+      </h3>
       {children}
     </section>
   );
@@ -173,7 +312,8 @@ export function useChosenSteps<K extends string>(current: K, page: StudioPage) {
   // markAs(key): a second panel showing another step at the same time (TryOn's right panel)
   const markAs = (key: K) => (e: SyntheticEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card')) return;
+    if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card'))
+      return;
     trackStepDone(page, key);
     setChosen((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   };
@@ -197,26 +337,50 @@ export function useMe() {
 // แอดมิน lives in AccountMenu (components/AuthForm.tsx) since 17 Nov
 export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' | 'gallery' }) {
   const tab = (id: 'model' | 'product', href: string, label: ReactNode) => (
-    <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
+    <Link
+      href={href}
+      className={current === id ? 'active' : undefined}
+      aria-current={current === id ? 'page' : undefined}
+    >
+      {label}
+    </Link>
   );
-  return <nav className="page-switch" aria-label="เลือกหน้า">
-    {tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}
-  </nav>;
+  return (
+    <nav className="page-switch" aria-label="เลือกหน้า">
+      {tab('model', '/', 'นางแบบ')}
+      {tab('product', '/product', 'สินค้า')}
+    </nav>
+  );
 }
 
 // PageSwitch markup, single tab -> /gallery
 export function GalleryLink({ active = false }: { active?: boolean }) {
-  return <nav className="page-switch" aria-label="แกลลอรี่">
-    <Link href="/gallery" className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>แกลลอรี่</Link>
-  </nav>;
+  return (
+    <nav className="page-switch" aria-label="แกลลอรี่">
+      <Link href="/gallery" className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>
+        แกลลอรี่
+      </Link>
+    </nav>
+  );
 }
 
 // แท็บในหน้าแอดมิน: ภาพรวม (โค้ดเชิญ/การใช้งาน) | ตรวจงาน (ทุกรูปที่สร้าง + พรอมต์)
 export function AdminTabs({ current }: { current: 'overview' | 'audit' }) {
   const tab = (id: 'overview' | 'audit', href: string, label: string) => (
-    <Link href={href} className={'chip' + (current === id ? ' active' : '')} aria-current={current === id ? 'page' : undefined}>{label}</Link>
+    <Link
+      href={href}
+      className={'chip' + (current === id ? ' active' : '')}
+      aria-current={current === id ? 'page' : undefined}
+    >
+      {label}
+    </Link>
   );
-  return <nav className="chips admin-tabs" aria-label="หน้าแอดมิน">{tab('overview', '/admin', 'ภาพรวม')}{tab('audit', '/admin/audit', 'ตรวจงาน')}</nav>;
+  return (
+    <nav className="chips admin-tabs" aria-label="หน้าแอดมิน">
+      {tab('overview', '/admin', 'ภาพรวม')}
+      {tab('audit', '/admin/audit', 'ตรวจงาน')}
+    </nav>
+  );
 }
 
 // ลูกค้า: แถบโทเคนใช้ไป / ทั้งหมด มุมขวาบนข้างปุ่มออกจากระบบ (โควตาเป็นโทเคนแทนจำนวนรูป 28 ต.ค.)
@@ -225,12 +389,28 @@ const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFracti
 export function TokenUsage() {
   const me = useMe();
   if (me?.tokenQuota == null) return null; // every limited account (email or code); superadmin gets none
-  const used = me.tokens ?? 0, max = me.tokenQuota;
+  const used = me.tokens ?? 0,
+    max = me.tokenQuota;
   const share = max ? Math.min(1, used / max) : 1;
   const exact = `ใช้ไป ${used.toLocaleString('th-TH')} จาก ${max.toLocaleString('th-TH')} โทเคน`;
-  return <span className={'token-usage' + (share >= 0.9 ? ' low' : '')} role="meter" aria-label="โทเคนที่ใช้ไป"
-    aria-valuemin={0} aria-valuemax={max} aria-valuenow={Math.min(used, max)} aria-valuetext={exact} title={exact}>
-    <span className="token-track"><i style={{ width: `${share * 100}%` }} /></span>
-    <b>{compact.format(used)} / {compact.format(max)}</b><span className="token-word">โทเคน</span>
-  </span>;
+  return (
+    <span
+      className={'token-usage' + (share >= 0.9 ? ' low' : '')}
+      role="meter"
+      aria-label="โทเคนที่ใช้ไป"
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={Math.min(used, max)}
+      aria-valuetext={exact}
+      title={exact}
+    >
+      <span className="token-track">
+        <i style={{ width: `${share * 100}%` }} />
+      </span>
+      <b>
+        {compact.format(used)} / {compact.format(max)}
+      </b>
+      <span className="token-word">โทเคน</span>
+    </span>
+  );
 }

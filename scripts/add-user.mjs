@@ -11,7 +11,10 @@ import { randomBytes } from 'node:crypto';
 const args = process.argv.slice(2);
 const labelAt = args.indexOf('--label');
 const labelArg = labelAt >= 0 ? args[labelAt + 1]?.trim().slice(0, 80) : undefined;
-const email = args.find((a, i) => !a.startsWith('--') && (labelAt < 0 || i !== labelAt + 1))?.trim().toLowerCase();
+const email = args
+  .find((a, i) => !a.startsWith('--') && (labelAt < 0 || i !== labelAt + 1))
+  ?.trim()
+  .toLowerCase();
 const superadmin = args.includes('--superadmin');
 const role = superadmin ? { role: 'superadmin' } : {};
 if (!email || (labelAt >= 0 && !labelArg)) {
@@ -33,20 +36,31 @@ async function accountRow(userId) {
     return err ? `\n  เปลี่ยนชื่อไม่สำเร็จ: ${err.message}` : `\n  ชื่อใน /admin: ${labelArg}`;
   }
   const label = labelArg ?? email.slice(0, 80);
-  const { error: err } = await sb.from('accounts').insert({ user_id: userId, code: null, label, token_quota: DEFAULT_TOKEN_QUOTA });
+  const { error: err } = await sb
+    .from('accounts')
+    .insert({ user_id: userId, code: null, label, token_quota: DEFAULT_TOKEN_QUOTA });
   if (err && err.code !== '23505') return `\n  เพิ่มแถวใน accounts ไม่สำเร็จ (${err.message}) จะสร้างให้ตอนเข้าใช้ครั้งแรก`;
   return `\n  ชื่อใน /admin: ${label} · โควตา ${DEFAULT_TOKEN_QUOTA.toLocaleString('en-US')} โทเคน`;
 }
 
 // สิทธิ์เข้าเว็บ = app_metadata.looklet (ดู lib/auth.ts)
 const password = randomBytes(12).toString('base64url');
-const { data: made, error } = await sb.auth.admin.createUser({ email, password, email_confirm: true, app_metadata: { looklet: true, ...role } });
+const { data: made, error } = await sb.auth.admin.createUser({
+  email,
+  password,
+  email_confirm: true,
+  app_metadata: { looklet: true, ...role },
+});
 if (!error) {
-  console.log(`เพิ่มบัญชีแล้ว\n  อีเมล: ${email}\n  รหัสผ่าน: ${password}${await accountRow(made.user.id)}\nส่งให้เจ้าของบัญชี แล้วให้เปลี่ยนรหัสที่หน้า /account`);
+  console.log(
+    `เพิ่มบัญชีแล้ว\n  อีเมล: ${email}\n  รหัสผ่าน: ${password}${await accountRow(made.user.id)}\nส่งให้เจ้าของบัญชี แล้วให้เปลี่ยนรหัสที่หน้า /account`,
+  );
 } else if (error.code === 'email_exists') {
   const { data } = await sb.auth.admin.listUsers({ perPage: 1000 });
   const user = data.users.find((u) => u.email === email);
-  const { error: err } = await sb.auth.admin.updateUserById(user.id, { app_metadata: { ...user.app_metadata, looklet: true, ...role } });
+  const { error: err } = await sb.auth.admin.updateUserById(user.id, {
+    app_metadata: { ...user.app_metadata, looklet: true, ...role },
+  });
   if (err) {
     console.error('เปิดสิทธิ์ไม่สำเร็จ: ' + err.message);
     process.exit(1);

@@ -7,7 +7,13 @@ import { listImages, readThumb, updateMeta } from '@/lib/storage';
 // AI เลือกรูปหลัก: ดูจากรูปย่อ 512px ในคลัง (ไม่โหลดรูปเต็ม ประหยัดโควตาดาวน์โหลดของ Supabase) ไม่เกิน 10 รูปแรก
 const PICK_MAX = 10;
 const thumbOf = async (src: string) => {
-  const t = await readThumb(src.replace(/^\/api\/files\//, '').split('/').map(decodeURIComponent), 512).catch(() => null);
+  const t = await readThumb(
+    src
+      .replace(/^\/api\/files\//, '')
+      .split('/')
+      .map(decodeURIComponent),
+    512,
+  ).catch(() => null);
   return t && { data: t.data.toString('base64'), mime: 'image/jpeg' };
 };
 
@@ -28,7 +34,13 @@ export const POST = post(async (req) => {
   } else if (req.action === 'main') {
     if (!group.photos.some((p) => p.src === req.src)) return errorResponse(400, 'รูปหลักต้องอยู่ในสินค้านี้');
     src = group.id;
-    patch = { productGroupName: group.name, productGroupType: group.type || 'other', productMain: req.src, productMainBy: 'user', productMainNote: '' };
+    patch = {
+      productGroupName: group.name,
+      productGroupType: group.type || 'other',
+      productMain: req.src,
+      productMainBy: 'user',
+      productMainNote: '',
+    };
   } else if (req.action === 'auto-main') {
     // ไม่ทับรูปหลักที่ผู้ใช้เลือกเอง · AI ตอบไม่ได้ = ใช้รูปหลักเดิม (ตอบ 200 แบบไม่เปลี่ยน ไม่ให้หน้าเว็บขึ้น error)
     const unchanged = json(200, { src: group.id, patch: {} });
@@ -38,16 +50,29 @@ export const POST = post(async (req) => {
     const usable = shown.flatMap((p, i) => (thumbs[i] ? [{ src: p.src!, img: thumbs[i]! }] : []));
     if (usable.length < 2) return unchanged;
     const what = PRODUCT_TYPES.find((t) => t.id === group.type)?.prompt ?? 'a product';
-    const pick = await pickMainPhoto(usable.map((u) => u.img), what, group.name);
+    const pick = await pickMainPhoto(
+      usable.map((u) => u.img),
+      what,
+      group.name,
+    );
     if (!pick) return unchanged;
     // ระหว่างรอ AI (~4 วินาที) ผู้ใช้อาจกดเลือกเองไปแล้ว -> อ่านใหม่ ไม่ทับ
-    const fresh = productGroups((await listImages({ area: 'uploads', kind: 'products' })) as ProductPhoto[]).find((g) => g.id === group.id);
+    const fresh = productGroups((await listImages({ area: 'uploads', kind: 'products' })) as ProductPhoto[]).find(
+      (g) => g.id === group.id,
+    );
     if (!fresh || fresh.mainBy === 'user') return unchanged;
     src = group.id;
-    patch = { productGroupName: group.name, productGroupType: group.type || 'other', productMain: usable[pick.index].src, productMainBy: 'ai', productMainNote: pick.th };
+    patch = {
+      productGroupName: group.name,
+      productGroupType: group.type || 'other',
+      productMain: usable[pick.index].src,
+      productMainBy: 'ai',
+      productMainNote: pick.th,
+    };
   } else {
     const photo = photos.find((p) => p.src === req.src);
-    if (!photo || ((photo as ProductPhoto).productGroup || photo.src) !== group.id) return errorResponse(400, 'รูปนี้ไม่ได้อยู่ในสินค้าที่เลือก');
+    if (!photo || ((photo as ProductPhoto).productGroup || photo.src) !== group.id)
+      return errorResponse(400, 'รูปนี้ไม่ได้อยู่ในสินค้าที่เลือก');
     src = photo.src;
     if (req.action === 'view') {
       if (!PHOTO_VIEWS.some((v) => v.id === req.view)) return errorResponse(400, 'ไม่มีมุมภาพนี้');
@@ -56,11 +81,16 @@ export const POST = post(async (req) => {
       // นำออกแบบกู้คืนได้ ไม่ลบไฟล์ที่อาจเก็บข้อมูลกลุ่มอยู่
       patch = { productRemoved: req.action === 'remove' ? 'true' : 'false' };
     } else if (req.action === 'move') {
-      if (!groups.some((g) => g.id === req.target) || req.target === group.id) return errorResponse(400, 'เลือกสินค้าอื่นที่จะย้ายรูปไป');
+      if (!groups.some((g) => g.id === req.target) || req.target === group.id)
+        return errorResponse(400, 'เลือกสินค้าอื่นที่จะย้ายรูปไป');
       patch = { productGroup: req.target, productRemoved: 'false' };
     } else return errorResponse(400, 'ไม่มีคำสั่งนี้');
     // รูปเก่าที่เคยเป็นสินค้าชิ้นเดียว: เก็บข้อมูลกลุ่มไว้ก่อนย้ายรูปไปที่อื่น
-    if (src === group.id) Object.assign(patch, { productGroupName: group.name, productGroupType: root.productGroupType || group.type || 'other' });
+    if (src === group.id)
+      Object.assign(patch, {
+        productGroupName: group.name,
+        productGroupType: root.productGroupType || group.type || 'other',
+      });
   }
   if (!(await updateMeta(src, patch))) return errorResponse(404, 'ไม่พบรูปนี้');
   return json(200, { src, patch });

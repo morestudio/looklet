@@ -4,13 +4,44 @@ import { localTime, sentences, writeGenerateLog, type LogImage, type PackshotLog
 import { cropTo, servable, svgJpeg } from '@/lib/images';
 import { readTurn, turnFill, turnPlace, turntableSvg } from '@/lib/turntable';
 import {
-  DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, plainShot, shotFramings, resolveProductAngle, resolveProductBackground,
-  CUSTOM_ANGLE, customAngleShot, turntableAngle,
-  AUTO_PROP_STYLE, AUTO_PROPS, HAND_MODES, LENS, NO_PROPS, PRODUCT_ANGLES, PRODUCT_FRAMINGS, PRODUCT_LIGHTS, PRODUCT_SET_SHOTS, REF_MODES,
-  handshotSingle, isProductAspect, pickOne, productPreset, productType, propStyle, resolveHandPose, EXTRA_MAX, type RefMode,
+  DETAIL_TARGETS,
+  SCALE_REFERENCES,
+  SHOT_TYPES,
+  plainShot,
+  shotFramings,
+  resolveProductAngle,
+  resolveProductBackground,
+  CUSTOM_ANGLE,
+  customAngleShot,
+  turntableAngle,
+  AUTO_PROP_STYLE,
+  AUTO_PROPS,
+  HAND_MODES,
+  LENS,
+  NO_PROPS,
+  PRODUCT_ANGLES,
+  PRODUCT_FRAMINGS,
+  PRODUCT_LIGHTS,
+  PRODUCT_SET_SHOTS,
+  REF_MODES,
+  handshotSingle,
+  isProductAspect,
+  pickOne,
+  productPreset,
+  productType,
+  propStyle,
+  resolveHandPose,
+  EXTRA_MAX,
+  type RefMode,
 } from '@/lib/packshot';
 import { readCreativeConcept } from '@/lib/creative';
-import { HANDSHOT_SET, buildCreativePackshotPrompt, buildHandshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
+import {
+  HANDSHOT_SET,
+  buildCreativePackshotPrompt,
+  buildHandshotPrompt,
+  buildPackshotPrompt,
+  buildPackshotSetPrompt,
+} from '@/lib/packshot-prompts';
 import { errorResponse, json, post } from '@/lib/route';
 import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
@@ -22,221 +53,411 @@ type Ref = { name?: string; src?: string; w?: number; h?: number; type?: string 
 const text = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 400) : null);
 const toRef = (v: unknown): Ref => {
   const r = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
-  return { name: text(r.name) ?? undefined, src: text(r.src) ?? undefined, w: Number(r.w) || undefined, h: Number(r.h) || undefined, type: text(r.type) ?? undefined };
+  return {
+    name: text(r.name) ?? undefined,
+    src: text(r.src) ?? undefined,
+    w: Number(r.w) || undefined,
+    h: Number(r.h) || undefined,
+    type: text(r.type) ?? undefined,
+  };
 };
 const image = (v: unknown) => (typeof v === 'string' && v ? v : null);
 const jpeg = (data: string): Img => ({ data, mime: 'image/jpeg' });
 // id ที่เลือก หรือของสไตล์ (ไม่รู้จัก id = ของสไตล์)
-const part = <T extends { id: string }>(list: T[], id: unknown, fallback: string) => list.find((x) => x.id === id) ?? list.find((x) => x.id === fallback)!;
+const part = <T extends { id: string }>(list: T[], id: unknown, fallback: string) =>
+  list.find((x) => x.id === id) ?? list.find((x) => x.id === fallback)!;
 
-export const POST = post(async (req) => {
-  if (!availableModels().some((m) => m.id === req.model)) return errorResponse(400, 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env');
-  const product = image(req.product);
-  if (!product) return errorResponse(400, 'ไม่มีรูปสินค้า');
-  const type = productType(req.product_type);
-  const shotType = req.shot_type == null ? 'styled' : SHOT_TYPES.find((s) => s.id === req.shot_type)?.id;
-  if (!shotType) return errorResponse(400, 'ไม่มีประเภทภาพนี้');
-  const creative = shotType === 'creative' ? readCreativeConcept(req.creative_concept) : null;
-  if (shotType === 'creative' && (!creative || req.set_ref)) return errorResponse(400, 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
-  // Handshot: สร้างทีละรูป (ไม่มีชุดภาพหลายมุม) · ท่าที่ไม่เข้ากับสินค้า -> ท่าแรกที่ใช้ได้ (resolveHandPose ตัวเดียวกับหน้าเว็บ)
-  const handshot = shotType === 'handshot';
-  if (handshot && req.set_ref) return errorResponse(400, 'Handshot สร้างทีละรูป ไม่มีชุดภาพหลายมุม');
-  const handPose = handshot ? resolveHandPose(type.id, req.hand_pose) : null;
-  const preset = productPreset(shotType === 'styled' ? req.preset : 'clean');
-  const detail = DETAIL_TARGETS.find((d) => d.id === req.detail_target) ?? DETAIL_TARGETS[0];
-  if (shotType === 'detail' && detail.id === 'feature' && !text(req.feature)?.trim()) return errorResponse(400, 'ระบุฟีเจอร์ที่ต้องการถ่าย');
-  const scale = SCALE_REFERENCES.find((r) => r.id === req.scale_reference) ?? SCALE_REFERENCES[0];
-  const dims = req.dimensions ?? {};
-  const referenceSize = req.reference_size ?? {};
-  const validSize = (v: unknown) => (typeof v === 'string' || typeof v === 'number') && Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 10000;
-  if (shotType === 'scale' && (!['width', 'height', 'depth'].every((k) => validSize(dims[k]))
-    || (scale.id === 'laptop' && !['width', 'depth'].every((k) => validSize(referenceSize[k]))))) {
-    return errorResponse(400, 'กรอกขนาดจริงเป็นเซนติเมตรให้ครบ และมากกว่า 0');
-  }
-  const supports: string[] = Array.isArray(req.support_images) ? req.support_images.slice(0, 5).map(image).filter((i: string | null): i is string => Boolean(i)) : [];
-  const aspect = isProductAspect(req.aspect) ? String(req.aspect) : '4:5';
-  // ชุดภาพสินค้า (รูปที่ 2 เป็นต้นไป): set_ref = รูปแรกของชุด, set_shot = id ใน PRODUCT_SET_SHOTS — ไม่ส่งช็อตต้นแบบ/รูปฉาก ใช้จากรูปแรก
-  const setRef = image(req.set_ref);
-  const setShot = setRef ? PRODUCT_SET_SHOTS.find((s) => s.id === req.set_shot) : undefined;
-  if (setRef && !setShot) return errorResponse(400, 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้');
-  const recipe = storableRecipe(req.recipe); // every step's choices (lib/recipe.ts), stored with the image
-  const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
-    ? { id: req.set.id, index: req.set.index } : null;
-  const finish = req.finish === 'phone' || req.finish === 'film' || req.finish === 'off' ? req.finish : null;
-
-  // ตั้งมุมเอง (Clean / Custom): ต้องมีตัวเลขมุมที่ใช้ได้ ตรวจก่อนเรียก AI · ประเภทอื่น / มุมที่ 2 ของชุดภาพ ไม่ใช้
-  const wantsTurn = req.angle === CUSTOM_ANGLE && customAngleShot(shotType) && !setRef;
-  if (wantsTurn && !readTurn(req.turn)) return errorResponse(400, 'มุมที่ตั้งเองไม่ถูกต้อง ลองหมุนใหม่อีกครั้ง');
-
-  const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI (รวมตัววางแผนพร็อพ)
-  if (blocked) return blocked;
-
-  // ช็อตต้นแบบ: เอาอะไรจากรูปนั้น (REF_MODES) · รูปฉากใช้ได้เฉพาะตอนไม่ได้ลอกฉากจากช็อตต้นแบบ
-  const ref = setRef || shotType !== 'styled' ? null : image(req.ref);
-  const refMode: RefMode | null = ref ? (REF_MODES.find((m) => m.id === req.ref_mode)?.id ?? 'shot') : null;
-  const setImage = shotType !== 'styled' || setRef || refMode === 'shot' || refMode === 'set-light' ? null : image(req.set_image);
-  // พร็อพของฉัน (Custom): พิมพ์เอง และ/หรือ รูปของจริง ใส่เพิ่มจากแนวพร็อพที่เลือก (ไม่มีพร็อพ + ของฉัน = มีแค่ของฉัน)
-  const ownProps = shotType === 'styled' && !setRef && refMode !== 'shot';
-  const propText = ownProps ? text(req.prop_text)?.trim().slice(0, 200) || null : null;
-  const propImage = ownProps ? image(req.prop_image) : null;
-  const own = propText || propImage ? `the user's own prop${propText ? ` (${propText})` : ''}${propImage ? ', the exact object from the prop photo' : ''}` : null;
-
-  const turn = wantsTurn && refMode !== 'shot' ? readTurn(req.turn) : null; // ลอกทั้งช็อต = มุมตามรูปต้นแบบ ไม่ใช้มุมที่ตั้ง
-  const angle = setShot ? part(PRODUCT_ANGLES, setShot.angle, 'front') : turn ? turntableAngle(type.id, turn)
-    : resolveProductAngle(shotType, req.angle, preset.angle, detail.id, scale.id);
-  const framing = setShot ? part(PRODUCT_FRAMINGS, setShot.framing, 'medium') : part(shotFramings(shotType), req.framing, shotType === 'detail' ? 'detail' : preset.framing);
-  const background = resolveProductBackground(shotType, preset, req.set_id, req.set_color, req.light, scale.id);
-  const light = background.light;
-  const setDef = background.set;
-  const color = background.color.id === 'set' ? null : background.color;
-  const variant = setDef.variants ? pickOne(setDef.variants) : null; // แท่นประติมากรรม: สุ่มของที่ใช้เป็นแท่นต่อรูป
-  const setText = setImage ? null : setDef.prompt.replace('{color}', color?.prompt ?? setDef.color ?? '').replace('{variant}', variant ?? '');
-  // พร็อพ: ลอกทั้งช็อต = พร็อพตามรูปต้นแบบ · แนวพร็อพ + จังหวะที่สุ่ม -> AI ตัววางแผนเขียนพร็อพจริงให้
-  const propsId = shotType !== 'styled' || setRef || refMode === 'shot' ? NO_PROPS : String(propStyle(req.props) || req.props === AUTO_PROPS ? req.props : preset.props);
-  const style = propStyle(propsId);
-  const moment = style?.moments.length ? pickOne(style.moments) : null;
-
-  // อ่านแสงในช็อตต้นแบบ/รูปฉาก + วางพร็อพ พร้อมกัน (ไม่ต้องรอต่อกัน)
-  const [refLight, sceneLight, plan] = await Promise.all([
-    ref ? describeLighting(jpeg(ref)) : null,
-    setImage ? describeLighting(jpeg(setImage)) : null,
-    propsId !== NO_PROPS ? planStyling({
-      product: jpeg(product), what: type.prompt, setImage: setImage ? jpeg(setImage) : null, setText, style: propsId, moment,
-      ownProp: propText, propImage: propImage ? jpeg(propImage) : null,
-    }) : null,
-  ]);
-  const planName = plan ? (propStyle(plan.style)?.name ?? AUTO_PROP_STYLE.name) : null;
-  // วางแผนพร็อพไม่สำเร็จ -> ใช้ brief ของแนวพร็อพ (+ จังหวะที่สุ่ม) แทน ยังได้รูป · "AI เลือกให้" ไม่มี brief -> ไม่ใส่พร็อพ
-  const styled = propsId === NO_PROPS ? null : plan?.en ?? (style ? style.brief + (moment ? ` Include ${moment}.` : '') : null);
-  const props = styled ? styled + (own ? ` One of the props is ${own}.` : '') : own ? `Only ${own}, placed beside the product.` : null;
-
-  // OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> ทำขนาดใกล้สุดแล้วตัด (cropTo) · GPT Image 2.5 ใช้ขนาดใหญ่ (GPT25_SIZES) แบบหน้านางแบบ
-  const [aw, ah] = aspect.split(':').map(Number);
-  const baseSize = aw < ah ? '1024x1536' : aw > ah ? '1536x1024' : '1024x1024';
-  const openai = String(req.model).startsWith('openai:');
-  const size = isGpt25(String(req.model)) ? GPT25_SIZES[baseSize] : baseSize;
-  const crop = openai && !['2:3', '1:1', '3:2'].includes(aspect) ? `a ${aspect} ${aw < ah ? 'portrait' : 'landscape'} frame` : null;
-  const opt = { aspect, size, quality: req.quality ?? 'high' };
-
-  const flat = Boolean(angle.flat);
-  const place = shotType === 'scale' && (scale.id === 'hand' || scale.id === 'person')
-    ? `The product is naturally held or worn: ${scale.prompt}. It has real weight, natural contact and gravity.`
-    : turn ? turnPlace(type.id, type.stand) : flat ? type.flat : type.stand;
-  // ภาพไกด์มุม (ตั้งมุมเอง): วาดด้วยตัวเดียวกับหน้าเว็บ ขนาดตามสัดส่วนที่สร้าง + สินค้าใหญ่ตามระยะที่เลือก
-  const orient = aw < ah ? 'portrait' : aw > ah ? 'landscape' : 'square';
-  const guide = turn ? await svgJpeg(turntableSvg(type.id, turn, { orient, fill: turnFill(framing.id, Boolean(props && framing.withProps)) })) : null;
-  const lens = framing.lens ?? LENS;
-  const handLight = PRODUCT_LIGHTS.find((l) => l.id === 'window')!; // Handshot ใช้แสงหน้าต่างนุ่มเสมอ (ตามที่ทดสอบ)
-  let prompt = creative ? buildCreativePackshotPrompt({ what: type.prompt, concept: creative.prompt, crop, extra: req.extra })
-    : handPose ? buildHandshotPrompt({ what: type.prompt, single: handshotSingle(type.id), mode: handPose.mode, pose: handPose.prompt, short: handPose.short, light: handLight.prompt, crop, extra: req.extra })
-    : setRef ? buildPackshotSetPrompt({ what: type.prompt, place, flat, lens, angle: angle.prompt, framing: framing.prompt, crop, extra: req.extra })
-    : buildPackshotPrompt({
-      what: type.prompt, place, flat, refMode, hasSetImage: Boolean(setImage), hasPropImage: Boolean(propImage), set: setText, props,
-      light: ref || setImage ? null : light.prompt, refLight, sceneLight, lens, angle: angle.prompt, framing: (props && framing.withProps) || framing.prompt,
-      grade: ref ? null : preset.grade, crop, extra: req.extra,
-      detail: shotType === 'detail', scale: shotType === 'scale' ? scale.prompt : null, guideFor: guide ? type.id : null,
-    });
-
-  if (!handshot && !setRef && !ref && !setImage && background.color.id === 'match') prompt += ' Choose a background color that complements the product while keeping a visible luminance contrast along its edges. Preserve the exact product color, without tinting it with the backdrop color.';
-  if (shotType === 'detail') prompt += ' Use a plain, visually quiet neutral background, softly out of focus, while keeping the selected product detail sharp and readable.';
-  if (plainShot(shotType)) prompt += ' This is a catalog packshot: exactly one product on a plain seamless background, no props, no decoration, no text overlays. Preserve accurate product colors and keep every view at consistent photographic magnification, ground line and lighting; do not resize each view independently to fill the frame.';
-  if (shotType === 'detail') prompt += ` This is a macro detail photograph. Focus specifically on ${detail.prompt}. ${text(req.feature) ?? ''} Show only that area at high detail; do not invent features absent from the source photos. The rest of the product may extend outside the frame.`;
-  if (shotType === 'scale') prompt += ` This image communicates real size. Product dimensions: width ${Number(dims.width)} cm, height ${Number(dims.height)} cm, depth ${Number(dims.depth)} cm. Reference: ${scale.prompt}. ${scale.id === 'laptop' ? `Laptop body width ${Number(referenceSize.width)} cm and depth ${Number(referenceSize.depth)} cm.` : ''} Use these dimensions to establish physically plausible relative scale. Keep the product and reference in the same depth plane, without forced perspective or decorative props. Do not add dimension labels or text.`;
-
-  // รูปที่ส่งให้ AI เรียงตาม buildPackshotPrompt / buildPackshotSetPrompt — รายการเดียวใช้ทั้งส่ง AI และทำ log
-  const refs = (req.refs && typeof req.refs === 'object' ? req.refs : {}) as Record<string, unknown>;
-  const inputs = [
-    { role: 'set', data: setRef, ref: toRef(refs.set_ref) },
-    { role: 'product', data: product, ref: toRef(refs.product) },
-    { role: 'ref', data: ref, ref: toRef(refs.ref) },
-    { role: 'scene', data: setImage, ref: toRef(refs.set_image) },
-    { role: 'prop', data: propImage, ref: toRef(refs.prop_image) },
-    { role: 'angle-guide', data: guide, ref: { name: 'ไกด์มุม (ตั้งมุมเอง)', w: orient === 'landscape' ? 1536 : 1024, h: orient === 'portrait' ? 1536 : 1024 } },
-    ...supports.map((data, i) => ({ role: 'product-detail', data, ref: toRef(Array.isArray(refs.supports) ? refs.supports[i] : null) })),
-  ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string');
-  const supportIndexes = inputs.flatMap((x, i) => x.role === 'product-detail' ? [i + 1] : []);
-  if (supportIndexes.length) prompt += ` Images ${supportIndexes.join(', ')} are additional photographs of the SAME product, showing real sides and fine details. Use them as authoritative design evidence, never as styling or background references. Preserve the actual back, sides, base and features; do not invent details.`;
-  const images = inputs.map((x) => jpeg(x.data));
-  // product photos actually sent, main first -> meta, shown on /gallery (recipe.pick.product is only the group id)
-  const productPhotos = inputs.filter((x) => x.role === 'product' || x.role === 'product-detail').map((x) => x.ref.src)
-    .filter((s): s is string => typeof s === 'string' && s.startsWith('/'));
-
-  // ---------- log (lib/genlog.ts PackshotLog) ----------
-  const readable = (src?: string) => {
-    try {
-      return src && decodeURIComponent(src);
-    } catch {
-      return src;
+export const POST = post(
+  async (req) => {
+    if (!availableModels().some((m) => m.id === req.model))
+      return errorResponse(400, 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env');
+    const product = image(req.product);
+    if (!product) return errorResponse(400, 'ไม่มีรูปสินค้า');
+    const type = productType(req.product_type);
+    const shotType = req.shot_type == null ? 'styled' : SHOT_TYPES.find((s) => s.id === req.shot_type)?.id;
+    if (!shotType) return errorResponse(400, 'ไม่มีประเภทภาพนี้');
+    const creative = shotType === 'creative' ? readCreativeConcept(req.creative_concept) : null;
+    if (shotType === 'creative' && (!creative || req.set_ref))
+      return errorResponse(400, 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
+    // Handshot: สร้างทีละรูป (ไม่มีชุดภาพหลายมุม) · ท่าที่ไม่เข้ากับสินค้า -> ท่าแรกที่ใช้ได้ (resolveHandPose ตัวเดียวกับหน้าเว็บ)
+    const handshot = shotType === 'handshot';
+    if (handshot && req.set_ref) return errorResponse(400, 'Handshot สร้างทีละรูป ไม่มีชุดภาพหลายมุม');
+    const handPose = handshot ? resolveHandPose(type.id, req.hand_pose) : null;
+    const preset = productPreset(shotType === 'styled' ? req.preset : 'clean');
+    const detail = DETAIL_TARGETS.find((d) => d.id === req.detail_target) ?? DETAIL_TARGETS[0];
+    if (shotType === 'detail' && detail.id === 'feature' && !text(req.feature)?.trim())
+      return errorResponse(400, 'ระบุฟีเจอร์ที่ต้องการถ่าย');
+    const scale = SCALE_REFERENCES.find((r) => r.id === req.scale_reference) ?? SCALE_REFERENCES[0];
+    const dims = req.dimensions ?? {};
+    const referenceSize = req.reference_size ?? {};
+    const validSize = (v: unknown) =>
+      (typeof v === 'string' || typeof v === 'number') &&
+      Number.isFinite(Number(v)) &&
+      Number(v) > 0 &&
+      Number(v) <= 10000;
+    if (
+      shotType === 'scale' &&
+      (!['width', 'height', 'depth'].every((k) => validSize(dims[k])) ||
+        (scale.id === 'laptop' && !['width', 'depth'].every((k) => validSize(referenceSize[k]))))
+    ) {
+      return errorResponse(400, 'กรอกขนาดจริงเป็นเซนติเมตรให้ครบ และมากกว่า 0');
     }
-  };
-  const logAt = (i: number): LogImage => {
-    const { ref: r, data } = inputs[i];
-    return {
-      image: i + 1, name: r.name, ...(r.type ? { type: r.type } : {}), file: readable(r.src),
-      sent: [r.w && r.h ? `${r.w}×${r.h}` : null, `${Math.round((data.length * 0.75) / 1024)} KB`].filter(Boolean).join(' · '),
-    };
-  };
-  const logOf = (role: string): LogImage | undefined => {
-    const i = inputs.findIndex((x) => x.role === role);
-    return i < 0 ? undefined : logAt(i);
-  };
-  const styleLog: PackshotLog['style'] = handPose ? {
-    preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${handPose.name}`, pose: handPose.name,
-    angle: 'ตามท่าถือ', framing: HAND_MODES.find((m) => m.id === handPose.mode)!.name, aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
-  } : {
-    preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${creative?.title ?? preset.name}`, angle: creative ? 'ตามคอนเซปต์' : angle.name, framing: creative?.composition ?? framing.name, aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
-  };
-  if (!ref && !setRef) styleLog.light = handPose ? handLight.name : creative?.lighting ?? light.name;
-  if (turn) styleLog.angleView = angle.hint; // ตั้งมุมเอง: เห็นด้านไหน + กล้องสูงเท่าไหร่ (ภาษาไทย)
-  if (color && setText && !handPose) styleLog.color = color.name;
-  if (creative) styleLog.color = creative.palette.join(' · ');
-  if (variant) styleLog.plinth = variant;
-  if (refLight) styleLog.refLight = refLight;
-  if (sceneLight) styleLog.sceneLight = sceneLight;
-  if (typeof req.extra === 'string' && req.extra.trim()) styleLog.extra = req.extra.trim().slice(0, EXTRA_MAX); // ข้อความเต็มเท่าที่ส่ง AI (text() ตัด 400)
-  const refModeName = REF_MODES.find((m) => m.id === refMode)?.name;
-  const logBase = {
-    page: 'สินค้า' as const,
-    ai: { model: String(req.model), params: (openai ? { size, quality: String(opt.quality), input_fidelity: 'high' } : { aspectRatio: aspect }) as Record<string, string> },
-    product: logOf('product')!,
-    element: {
-      set: creative ? { name: creative.scene, text: creative.prompt } : handPose ? { name: 'พื้นเรียบสีเข้ากับสินค้า', text: HANDSHOT_SET } : setRef ?'ใช้ฉากจากรูปแรกของชุด' : refMode === 'shot' || refMode === 'set-light' ? 'ตามช็อตต้นแบบ'
-        : logOf('scene') ?? { name: setDef.name, text: setText ?? '' },
-      ...(ref ? { reference: { mode: refModeName ?? '', ...logOf('ref') } } : {}),
-      props: {
-        style: creative ? creative.props : setRef ? 'ตามรูปแรกของชุด' : refMode === 'shot' ? 'ตามช็อตต้นแบบ' : propsId === NO_PROPS ? (own ? 'พร็อพของฉันอย่างเดียว' : 'ไม่มีพร็อพ')
-          : plan ? `AI วางพร็อพ: ${planName}` : `AI วางพร็อพไม่สำเร็จ ใช้แนวทางของ ${style?.name ?? AUTO_PROP_STYLE.name}`,
-        ...(moment ? { moment } : {}), ...(plan ? { plan_th: plan.th, plan_en: plan.en } : {}),
-        ...(propText ? { own: propText } : {}), ...(propImage ? { image: logOf('prop') } : {}),
+    const supports: string[] = Array.isArray(req.support_images)
+      ? req.support_images
+          .slice(0, 5)
+          .map(image)
+          .filter((i: string | null): i is string => Boolean(i))
+      : [];
+    const aspect = isProductAspect(req.aspect) ? String(req.aspect) : '4:5';
+    // ชุดภาพสินค้า (รูปที่ 2 เป็นต้นไป): set_ref = รูปแรกของชุด, set_shot = id ใน PRODUCT_SET_SHOTS — ไม่ส่งช็อตต้นแบบ/รูปฉาก ใช้จากรูปแรก
+    const setRef = image(req.set_ref);
+    const setShot = setRef ? PRODUCT_SET_SHOTS.find((s) => s.id === req.set_shot) : undefined;
+    if (setRef && !setShot) return errorResponse(400, 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้');
+    const recipe = storableRecipe(req.recipe); // every step's choices (lib/recipe.ts), stored with the image
+    const setTag: SetTag | null =
+      req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
+        ? { id: req.set.id, index: req.set.index }
+        : null;
+    const finish = req.finish === 'phone' || req.finish === 'film' || req.finish === 'off' ? req.finish : null;
+
+    // ตั้งมุมเอง (Clean / Custom): ต้องมีตัวเลขมุมที่ใช้ได้ ตรวจก่อนเรียก AI · ประเภทอื่น / มุมที่ 2 ของชุดภาพ ไม่ใช้
+    const wantsTurn = req.angle === CUSTOM_ANGLE && customAngleShot(shotType) && !setRef;
+    if (wantsTurn && !readTurn(req.turn)) return errorResponse(400, 'มุมที่ตั้งเองไม่ถูกต้อง ลองหมุนใหม่อีกครั้ง');
+
+    const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI (รวมตัววางแผนพร็อพ)
+    if (blocked) return blocked;
+
+    // ช็อตต้นแบบ: เอาอะไรจากรูปนั้น (REF_MODES) · รูปฉากใช้ได้เฉพาะตอนไม่ได้ลอกฉากจากช็อตต้นแบบ
+    const ref = setRef || shotType !== 'styled' ? null : image(req.ref);
+    const refMode: RefMode | null = ref ? (REF_MODES.find((m) => m.id === req.ref_mode)?.id ?? 'shot') : null;
+    const setImage =
+      shotType !== 'styled' || setRef || refMode === 'shot' || refMode === 'set-light' ? null : image(req.set_image);
+    // พร็อพของฉัน (Custom): พิมพ์เอง และ/หรือ รูปของจริง ใส่เพิ่มจากแนวพร็อพที่เลือก (ไม่มีพร็อพ + ของฉัน = มีแค่ของฉัน)
+    const ownProps = shotType === 'styled' && !setRef && refMode !== 'shot';
+    const propText = ownProps ? text(req.prop_text)?.trim().slice(0, 200) || null : null;
+    const propImage = ownProps ? image(req.prop_image) : null;
+    const own =
+      propText || propImage
+        ? `the user's own prop${propText ? ` (${propText})` : ''}${propImage ? ', the exact object from the prop photo' : ''}`
+        : null;
+
+    const turn = wantsTurn && refMode !== 'shot' ? readTurn(req.turn) : null; // ลอกทั้งช็อต = มุมตามรูปต้นแบบ ไม่ใช้มุมที่ตั้ง
+    const angle = setShot
+      ? part(PRODUCT_ANGLES, setShot.angle, 'front')
+      : turn
+        ? turntableAngle(type.id, turn)
+        : resolveProductAngle(shotType, req.angle, preset.angle, detail.id, scale.id);
+    const framing = setShot
+      ? part(PRODUCT_FRAMINGS, setShot.framing, 'medium')
+      : part(shotFramings(shotType), req.framing, shotType === 'detail' ? 'detail' : preset.framing);
+    const background = resolveProductBackground(shotType, preset, req.set_id, req.set_color, req.light, scale.id);
+    const light = background.light;
+    const setDef = background.set;
+    const color = background.color.id === 'set' ? null : background.color;
+    const variant = setDef.variants ? pickOne(setDef.variants) : null; // แท่นประติมากรรม: สุ่มของที่ใช้เป็นแท่นต่อรูป
+    const setText = setImage
+      ? null
+      : setDef.prompt.replace('{color}', color?.prompt ?? setDef.color ?? '').replace('{variant}', variant ?? '');
+    // พร็อพ: ลอกทั้งช็อต = พร็อพตามรูปต้นแบบ · แนวพร็อพ + จังหวะที่สุ่ม -> AI ตัววางแผนเขียนพร็อพจริงให้
+    const propsId =
+      shotType !== 'styled' || setRef || refMode === 'shot'
+        ? NO_PROPS
+        : String(propStyle(req.props) || req.props === AUTO_PROPS ? req.props : preset.props);
+    const style = propStyle(propsId);
+    const moment = style?.moments.length ? pickOne(style.moments) : null;
+
+    // อ่านแสงในช็อตต้นแบบ/รูปฉาก + วางพร็อพ พร้อมกัน (ไม่ต้องรอต่อกัน)
+    const [refLight, sceneLight, plan] = await Promise.all([
+      ref ? describeLighting(jpeg(ref)) : null,
+      setImage ? describeLighting(jpeg(setImage)) : null,
+      propsId !== NO_PROPS
+        ? planStyling({
+            product: jpeg(product),
+            what: type.prompt,
+            setImage: setImage ? jpeg(setImage) : null,
+            setText,
+            style: propsId,
+            moment,
+            ownProp: propText,
+            propImage: propImage ? jpeg(propImage) : null,
+          })
+        : null,
+    ]);
+    const planName = plan ? (propStyle(plan.style)?.name ?? AUTO_PROP_STYLE.name) : null;
+    // วางแผนพร็อพไม่สำเร็จ -> ใช้ brief ของแนวพร็อพ (+ จังหวะที่สุ่ม) แทน ยังได้รูป · "AI เลือกให้" ไม่มี brief -> ไม่ใส่พร็อพ
+    const styled =
+      propsId === NO_PROPS ? null : (plan?.en ?? (style ? style.brief + (moment ? ` Include ${moment}.` : '') : null));
+    const props = styled
+      ? styled + (own ? ` One of the props is ${own}.` : '')
+      : own
+        ? `Only ${own}, placed beside the product.`
+        : null;
+
+    // OpenAI ทำได้แค่ 2:3 / 1:1 / 3:2 -> ทำขนาดใกล้สุดแล้วตัด (cropTo) · GPT Image 2.5 ใช้ขนาดใหญ่ (GPT25_SIZES) แบบหน้านางแบบ
+    const [aw, ah] = aspect.split(':').map(Number);
+    const baseSize = aw < ah ? '1024x1536' : aw > ah ? '1536x1024' : '1024x1024';
+    const openai = String(req.model).startsWith('openai:');
+    const size = isGpt25(String(req.model)) ? GPT25_SIZES[baseSize] : baseSize;
+    const crop =
+      openai && !['2:3', '1:1', '3:2'].includes(aspect)
+        ? `a ${aspect} ${aw < ah ? 'portrait' : 'landscape'} frame`
+        : null;
+    const opt = { aspect, size, quality: req.quality ?? 'high' };
+
+    const flat = Boolean(angle.flat);
+    const place =
+      shotType === 'scale' && (scale.id === 'hand' || scale.id === 'person')
+        ? `The product is naturally held or worn: ${scale.prompt}. It has real weight, natural contact and gravity.`
+        : turn
+          ? turnPlace(type.id, type.stand)
+          : flat
+            ? type.flat
+            : type.stand;
+    // ภาพไกด์มุม (ตั้งมุมเอง): วาดด้วยตัวเดียวกับหน้าเว็บ ขนาดตามสัดส่วนที่สร้าง + สินค้าใหญ่ตามระยะที่เลือก
+    const orient = aw < ah ? 'portrait' : aw > ah ? 'landscape' : 'square';
+    const guide = turn
+      ? await svgJpeg(
+          turntableSvg(type.id, turn, { orient, fill: turnFill(framing.id, Boolean(props && framing.withProps)) }),
+        )
+      : null;
+    const lens = framing.lens ?? LENS;
+    const handLight = PRODUCT_LIGHTS.find((l) => l.id === 'window')!; // Handshot ใช้แสงหน้าต่างนุ่มเสมอ (ตามที่ทดสอบ)
+    let prompt = creative
+      ? buildCreativePackshotPrompt({ what: type.prompt, concept: creative.prompt, crop, extra: req.extra })
+      : handPose
+        ? buildHandshotPrompt({
+            what: type.prompt,
+            single: handshotSingle(type.id),
+            mode: handPose.mode,
+            pose: handPose.prompt,
+            short: handPose.short,
+            light: handLight.prompt,
+            crop,
+            extra: req.extra,
+          })
+        : setRef
+          ? buildPackshotSetPrompt({
+              what: type.prompt,
+              place,
+              flat,
+              lens,
+              angle: angle.prompt,
+              framing: framing.prompt,
+              crop,
+              extra: req.extra,
+            })
+          : buildPackshotPrompt({
+              what: type.prompt,
+              place,
+              flat,
+              refMode,
+              hasSetImage: Boolean(setImage),
+              hasPropImage: Boolean(propImage),
+              set: setText,
+              props,
+              light: ref || setImage ? null : light.prompt,
+              refLight,
+              sceneLight,
+              lens,
+              angle: angle.prompt,
+              framing: (props && framing.withProps) || framing.prompt,
+              grade: ref ? null : preset.grade,
+              crop,
+              extra: req.extra,
+              detail: shotType === 'detail',
+              scale: shotType === 'scale' ? scale.prompt : null,
+              guideFor: guide ? type.id : null,
+            });
+
+    if (!handshot && !setRef && !ref && !setImage && background.color.id === 'match')
+      prompt +=
+        ' Choose a background color that complements the product while keeping a visible luminance contrast along its edges. Preserve the exact product color, without tinting it with the backdrop color.';
+    if (shotType === 'detail')
+      prompt +=
+        ' Use a plain, visually quiet neutral background, softly out of focus, while keeping the selected product detail sharp and readable.';
+    if (plainShot(shotType))
+      prompt +=
+        ' This is a catalog packshot: exactly one product on a plain seamless background, no props, no decoration, no text overlays. Preserve accurate product colors and keep every view at consistent photographic magnification, ground line and lighting; do not resize each view independently to fill the frame.';
+    if (shotType === 'detail')
+      prompt += ` This is a macro detail photograph. Focus specifically on ${detail.prompt}. ${text(req.feature) ?? ''} Show only that area at high detail; do not invent features absent from the source photos. The rest of the product may extend outside the frame.`;
+    if (shotType === 'scale')
+      prompt += ` This image communicates real size. Product dimensions: width ${Number(dims.width)} cm, height ${Number(dims.height)} cm, depth ${Number(dims.depth)} cm. Reference: ${scale.prompt}. ${scale.id === 'laptop' ? `Laptop body width ${Number(referenceSize.width)} cm and depth ${Number(referenceSize.depth)} cm.` : ''} Use these dimensions to establish physically plausible relative scale. Keep the product and reference in the same depth plane, without forced perspective or decorative props. Do not add dimension labels or text.`;
+
+    // รูปที่ส่งให้ AI เรียงตาม buildPackshotPrompt / buildPackshotSetPrompt — รายการเดียวใช้ทั้งส่ง AI และทำ log
+    const refs = (req.refs && typeof req.refs === 'object' ? req.refs : {}) as Record<string, unknown>;
+    const inputs = [
+      { role: 'set', data: setRef, ref: toRef(refs.set_ref) },
+      { role: 'product', data: product, ref: toRef(refs.product) },
+      { role: 'ref', data: ref, ref: toRef(refs.ref) },
+      { role: 'scene', data: setImage, ref: toRef(refs.set_image) },
+      { role: 'prop', data: propImage, ref: toRef(refs.prop_image) },
+      {
+        role: 'angle-guide',
+        data: guide,
+        ref: {
+          name: 'ไกด์มุม (ตั้งมุมเอง)',
+          w: orient === 'landscape' ? 1536 : 1024,
+          h: orient === 'portrait' ? 1536 : 1024,
+        },
       },
-    },
-    ...(setRef ? { set: { shot: setShot!.name, ...logOf('set') } } : {}),
-    ...(guide ? { angleGuide: logOf('angle-guide') } : {}),
-    // รูปสินค้าเพิ่มเติม (มุมอื่นของสินค้าชิ้นเดียวกัน) — รูปพวกนี้เคยดึงทั้งท่าวาง/สีให้เพี้ยน (30 ต.ค.) ต้องตรวจย้อนได้ว่าส่งรูปไหนไป
-    ...(supportIndexes.length ? { supports: supportIndexes.map((n) => logAt(n - 1)) } : {}),
-    style: styleLog,
-    prompt: sentences(prompt),
-  };
-  const t0 = Date.now();
-  const duration = () => `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`;
-  const usage = { page: 'product', action: 'packshot', model: String(req.model), quality: String(opt.quality) } as const;
-  let tokens = 0; // โทเคนที่ AI คิดจริง -> โควตาลูกค้า
-  try {
-    const raw = await generateImage(req.model, images, prompt, opt);
-    tokens = raw.tokens;
-    const out = await servable(await cropTo(raw, aspect)); // ตัดตามสัดส่วนก่อน แล้วค่อยแปลงรูปใหญ่เป็น JPEG
-    const stylePlan = creative ? { name: creative.title, th: creative.summary } : plan ? { name: planName!, th: plan.th } : null;
-    // เซฟทันที (เสียเงินไปแล้ว ห้ามหาย) — page = 'product' ให้แต่ละหน้าโชว์เฉพาะรูปของตัวเอง
-    const src = await saveImage({ area: 'results' }, out.data, out.mime, {
-      page: 'product', caption: String(req.caption ?? '').slice(0, 300), ...(setTag ? { set: setTag } : {}), ...(finish ? { finish } : {}),
-      ...(stylePlan ? { stylePlan } : {}), ...(recipe ? { recipe } : {}), ...(productPhotos.length ? { productPhotos } : {}),
-    });
-    const log = await writeGenerateLog({ time: localTime(), status: 'สำเร็จ', duration: duration(), result: src, ...logBase });
-    await recordUsage({ ...usage, status: 'ok', tokens, log });
-    return json(200, { src, stylePlan });
-  } catch (e) {
-    const log = await writeGenerateLog({ time: localTime(), status: 'พัง', duration: duration(), error: (e as Error).message, ...logBase });
-    await recordUsage({ ...usage, status: 'error', tokens, log });
-    throw e;
-  }
-}, { model: PRODUCT_AI_MODEL }); // หน้าสินค้าใช้ GPT Image 2.6 (lib/catalog.ts) หน้าอื่นใช้ DEFAULT_AI_MODEL
+      ...supports.map((data, i) => ({
+        role: 'product-detail',
+        data,
+        ref: toRef(Array.isArray(refs.supports) ? refs.supports[i] : null),
+      })),
+    ].filter((x): x is { role: string; data: string; ref: Ref } => typeof x.data === 'string');
+    const supportIndexes = inputs.flatMap((x, i) => (x.role === 'product-detail' ? [i + 1] : []));
+    if (supportIndexes.length)
+      prompt += ` Images ${supportIndexes.join(', ')} are additional photographs of the SAME product, showing real sides and fine details. Use them as authoritative design evidence, never as styling or background references. Preserve the actual back, sides, base and features; do not invent details.`;
+    const images = inputs.map((x) => jpeg(x.data));
+    // product photos actually sent, main first -> meta, shown on /gallery (recipe.pick.product is only the group id)
+    const productPhotos = inputs
+      .filter((x) => x.role === 'product' || x.role === 'product-detail')
+      .map((x) => x.ref.src)
+      .filter((s): s is string => typeof s === 'string' && s.startsWith('/'));
+
+    // ---------- log (lib/genlog.ts PackshotLog) ----------
+    const readable = (src?: string) => {
+      try {
+        return src && decodeURIComponent(src);
+      } catch {
+        return src;
+      }
+    };
+    const logAt = (i: number): LogImage => {
+      const { ref: r, data } = inputs[i];
+      return {
+        image: i + 1,
+        name: r.name,
+        ...(r.type ? { type: r.type } : {}),
+        file: readable(r.src),
+        sent: [r.w && r.h ? `${r.w}×${r.h}` : null, `${Math.round((data.length * 0.75) / 1024)} KB`]
+          .filter(Boolean)
+          .join(' · '),
+      };
+    };
+    const logOf = (role: string): LogImage | undefined => {
+      const i = inputs.findIndex((x) => x.role === role);
+      return i < 0 ? undefined : logAt(i);
+    };
+    const styleLog: PackshotLog['style'] = handPose
+      ? {
+          preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${handPose.name}`,
+          pose: handPose.name,
+          angle: 'ตามท่าถือ',
+          framing: HAND_MODES.find((m) => m.id === handPose.mode)!.name,
+          aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
+        }
+      : {
+          preset: `${SHOT_TYPES.find((s) => s.id === shotType)!.name} · ${creative?.title ?? preset.name}`,
+          angle: creative ? 'ตามคอนเซปต์' : angle.name,
+          framing: creative?.composition ?? framing.name,
+          aspect: aspect + (crop ? ' (ตัดจาก ' + size + ')' : ''),
+        };
+    if (!ref && !setRef) styleLog.light = handPose ? handLight.name : (creative?.lighting ?? light.name);
+    if (turn) styleLog.angleView = angle.hint; // ตั้งมุมเอง: เห็นด้านไหน + กล้องสูงเท่าไหร่ (ภาษาไทย)
+    if (color && setText && !handPose) styleLog.color = color.name;
+    if (creative) styleLog.color = creative.palette.join(' · ');
+    if (variant) styleLog.plinth = variant;
+    if (refLight) styleLog.refLight = refLight;
+    if (sceneLight) styleLog.sceneLight = sceneLight;
+    if (typeof req.extra === 'string' && req.extra.trim()) styleLog.extra = req.extra.trim().slice(0, EXTRA_MAX); // ข้อความเต็มเท่าที่ส่ง AI (text() ตัด 400)
+    const refModeName = REF_MODES.find((m) => m.id === refMode)?.name;
+    const logBase = {
+      page: 'สินค้า' as const,
+      ai: {
+        model: String(req.model),
+        params: (openai
+          ? { size, quality: String(opt.quality), input_fidelity: 'high' }
+          : { aspectRatio: aspect }) as Record<string, string>,
+      },
+      product: logOf('product')!,
+      element: {
+        set: creative
+          ? { name: creative.scene, text: creative.prompt }
+          : handPose
+            ? { name: 'พื้นเรียบสีเข้ากับสินค้า', text: HANDSHOT_SET }
+            : setRef
+              ? 'ใช้ฉากจากรูปแรกของชุด'
+              : refMode === 'shot' || refMode === 'set-light'
+                ? 'ตามช็อตต้นแบบ'
+                : (logOf('scene') ?? { name: setDef.name, text: setText ?? '' }),
+        ...(ref ? { reference: { mode: refModeName ?? '', ...logOf('ref') } } : {}),
+        props: {
+          style: creative
+            ? creative.props
+            : setRef
+              ? 'ตามรูปแรกของชุด'
+              : refMode === 'shot'
+                ? 'ตามช็อตต้นแบบ'
+                : propsId === NO_PROPS
+                  ? own
+                    ? 'พร็อพของฉันอย่างเดียว'
+                    : 'ไม่มีพร็อพ'
+                  : plan
+                    ? `AI วางพร็อพ: ${planName}`
+                    : `AI วางพร็อพไม่สำเร็จ ใช้แนวทางของ ${style?.name ?? AUTO_PROP_STYLE.name}`,
+          ...(moment ? { moment } : {}),
+          ...(plan ? { plan_th: plan.th, plan_en: plan.en } : {}),
+          ...(propText ? { own: propText } : {}),
+          ...(propImage ? { image: logOf('prop') } : {}),
+        },
+      },
+      ...(setRef ? { set: { shot: setShot!.name, ...logOf('set') } } : {}),
+      ...(guide ? { angleGuide: logOf('angle-guide') } : {}),
+      // รูปสินค้าเพิ่มเติม (มุมอื่นของสินค้าชิ้นเดียวกัน) — รูปพวกนี้เคยดึงทั้งท่าวาง/สีให้เพี้ยน (30 ต.ค.) ต้องตรวจย้อนได้ว่าส่งรูปไหนไป
+      ...(supportIndexes.length ? { supports: supportIndexes.map((n) => logAt(n - 1)) } : {}),
+      style: styleLog,
+      prompt: sentences(prompt),
+    };
+    const t0 = Date.now();
+    const duration = () => `${((Date.now() - t0) / 1000).toFixed(1)} วินาที`;
+    const usage = {
+      page: 'product',
+      action: 'packshot',
+      model: String(req.model),
+      quality: String(opt.quality),
+    } as const;
+    let tokens = 0; // โทเคนที่ AI คิดจริง -> โควตาลูกค้า
+    try {
+      const raw = await generateImage(req.model, images, prompt, opt);
+      tokens = raw.tokens;
+      const out = await servable(await cropTo(raw, aspect)); // ตัดตามสัดส่วนก่อน แล้วค่อยแปลงรูปใหญ่เป็น JPEG
+      const stylePlan = creative
+        ? { name: creative.title, th: creative.summary }
+        : plan
+          ? { name: planName!, th: plan.th }
+          : null;
+      // เซฟทันที (เสียเงินไปแล้ว ห้ามหาย) — page = 'product' ให้แต่ละหน้าโชว์เฉพาะรูปของตัวเอง
+      const src = await saveImage({ area: 'results' }, out.data, out.mime, {
+        page: 'product',
+        caption: String(req.caption ?? '').slice(0, 300),
+        ...(setTag ? { set: setTag } : {}),
+        ...(finish ? { finish } : {}),
+        ...(stylePlan ? { stylePlan } : {}),
+        ...(recipe ? { recipe } : {}),
+        ...(productPhotos.length ? { productPhotos } : {}),
+      });
+      const log = await writeGenerateLog({
+        time: localTime(),
+        status: 'สำเร็จ',
+        duration: duration(),
+        result: src,
+        ...logBase,
+      });
+      await recordUsage({ ...usage, status: 'ok', tokens, log });
+      return json(200, { src, stylePlan });
+    } catch (e) {
+      const log = await writeGenerateLog({
+        time: localTime(),
+        status: 'พัง',
+        duration: duration(),
+        error: (e as Error).message,
+        ...logBase,
+      });
+      await recordUsage({ ...usage, status: 'error', tokens, log });
+      throw e;
+    }
+  },
+  { model: PRODUCT_AI_MODEL },
+); // หน้าสินค้าใช้ GPT Image 2.6 (lib/catalog.ts) หน้าอื่นใช้ DEFAULT_AI_MODEL
