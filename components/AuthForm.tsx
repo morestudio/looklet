@@ -45,7 +45,7 @@ export function LoginForm() {
     }
     const { data } = await supabase.auth.getClaims();
     if (!isMember(data?.claims)) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
       setBusy(false);
       return setError('บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน ติดต่อผู้ดูแล');
     }
@@ -95,6 +95,7 @@ export function ChangePasswordForm() {
     setBusy(true);
     const { error } = await createClient().auth.updateUser({ password });
     setBusy(false);
+    if (error?.name === 'AuthSessionMissingError') return void signOut(); // session ended elsewhere: clear the cookie, sign in again
     if (error) return setMsg({ ok: false, text: 'เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + error.message });
     setPassword('');
     setConfirm('');
@@ -116,9 +117,10 @@ export function ChangePasswordForm() {
   );
 }
 
-// ปุ่มออกจากระบบ (แถบบนของ Lolo)
+// ปุ่มออกจากระบบ (แถบบนของ Lolo) · this browser only: the default ('global') ends the account's sessions everywhere,
+// so one person signing out of a shared invite code would sign out everyone using it
 export async function signOut() {
-  await createClient().auth.signOut();
+  await createClient().auth.signOut({ scope: 'local' });
   go('/login');
 }
 
