@@ -12,10 +12,14 @@ function load(file) {
   const code = ts.transpileModule(readFileSync(new URL('../' + file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  new Function('require', 'module', 'exports', code)((id) => {
-    if (id.startsWith('./')) return load('lib/' + id.slice(2) + '.ts');
-    return require(id);
-  }, loaded, loaded.exports);
+  new Function('require', 'module', 'exports', code)(
+    (id) => {
+      if (id.startsWith('./')) return load('lib/' + id.slice(2) + '.ts');
+      return require(id);
+    },
+    loaded,
+    loaded.exports,
+  );
   cache.set(file, loaded.exports);
   return loaded.exports;
 }
@@ -34,18 +38,42 @@ const lists = {
   prop: [{ name: 'แก้วแบรนด์', src: '/api/files/uploads/product-props/cup.jpg' }],
 };
 const concept = {
-  id: 'idea-1', title: 'Quiet Morning', summary: 'วางบนโต๊ะไม้ แสงเช้า', palette: ['#f2e8dc', '#8a6a4f'],
-  scene: 'โต๊ะไม้โอ๊ค', props: 'แก้วกาแฟ', lighting: 'แสงหน้าต่าง', composition: 'กึ่งกลาง',
-  prompt: 'A calm morning still life of the product on an oak table, soft window light from the left, warm neutral palette.',
+  id: 'idea-1',
+  title: 'Quiet Morning',
+  summary: 'วางบนโต๊ะไม้ แสงเช้า',
+  palette: ['#f2e8dc', '#8a6a4f'],
+  scene: 'โต๊ะไม้โอ๊ค',
+  props: 'แก้วกาแฟ',
+  lighting: 'แสงหน้าต่าง',
+  composition: 'กึ่งกลาง',
+  prompt:
+    'A calm morning still life of the product on an oak table, soft window light from the left, warm neutral palette.',
 };
 // every field set to a non-default value; a new Recipe field must be added here (checked below)
 const full = {
   pick: { product: BAG, ref: lists.ref[0].src, scene: lists.scene[0].src, prop: lists.prop[0].src },
-  shotType: 'creative', idea: 'เช้าวันหยุด', facts: 'หนังแท้', concept,
-  detailTarget: 'logo', feature: 'ซิปหน้า', scaleRef: 'laptop', handPose: 'chest',
-  dimensions: { width: '30', height: '20', depth: '10' }, referenceSize: { width: '31', depth: '22' }, extraAngles: ['top'],
-  scene: 'plywood', color: 'match', props: 'fruit', propText: 'ช่อลาเวนเดอร์', angle: 'custom', turn: { yaw: -40, elev: 25 },
-  framing: 'close', refMode: 'light', aspect: '9:16', quality: 'medium', extra: 'สายพาดลงพื้น',
+  shotType: 'creative',
+  idea: 'เช้าวันหยุด',
+  facts: 'หนังแท้',
+  concept,
+  detailTarget: 'logo',
+  feature: 'ซิปหน้า',
+  scaleRef: 'laptop',
+  handPose: 'chest',
+  dimensions: { width: '30', height: '20', depth: '10' },
+  referenceSize: { width: '31', depth: '22' },
+  extraAngles: ['top'],
+  scene: 'plywood',
+  color: 'match',
+  props: 'fruit',
+  propText: 'ช่อลาเวนเดอร์',
+  angle: 'custom',
+  turn: { yaw: -40, elev: 25 },
+  framing: 'close',
+  refMode: 'light',
+  aspect: '9:16',
+  quality: 'medium',
+  extra: 'สายพาดลงพื้น',
 };
 const stored = (r) => JSON.parse(JSON.stringify(r)); // as saved to meta.recipe and read back from /api/library
 
@@ -73,21 +101,64 @@ for (const shotType of ['clean', 'styled', 'creative', 'handshot']) {
 {
   const { recipe, missing } = readRecipe({ pick: { product: BAG }, shotType: 'styled' }, lists, MODEL);
   assert.deepEqual(missing, []);
-  assert.deepEqual(recipe, { ...START, pick: { ...START.pick, product: BAG }, shotType: 'styled', ...shotTypeDefaults('styled') });
-  assert.deepEqual(shotTypeDefaults('styled'), { scene: 'table', color: 'match', props: 'none', angle: 'preset', framing: 'preset', aspect: '4:5' });
+  assert.deepEqual(recipe, {
+    ...START,
+    pick: { ...START.pick, product: BAG },
+    shotType: 'styled',
+    ...shotTypeDefaults('styled'),
+  });
+  assert.deepEqual(shotTypeDefaults('styled'), {
+    scene: 'table',
+    color: 'match',
+    props: 'none',
+    angle: 'preset',
+    framing: 'preset',
+    aspect: '4:5',
+  });
   assert.deepEqual(readRecipe({}, lists, MODEL).recipe, START, 'empty recipe = page start');
-  assert.deepEqual(START, { // page-open values, pinned so a changed default shows up here
-    pick: { product: null, ref: null, scene: null, prop: null }, shotType: 'clean', idea: '', facts: '', concept: null,
-    detailTarget: 'texture', feature: '', scaleRef: 'hand', handPose: 'hold',
-    dimensions: { width: '', height: '', depth: '' }, referenceSize: { width: '', depth: '' }, extraAngles: [],
-    scene: 'preset', color: 'white', props: 'none', angle: 'preset', framing: 'preset', aspect: '1:1',
-    propText: '', turn: null, refMode: 'shot', quality: 'high', extra: '',
+  assert.deepEqual(START, {
+    // page-open values, pinned so a changed default shows up here
+    pick: { product: null, ref: null, scene: null, prop: null },
+    shotType: 'clean',
+    idea: '',
+    facts: '',
+    concept: null,
+    detailTarget: 'texture',
+    feature: '',
+    scaleRef: 'hand',
+    handPose: 'hold',
+    dimensions: { width: '', height: '', depth: '' },
+    referenceSize: { width: '', depth: '' },
+    extraAngles: [],
+    scene: 'preset',
+    color: 'white',
+    props: 'none',
+    angle: 'preset',
+    framing: 'preset',
+    aspect: '1:1',
+    propText: '',
+    turn: null,
+    refMode: 'shot',
+    quality: 'high',
+    extra: '',
   });
 }
 
 // 4. unknown ids / bad values fall back; turn is clamped
 {
-  const { recipe } = readRecipe({ ...stored(full), shotType: 'nope', scene: 'moon', aspect: '7:3', props: 123, turn: { yaw: 999, elev: -5 }, extraAngles: ['top', 'x'] }, lists, MODEL);
+  const { recipe } = readRecipe(
+    {
+      ...stored(full),
+      shotType: 'nope',
+      scene: 'moon',
+      aspect: '7:3',
+      props: 123,
+      turn: { yaw: 999, elev: -5 },
+      extraAngles: ['top', 'x'],
+    },
+    lists,
+    MODEL,
+  );
   assert.equal(recipe.shotType, 'clean');
   assert.equal(recipe.scene, 'preset');
   assert.equal(recipe.aspect, '1:1');
@@ -109,8 +180,17 @@ for (const shotType of ['clean', 'styled', 'creative', 'handshot']) {
   assert.deepEqual([...creative.missing].sort(), ['creative', 'product']); // scene / prop unused by Creative: dropped quietly
   const styled = readRecipe({ ...stored(full), shotType: 'styled' }, empty, MODEL);
   assert.deepEqual([...styled.missing].sort(), ['product', 'props', 'set']); // inspiration unused by Custom
-  assert.deepEqual(readRecipe({ ...stored(full), shotType: 'clean' }, lists, MODEL).recipe.pick, { product: BAG, ref: null, scene: null, prop: null });
-  assert.equal(readRecipe({ ...stored(full), shotType: 'clean' }, lists, MODEL).recipe.concept, null, 'idea kept only for Creative');
+  assert.deepEqual(readRecipe({ ...stored(full), shotType: 'clean' }, lists, MODEL).recipe.pick, {
+    product: BAG,
+    ref: null,
+    scene: null,
+    prop: null,
+  });
+  assert.equal(
+    readRecipe({ ...stored(full), shotType: 'clean' }, lists, MODEL).recipe.concept,
+    null,
+    'idea kept only for Creative',
+  );
 }
 
 // 6. not an object -> all defaults, no throw
@@ -124,11 +204,31 @@ assert.notEqual(recipeKey(full), recipeKey({ ...full, extra: 'อื่น' }));
 {
   const fill = (n) => 'ก'.repeat(n);
   const longest = {
-    ...full, idea: fill(1200), facts: fill(1200), feature: fill(200), propText: fill(200), extra: fill(1000),
-    concept: { id: fill(80), title: fill(100), summary: fill(500), scene: fill(500), props: fill(500), lighting: fill(500), composition: fill(500), prompt: fill(3000), palette: Array(5).fill('#ffffff') },
-    pick: Object.fromEntries(Object.keys(full.pick).map((k) => [k, '/api/files/uploads/product-scenes/' + fill(120) + '.jpg'])),
+    ...full,
+    idea: fill(1200),
+    facts: fill(1200),
+    feature: fill(200),
+    propText: fill(200),
+    extra: fill(1000),
+    concept: {
+      id: fill(80),
+      title: fill(100),
+      summary: fill(500),
+      scene: fill(500),
+      props: fill(500),
+      lighting: fill(500),
+      composition: fill(500),
+      prompt: fill(3000),
+      palette: Array(5).fill('#ffffff'),
+    },
+    pick: Object.fromEntries(
+      Object.keys(full.pick).map((k) => [k, '/api/files/uploads/product-scenes/' + fill(120) + '.jpg']),
+    ),
   };
-  assert.ok(storableRecipe(longest), `longest recipe (${JSON.stringify(longest).length} chars) must fit MAX_RECIPE_CHARS`);
+  assert.ok(
+    storableRecipe(longest),
+    `longest recipe (${JSON.stringify(longest).length} chars) must fit MAX_RECIPE_CHARS`,
+  );
 }
 
 // 9. stored recipes carry their format version; a passed-on stored recipe keeps its own; readRecipe drops it
@@ -136,7 +236,12 @@ assert.notEqual(recipeKey(full), recipeKey({ ...full, extra: 'อื่น' }));
   assert.equal(storableRecipe(full).v, RECIPE_VERSION);
   assert.equal(storableRecipe({ ...full, v: 7 }).v, 7);
   assert.equal(storableRecipe([1]), null);
-  assert.equal(recipeKey(readRecipe(storableRecipe(stored(full)), lists, MODEL).recipe), recipeKey(readRecipe(stored(full), lists, MODEL).recipe));
+  assert.equal(
+    recipeKey(readRecipe(storableRecipe(stored(full)), lists, MODEL).recipe),
+    recipeKey(readRecipe(stored(full), lists, MODEL).recipe),
+  );
 }
 
-console.log('Packshot recipe checks passed: round trip, shot types, old recipes, bad values, deleted uploads, key order, longest recipe stored, format version.');
+console.log(
+  'Packshot recipe checks passed: round trip, shot types, old recipes, bad values, deleted uploads, key order, longest recipe stored, format version.',
+);

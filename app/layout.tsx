@@ -1,10 +1,17 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Geist, IBM_Plex_Sans_Thai, Instrument_Serif } from 'next/font/google';
+import Analytics from '@/components/Analytics';
+import Toaster from '@/components/Toaster';
 import './globals.css';
 
 // ฟอนต์ตาม design system Atelier: Geist (ละติน + ตัวเลข) · IBM Plex Sans Thai (ไทย) · Instrument Serif (โลโก้ / หัวข้อใหญ่ ไม่ใช้ตัวหนา)
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' });
-const thai = IBM_Plex_Sans_Thai({ subsets: ['thai'], weight: ['400', '500', '600', '700'], variable: '--font-plex-thai' });
+const thai = IBM_Plex_Sans_Thai({
+  subsets: ['thai'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-plex-thai',
+});
 const serif = Instrument_Serif({ subsets: ['latin'], weight: '400', variable: '--font-serif' });
 
 export const metadata: Metadata = {
@@ -15,7 +22,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="th" className={`${geist.variable} ${thai.variable} ${serif.variable}`}>
-      <body>{children}</body>
+      {/* Suspense: Toaster reads the pathname (usePathname under cacheComponents) */}
+      <body>
+        {children}
+        <Suspense fallback={null}>
+          <Toaster />
+        </Suspense>
+        <Analytics />
+      </body>
     </html>
   );
 }

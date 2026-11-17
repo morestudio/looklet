@@ -1,27 +1,74 @@
 // browser.ts — ตัวช่วยที่ใช้ได้เฉพาะใน browser (รูป, canvas, เรียก API ของเรา)
 import type { AccessoryInfo } from './catalog';
+import { track } from './analytics';
+import { friendlyError } from './errors';
+import { errorMessageOf, errorOf, failReasonOf } from './api-error';
 import { applyFilm, filmOn, type Film } from './film';
-
-// OpenAI ปฏิเสธภาพด้วยระบบความปลอดภัย (2 พ.ย.: ท่าคุกเข่าบนเตียง + ชุดนอนขาสั้น ถูกมองว่า sexual) -> บอกเป็นภาษาไทยแทนข้อความอังกฤษยาวๆ
-// รูปที่พังไม่นับโควตา (lib/usage.ts) · ข้อความเดิมยังอยู่ใน log / หน้าตรวจงาน
-export const friendlyError = (message: string) => /safety system|safety_violations|moderation_blocked/i.test(message)
-  ? 'AI ปฏิเสธภาพนี้ (ระบบความปลอดภัยของ AI มองว่าอาจไม่เหมาะสม เช่น ท่าบนเตียงกับชุดสั้น) ลองเลือกไอเดียหรือท่าอื่น ไม่เสียโควตา'
-  : message;
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export const USAGE_EVENT = 'looklet:usage';
+
+// signed-in account (/api/me): ONE request per page load, shared by every useMe() and Analytics; fetched again once after
+// each image request (USAGE_EVENT). Plain fetch, not api(): api() sends a 401 to /login, which would loop on /login itself.
+// Timeout: a hung /api/me must not hold up the header or GA. A failed load is not kept, so the next caller retries.
+export type Me = {
+  role: 'superadmin' | 'customer';
+  aid?: string;
+  login?: 'code' | 'email';
+  email?: string;
+  label?: string;
+  tokens?: number;
+  tokenQuota?: number;
+  pending?: number; // superadmin: sign-ups waiting for approval
+};
+let meRequest: Promise<Me | null> | null = null;
+const meListeners = new Set<(me: Me | null) => void>();
+export function loadMe(fresh = false): Promise<Me | null> {
+  if (meRequest && !fresh) return meRequest;
+  const request: Promise<Me | null> = fetch('/api/me', { signal: AbortSignal.timeout(5000) })
+    .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+    .catch(() => null);
+  meRequest = request;
+  void request.then((me) => {
+    if (meRequest !== request) return; // a newer request replaced it
+    if (!me) meRequest = null;
+    meListeners.forEach((l) => l(me));
+  });
+  return request;
+}
+// subscribe to later loads (the refetch after a generation); returns unsubscribe
+export const onMe = (listener: (me: Me | null) => void) => {
+  meListeners.add(listener);
+  return () => {
+    meListeners.delete(listener);
+  };
+};
+if (typeof window !== 'undefined') window.addEventListener(USAGE_EVENT, () => void loadMe(true));
 const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];
 
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   // หลุดจากระบบ (session หมดอายุ) -> ไปเข้าสู่ระบบใหม่ — โหลดทั้งหน้าให้ proxy.ts ตัดสินใหม่ (ไม่ใช่ router.push)
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ตั้งใจโหลดทั้งหน้า
   if (res.status === 401) window.location.assign('/login');
-  // error ที่ไม่ได้มาจาก route ของเรา (เช่น Vercel ตอบ 413 ไฟล์ใหญ่เกิน / 504 หมดเวลา) ไม่ใช่ JSON -> บอกเป็นข้อความที่อ่านรู้เรื่อง
+  // errors: lib/api-error.ts (read with errorOf); the host's own 413 / 504 pages are not JSON. friendlyError words 504
   const out = await res.json().catch(() => ({}));
   // สร้างรูปแล้ว (สำเร็จหรือพัง) -> หัวเว็บอัปเดตจำนวนรูปที่เหลือของลูกค้า (useMe ใน components/ui.tsx)
   if (USAGE_ROUTES.includes(path)) window.dispatchEvent(new Event(USAGE_EVENT));
-  if (!res.ok) throw new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`));
+  // quotaBlock(): 403 = code disabled, 429 = tokens used up
+  if (USAGE_ROUTES.includes(path) && (res.status === 403 || res.status === 429))
+    track('quota_blocked', { route: path.slice(5), status: res.status });
+  // details: the error's extra fields (e.g. the invite codes /api/admin made before it failed)
+  if (!res.ok)
+    throw Object.assign(new Error(errorMessageOf(out) || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : `HTTP ${res.status}`)), {
+      status: res.status,
+      reason: failReasonOf(out),
+      details: errorOf(out),
+    });
   return out;
 }
 
@@ -38,12 +85,13 @@ export async function loadImg(src: string) {
   return img;
 }
 
-export const fileToBase64 = (f: File) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result).split(',')[1]);
-  reader.onerror = reject;
-  reader.readAsDataURL(f);
-});
+export const fileToBase64 = (f: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(f);
+  });
 
 // ย่อรูปให้ด้านยาวไม่เกิน 1024 แล้วแปลงเป็น JPEG base64 (ส่งเล็กลง = เร็วขึ้น ถูกลง)
 export async function jpegBase64(src: string, maxSide = 1024) {
@@ -95,6 +143,28 @@ export async function uploadImage(file: File, maxBytes = 1_500_000, maxSide = 20
   }
 }
 
+// /api/upload for both studio pages (TryOn, Packshot): the stored src, or, when saving fails on the network / server side (5xx),
+// a temporary blob copy (gone on refresh) + a warning so the pick isn't lost
+// throws on any 4xx (upload cap 409, disabled account 403, bad file 400/413): retrying can't help, so no temporary copy that would look saved; the caller shows the message
+// temporary: false -> throws on every failure (product photos: the first one's src becomes the product id, a blob: id would break the rest)
+export async function storeUpload(
+  body: Record<string, unknown>,
+  file: File,
+  { temporary = true } = {},
+): Promise<{ src: string; warning?: string }> {
+  try {
+    return { src: (await api('/api/upload', { ...body, ...(await uploadImage(file)) })).src };
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 0;
+    if (status >= 400 && status < 500) throw err;
+    if (!temporary) throw new Error(`บันทึกรูปไม่สำเร็จ: ${friendlyError(err)}`);
+    return {
+      src: URL.createObjectURL(file),
+      warning: `เก็บรูปไม่สำเร็จ: ${friendlyError(err)} (รูปนี้ใช้ได้ชั่วคราว จะหายเมื่อรีเฟรชหน้า)`,
+    };
+  }
+}
+
 // เปิดรูปนี้ได้ไหม (ชนิดไฟล์ที่ browser ไม่รู้จัก -> การ์ดจะเป็นรูปเสีย ดูเหมือนรูปหาย)
 export async function canOpenImage(file: File) {
   const url = URL.createObjectURL(file);
@@ -124,8 +194,10 @@ export async function finishedCanvas(src: string, film: Film) {
   return cv;
 }
 
-export const canvasJpeg = (cv: HTMLCanvasElement, quality = 0.92) => new Promise<Blob>((resolve, reject) =>
-  cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', quality));
+export const canvasJpeg = (cv: HTMLCanvasElement, quality = 0.92) =>
+  new Promise<Blob>((resolve, reject) =>
+    cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', quality),
+  );
 
 // มือถือ: เปิดหน้าแชร์ ("บันทึกรูปภาพ" ลงคลังรูป — iPhone ดาวน์โหลดไฟล์แล้วไปอยู่ในแอปไฟล์ หาไม่เจอ) · คอมพิวเตอร์: ดาวน์โหลดไฟล์
 // ลิงก์ต้องอยู่ในหน้าเว็บตอนกด และใช้ blob ไม่ใช้ data URL (บาง browser ไม่ดาวน์โหลด data URL หรือ a ที่ไม่ได้อยู่ในหน้า)
@@ -152,7 +224,8 @@ export async function saveImageFile(blob: Blob, name: string): Promise<'shared' 
 }
 
 // ขนาด OpenAI ตามแนวรูป (ปรับผิว: ขอขนาดตามแนวรูปเดิม)
-export const openaiSize = (w: number, h: number) => (w / h < 0.85 ? '1024x1536' : w / h > 1.18 ? '1536x1024' : '1024x1024');
+export const openaiSize = (w: number, h: number) =>
+  w / h < 0.85 ? '1024x1536' : w / h > 1.18 ? '1536x1024' : '1024x1024';
 
 // ให้ AI ดูรูปของเสริม/สินค้าว่าเป็นอะไร + ตั้งชื่อ — ดูไม่ออก/เรียกไม่ได้ = null (ให้ผู้ใช้เลือกเอง)
 async function guessItem(src: string, route: string): Promise<AccessoryInfo | null> {

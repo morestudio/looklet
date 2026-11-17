@@ -1,6 +1,6 @@
 import { authEnabled } from '@/lib/auth';
 import { invitePassword, normalizeInviteCode } from '@/lib/invites';
-import { json } from '@/lib/route';
+import { errorResponse, json } from '@/lib/route';
 import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 import { createClient } from '@/lib/supabase/server';
 
@@ -10,18 +10,24 @@ const WRONG = 'โค้ดไม่ถูกต้อง หรือถูก�
 
 export async function POST(req: Request) {
   try {
-    if (!authEnabled || !supabaseEnabled) return json(400, { error: 'เว็บนี้ไม่ได้เปิดระบบโค้ดเชิญ' });
+    if (!authEnabled || !supabaseEnabled) return errorResponse(400, 'เว็บนี้ไม่ได้เปิดระบบโค้ดเชิญ');
     const code = normalizeInviteCode((await req.json().catch(() => ({})))?.code);
-    if (!code) return json(400, { error: 'โค้ดเชิญมี 8 ตัว เช่น ABCD-2345' });
-    const { data: invite, error } = await serviceClient().from('invites').select('user_id, disabled').eq('code', code).maybeSingle();
+    if (!code) return errorResponse(400, 'โค้ดเชิญมี 8 ตัว เช่น ABCD-2345');
+    const { data: invite, error } = await serviceClient()
+      .from('accounts')
+      .select('user_id, disabled')
+      .eq('code', code)
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!invite || invite.disabled) return json(401, { error: WRONG });
+    if (!invite || invite.disabled) return errorResponse(401, WRONG);
     const { data: found } = await serviceClient().auth.admin.getUserById(invite.user_id);
-    if (!found.user?.email) return json(401, { error: WRONG });
-    const { error: signInError } = await (await createClient()).auth.signInWithPassword({ email: found.user.email, password: invitePassword(code) });
-    if (signInError) return json(401, { error: WRONG });
+    if (!found.user?.email) return errorResponse(401, WRONG);
+    const { error: signInError } = await (
+      await createClient()
+    ).auth.signInWithPassword({ email: found.user.email, password: invitePassword(code) });
+    if (signInError) return errorResponse(401, WRONG);
     return json(200, { ok: true });
   } catch (e) {
-    return json(500, { error: 'เข้าใช้ไม่สำเร็จ: ' + (e as Error).message });
+    return errorResponse(500, 'เข้าใช้ไม่สำเร็จ: ' + (e as Error).message);
   }
 }

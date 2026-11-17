@@ -7,16 +7,31 @@ import { test } from 'node:test';
 import ts from 'typescript';
 
 // ทดสอบ route จริงและตัวเรียก OpenAI จริง แต่แทน auth/storage/network เพื่อไม่เสียค่า AI
-function app({ member = true, key = true, missing = false, providerFails = false, saveFails = false, jpegFails = false, dims = [1024, 1536] } = {}) {
-  const reads = [], saves = [], calls = [], logs = [], jpegCalls = [], usages = [];
+function app({
+  member = true,
+  key = true,
+  missing = false,
+  providerFails = false,
+  saveFails = false,
+  jpegFails = false,
+  dims = [1024, 1536],
+} = {}) {
+  const reads = [],
+    saves = [],
+    calls = [],
+    logs = [],
+    jpegCalls = [],
+    usages = [];
   // import sharp from 'sharp' แปลงแบบไม่มี esModuleInterop -> ใช้ .default ของโมดูล
   const sharpStub = (buf) => ({
     metadata: async () => ({ width: dims[0], height: dims[1] }), // สัดส่วนตรงกับขนาดที่ขอ = ส่งให้ AI ตรงๆ ไม่ต้องเติมขอบ
-    jpeg: (o) => ({ toBuffer: async () => {
-      jpegCalls.push(o);
-      if (jpegFails) throw new Error('sharp unavailable');
-      return Buffer.concat([Buffer.from('jpeg:'), buf]);
-    } }),
+    jpeg: (o) => ({
+      toBuffer: async () => {
+        jpegCalls.push(o);
+        if (jpegFails) throw new Error('sharp unavailable');
+        return Buffer.concat([Buffer.from('jpeg:'), buf]);
+      },
+    }),
   });
   sharpStub.default = sharpStub;
   const source = Buffer.from('stored-original-image');
@@ -24,26 +39,55 @@ function app({ member = true, key = true, missing = false, providerFails = false
   const stubs = {
     'server-only': {},
     '@/lib/storage': {
-      readImage: async (parts) => { reads.push(parts); return missing ? null : { data: source, type: 'image/png' }; },
-      saveImage: async (...args) => { if (saveFails) throw new Error('Storage unavailable'); saves.push(args); return '/api/files/results/refined.png'; },
+      readImage: async (parts) => {
+        reads.push(parts);
+        return missing ? null : { data: source, type: 'image/png' };
+      },
+      saveImage: async (...args) => {
+        if (saveFails) throw new Error('Storage unavailable');
+        saves.push(args);
+        return '/api/files/results/refined.png';
+      },
     },
     '@/lib/genlog': {
-      localTime: () => '2026-10-22 12:00:00', sentences: (p) => [p], writeGenerateLog: async (l) => logs.push(l),
+      localTime: () => '2026-10-22 12:00:00',
+      sentences: (p) => [p],
+      writeGenerateLog: async (l) => logs.push(l),
     },
     // ทีมงาน (ไม่มีโควตา) · undefined = ยังไม่เข้าสู่ระบบ
-    './supabase/server': { isSignedInMember: async () => member, signedInAccount: async () => (member ? { id: 'team', email: 'team@x', role: 'team' } : undefined) },
+    './supabase/server': {
+      isSignedInMember: async () => member,
+      signedInAccount: async () =>
+        member ? { id: 'team', email: 'team@x', role: 'customer', login: 'email' } : undefined,
+    },
     'node:async_hooks': { AsyncLocalStorage },
-    '@/lib/usage': { quotaBlock: async () => null, recordUsage: async (entry) => { usages.push(entry); } },
+    '@/lib/usage': {
+      quotaBlock: async () => null,
+      recordUsage: async (entry) => {
+        usages.push(entry);
+      },
+    },
     // แปลง PNG -> JPEG: ทดสอบแค่ว่าเรียกด้วย quality 97 แล้วเก็บผลที่ได้
     sharp: sharpStub,
   };
-  const context = vm.createContext({ Buffer, Request, Response, FormData, Blob, AbortSignal, Date,
-    console: { log() {}, error() {} }, process: { env: key ? { OPENAI_API_KEY: 'test-only' } : {} },
+  const context = vm.createContext({
+    Buffer,
+    Request,
+    Response,
+    FormData,
+    Blob,
+    AbortSignal,
+    Date,
+    console: { log() {}, error() {} },
+    process: { env: key ? { OPENAI_API_KEY: 'test-only' } : {} },
     fetch: async (url, init) => {
       calls.push({ url, init });
       return providerFails
         ? Response.json({ error: { message: 'Provider unavailable' } }, { status: 503 })
-        : Response.json({ data: [{ b64_json: Buffer.from('new-refined-image').toString('base64') }], usage: { total_tokens: 4116 } });
+        : Response.json({
+            data: [{ b64_json: Buffer.from('new-refined-image').toString('base64') }],
+            usage: { total_tokens: 4116 },
+          });
     },
   });
   function load(file) {
@@ -58,14 +102,30 @@ function app({ member = true, key = true, missing = false, providerFails = false
       if (Object.hasOwn(stubs, id)) return stubs[id];
       return load(id.startsWith('@/') ? `${id.slice(2)}.ts` : path.join(path.dirname(file), `${id}.ts`));
     };
-    vm.runInContext(`(function(require,module,exports){${code}\n})`, context, { filename: file })(require, loadedModule, loadedModule.exports);
+    vm.runInContext(`(function(require,module,exports){${code}\n})`, context, { filename: file })(
+      require,
+      loadedModule,
+      loadedModule.exports,
+    );
     return loadedModule.exports;
   }
   const route = load('app/api/refine-skin/route.ts');
-  return { reads, saves, calls, logs, jpegCalls, usages, source,
-    post: (body) => route.POST(new Request('http://localhost/api/refine-skin', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    })),
+  return {
+    reads,
+    saves,
+    calls,
+    logs,
+    jpegCalls,
+    usages,
+    source,
+    post: (body) =>
+      route.POST(
+        new Request('http://localhost/api/refine-skin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      ),
   };
 }
 const original = '/api/files/results/original.png';
@@ -78,7 +138,14 @@ test('authentication is checked before reading images or spending on AI', async 
 });
 
 test('only generated images in our library can be refined', async () => {
-  for (const src of [null, '', 'https://example.com/private.png', '/api/files/uploads/models/person.png', '/api/files/results/../secret.png', '/api/files/results/%2e%2e.png']) {
+  for (const src of [
+    null,
+    '',
+    'https://example.com/private.png',
+    '/api/files/uploads/models/person.png',
+    '/api/files/results/../secret.png',
+    '/api/files/results/%2e%2e.png',
+  ]) {
     const a = app();
     assert.equal((await a.post({ ...input, src })).status, 400, String(src));
     assert.equal(a.reads.length + a.calls.length, 0);

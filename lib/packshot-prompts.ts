@@ -3,31 +3,44 @@
 // ลำดับรูปต้องตรงกับ "Image n" ในคำสั่ง เปลี่ยนอย่างหนึ่งต้องเปลี่ยนอีกอย่าง (route ทำรายการ inputs ตามลำดับนี้)
 // เขียนเป็นภาษาอังกฤษเพราะโมเดลเจนรูปเข้าใจแม่นกว่า
 import 'server-only';
-import type { RefMode } from './packshot';
+import { EXTRA_MAX, type RefMode } from './packshot';
 import { guideSentence } from './turntable';
+
+// สำคัญที่สุด อยู่บนสุด (17 พ.ย. ผู้ใช้: "ห้ามทำให้สินค้าเพี้ยนไปจากรูปตัวอย่าง ในเรื่องของลักษณะ แต่การจัดวาง สามารถจัดวางเปลี่ยนไปได้ แต่ห้ามเพี้ยน")
+// ประโยคที่ 2 ของทุกคำสั่งหน้าสินค้า ต่อจากประโยคแรก แบบ SKIN_TONE ของหน้านางแบบ (AI ให้น้ำหนักส่วนบนของคำสั่งมากกว่า)
+// n = เลขรูปสินค้า (ชุดภาพมุมที่ 2 เป็นต้นไป = 2) · ลักษณะห้ามเปลี่ยน / การจัดวาง (หมุน ตำแหน่ง สายตกยังไง) เปลี่ยนได้
+export const PRODUCT_FIRST = (n: number) =>
+  'Most important, the product itself must not change: it must stay exactly the product in ' +
+  `Image ${n}, with the same shape and proportions, the same parts and the same number of each, the same colors, materials and surface finish, ` +
+  'and every logo, label and letter exactly as shown. Only how it is placed may change: how it is turned, positioned and arranged in the photo, ' +
+  'and how its flexible parts such as straps or cords fall; however it is placed, nothing about the product itself may change.';
 
 // สินค้าต้องเหมือนรูปสินค้าทุกรายละเอียด: AI ชอบวาดของ "คล้ายๆ" ใหม่ (บทเรียนเดียวกับ ACCESSORY_RULES ของหน้านางแบบ)
 // รูปตัวอย่างโชว์รายละเอียดชัด: ผิวหนังเม็ด/เรียบ ฝีเข็มสีตัด สีขอบหนัง อะไหล่ทอง โลโก้ปั๊มนูน ตัวอักษรปั๊มทองเล็กๆ
 // threeD = ประโยคบอกให้ถ่ายสินค้าเป็นของสามมิติ (Handshot ใช้แบบสั้นที่ไม่พูดถึงฉาก/ตำแหน่งกล้อง ตามที่ทดสอบ 2 พ.ย.)
-const fidelity = (n: number, threeD = 'Treat the product as a real three-dimensional object, turn it on the set and photograph it fresh from the camera position described here, '
-  + 'showing its real depth (side panels, base, thickness and the far side of any handle or strap in perspective). ') => `Image ${n} is the product photo. Reproduce this exact product, not a similar one: the same silhouette and `
-  + 'proportions, the same color, the same leather grain or material texture (pebbled or smooth exactly as in the photo), the same stitching '
-  + 'color and spacing, edge paint, hardware shape and finish, and any embossed, printed or foil logo or lettering in the same place and size. '
-  + 'Keep exactly the handles, straps, pockets and hardware it has, no more and no fewer, and do not add, remove or redesign any logo or text. '
-  + `Use only the product itself from Image ${n}: ignore its background, surface, lighting, hands, mannequin and packaging.`
+const fidelity = (
+  n: number,
+  threeD = 'Treat the product as a real three-dimensional object, turn it on the set and photograph it fresh from the camera position described here, ' +
+    'showing its real depth (side panels, base, thickness and the far side of any handle or strap in perspective). ',
+) =>
+  `Image ${n} is the product photo. Reproduce this exact product, not a similar one: the same silhouette and ` +
+  'proportions, the same color, the same leather grain or material texture (pebbled or smooth exactly as in the photo), the same stitching ' +
+  'color and spacing, edge paint, hardware shape and finish, and any embossed, printed or foil logo or lettering in the same place and size. ' +
+  'Keep exactly the handles, straps, pockets and hardware it has, no more and no fewer, and do not add, remove or redesign any logo or text. ' +
+  `Use only the product itself from Image ${n}: ignore its background, surface, lighting, hands, mannequin and packaging.` +
   // รูปสินค้าส่วนใหญ่ถ่ายหน้าตรงพื้นขาว: ไม่บอก = AI ยึดมุมนั้นแล้ววางรูปแบนๆ บนฉาก ไม่ว่าเลือกมุมไหน (ผู้ใช้ทดสอบ 26 ต.ค.)
-  + ` Image ${n} shows the product from one viewpoint only: use it for the product's design and details, never for the camera angle. `
-  + threeD
-  + `Never paste or copy the flat view of Image ${n}.`;
+  ` Image ${n} shows the product from one viewpoint only: use it for the product's design and details, never for the camera angle. ` +
+  threeD +
+  `Never paste or copy the flat view of Image ${n}.`;
 
 // ให้ดูเป็นรูปถ่ายจริง (แบบ REALISM ของหน้านางแบบ แต่เป็นเรื่องของวางบนฉาก): น้ำหนัก เงาสัมผัสพื้น ผิวฉากจริง สีหม่น
 export const PRODUCT_REALISM =
-  'It must look like an unretouched photo by a professional still-life photographer with a real camera, not a CGI render or an AI image. '
-  + 'The product rests on the surface with real weight, and a long shoulder strap is never left hanging in the air. '
-  + 'A soft contact shadow sits where it touches the surface, and every shadow matches the light of the set in direction and softness. '
-  + 'Surfaces have real texture: paper fibers, wood grain, plaster, concrete or fabric weave. Leather shows its real grain and a gentle, '
-  + 'natural sheen, not plastic gloss. Everything keeps its true real-world size next to the product. '
-  + 'Not oversaturated, not over-sharpened, no glow, no invented reflections, nothing floating.';
+  'It must look like an unretouched photo by a professional still-life photographer with a real camera, not a CGI render or an AI image. ' +
+  'The product rests on the surface with real weight, and a long shoulder strap is never left hanging in the air. ' +
+  'A soft contact shadow sits where it touches the surface, and every shadow matches the light of the set in direction and softness. ' +
+  'Surfaces have real texture: paper fibers, wood grain, plaster, concrete or fabric weave. Leather shows its real grain and a gentle, ' +
+  'natural sheen, not plastic gloss. Everything keeps its true real-world size next to the product. ' +
+  'Not oversaturated, not over-sharpened, no glow, no invented reflections, nothing floating.';
 
 export type PackshotInput = {
   detail?: boolean;
@@ -61,57 +74,88 @@ export function buildPackshotPrompt(p: PackshotInput) {
   const setImage = p.hasSetImage && ref !== 'shot' && ref !== 'set-light' ? (ref ? 3 : 2) : null; // ฉากมาจากช็อตต้นแบบแล้ว ไม่ใช้รูปฉาก
   const propImage = p.hasPropImage && !shot && !p.scale ? 2 + (ref ? 1 : 0) + (setImage ? 1 : 0) : null;
   const out: string[] = [];
-  out.push(shot
-    ? `A professional still-life product photograph of ${p.what} from Image 1 for a fashion brand's Instagram feed, recreating the shot in Image 2.`
-    : `A professional still-life product photograph of ${p.what} from Image 1 for a fashion brand's Instagram feed: ${p.framing}, `
-      // มีพร็อพ: จัดกลุ่มสินค้า + พร็อพไว้กลางภาพ (เดิมสินค้าอยู่กลาง พร็อพเลยถูกดันไปชิดขอบจนโดนตัด)
-      + (p.props && !p.scale ? 'the product and its props composed together as one balanced group in the middle of the frame.' : 'the product centered horizontally.'));
+  out.push(
+    shot
+      ? `A professional still-life product photograph of ${p.what} from Image 1 for a fashion brand's Instagram feed, recreating the shot in Image 2.`
+      : `A professional still-life product photograph of ${p.what} from Image 1 for a fashion brand's Instagram feed: ${p.framing}, ` +
+          // มีพร็อพ: จัดกลุ่มสินค้า + พร็อพไว้กลางภาพ (เดิมสินค้าอยู่กลาง พร็อพเลยถูกดันไปชิดขอบจนโดนตัด)
+          (p.props && !p.scale
+            ? 'the product and its props composed together as one balanced group in the middle of the frame.'
+            : 'the product centered horizontally.'),
+  );
+  out.push(PRODUCT_FIRST(1));
   out.push(fidelity(1));
   if (ref === 'shot') {
-    out.push('Image 2 is a reference photo by another brand. Recreate its shot with our product in place of the product shown in it: the same '
-      + 'set, surfaces and colors, the same props in the same places, the same camera height, angle, lens and framing, and the same light and '
-      + 'color grading. The product in Image 2 is not ours: do not copy its shape, color, material, hardware or logo, only its position in the '
-      + `frame, adjusted to our product's true size. ${IGNORE_UI}`);
+    out.push(
+      'Image 2 is a reference photo by another brand. Recreate its shot with our product in place of the product shown in it: the same ' +
+        'set, surfaces and colors, the same props in the same places, the same camera height, angle, lens and framing, and the same light and ' +
+        'color grading. The product in Image 2 is not ours: do not copy its shape, color, material, hardware or logo, only its position in the ' +
+        `frame, adjusted to our product's true size. ${IGNORE_UI}`,
+    );
   } else if (ref === 'set-light') {
-    out.push('Image 2 is a reference photo by another brand: build the same set (surfaces, walls, colors and materials) with the same light and '
-      + 'color grading, but use the camera, framing and props described here. Do not copy the product shown in Image 2, and do not copy its '
-      + `props unless they are described here. ${IGNORE_UI}`);
+    out.push(
+      'Image 2 is a reference photo by another brand: build the same set (surfaces, walls, colors and materials) with the same light and ' +
+        'color grading, but use the camera, framing and props described here. Do not copy the product shown in Image 2, and do not copy its ' +
+        `props unless they are described here. ${IGNORE_UI}`,
+    );
   } else if (ref === 'light') {
-    out.push('Image 2 is a reference photo by another brand: copy only its light and color grading (where the light comes from, how soft it '
-      + `is, how the shadows fall, the exposure and the color). Do not copy its product, set, props or framing. ${IGNORE_UI}`);
+    out.push(
+      'Image 2 is a reference photo by another brand: copy only its light and color grading (where the light comes from, how soft it ' +
+        `is, how the shadows fall, the exposure and the color). Do not copy its product, set, props or framing. ${IGNORE_UI}`,
+    );
   }
   if (!shot) out.push(p.place);
   if (setImage) {
-    out.push(`Image ${setImage} is the set: place the product into this exact place, keeping its surfaces, walls, objects and colors; `
-      + 'the product rests on a real surface in it at its true size. Match the surface plane, horizon, vanishing points and camera perspective of this place. '
-      + 'Anchor it with a natural contact shadow and any physically appropriate reflections, matching the direction, softness and color of the scene light; never paste a flat cut-out onto the scene.');
+    out.push(
+      `Image ${setImage} is the set: place the product into this exact place, keeping its surfaces, walls, objects and colors; ` +
+        'the product rests on a real surface in it at its true size. Match the surface plane, horizon, vanishing points and camera perspective of this place. ' +
+        'Anchor it with a natural contact shadow and any physically appropriate reflections, matching the direction, softness and color of the scene light; never paste a flat cut-out onto the scene.',
+    );
   } else if (p.set && ref !== 'set-light' && !shot) {
     out.push(`Set: ${p.set}.` + (p.flat ? ' Seen from directly above, the surface fills the whole frame.' : ''));
   }
   if (!shot) {
-    out.push(p.scale ? `Size reference: ${p.scale}. The product remains fully visible; natural holding contact is allowed. No other props.` : p.props
-      ? `Props: ${p.props} Style it as one cohesive, intentional still life arranged by a professional prop stylist: the props are real objects at `
-        + 'their true size, grouped close around the product at different depths and heights, every one fully inside the frame and none cut off by its edges. '
-        + 'They never cover the product\'s front, logo, hardware or handle; the product stays the clear hero, larger and sharper than any prop. '
-        + `${propImage ? "Apart from the user's own prop, props" : 'Props'} carry no logos, labels or readable text.`
-      : 'No props: nothing in the frame except the set and the product.');
+    out.push(
+      p.scale
+        ? `Size reference: ${p.scale}. The product remains fully visible; natural holding contact is allowed. No other props.`
+        : p.props
+          ? `Props: ${p.props} Style it as one cohesive, intentional still life arranged by a professional prop stylist: the props are real objects at ` +
+            'their true size, grouped close around the product at different depths and heights, every one fully inside the frame and none cut off by its edges. ' +
+            "They never cover the product's front, logo, hardware or handle; the product stays the clear hero, larger and sharper than any prop. " +
+            `${propImage ? "Apart from the user's own prop, props" : 'Props'} carry no logos, labels or readable text.`
+          : 'No props: nothing in the frame except the set and the product.',
+    );
     if (propImage && p.props) {
-      out.push(`Image ${propImage} is the user's own prop: include this exact object, keeping its shape, color, material, finish and any print `
-        + 'exactly as shown, at its true real-world size. Use only the object itself from it: ignore its background, surface and lighting.');
+      out.push(
+        `Image ${propImage} is the user's own prop: include this exact object, keeping its shape, color, material, finish and any print ` +
+          'exactly as shown, at its true real-world size. Use only the object itself from it: ignore its background, surface and lighting.',
+      );
     }
     out.push(`Camera: ${p.lens}, ${p.angle}.`);
   }
   if (p.light) out.push(`Lighting: ${p.light}`);
   else if (p.refLight) out.push(`Lighting, as in the reference photo: ${p.refLight}`);
   // รูปฉากที่อัปโหลด: แสงบนสินค้าต้องเป็นแสงของห้องนั้น (บทเรียน sceneLight ของหน้านางแบบ: ไม่บอก = AI ใส่เงาแรงที่ห้องจริงไม่มี)
-  if (setImage && p.sceneLight) out.push(`The light in the set photo: ${p.sceneLight} Light the product with this same light so it looks photographed in that place.`);
+  if (setImage && p.sceneLight)
+    out.push(
+      `The light in the set photo: ${p.sceneLight} Light the product with this same light so it looks photographed in that place.`,
+    );
   if (p.grade) out.push(`Color: ${p.grade}`);
-  out.push(p.scale ? PRODUCT_REALISM.replace('The product rests on the surface with real weight, and a long shoulder strap is never left hanging in the air.', 'The product has real weight and is naturally supported by the hand, person or surface; straps obey gravity.') : PRODUCT_REALISM);
+  out.push(
+    p.scale
+      ? PRODUCT_REALISM.replace(
+          'The product rests on the surface with real weight, and a long shoulder strap is never left hanging in the air.',
+          'The product has real weight and is naturally supported by the hand, person or surface; straps obey gravity.',
+        )
+      : PRODUCT_REALISM,
+  );
   if (p.crop) {
-    out.push(`The photo will be cropped to ${p.crop}: keep ${p.detail ? 'the selected detail' : 'the product, its shadow and all props'} well inside the middle of the frame, `
-      + 'away from the edges that will be cut.');
+    out.push(
+      `The photo will be cropped to ${p.crop}: keep ${p.detail ? 'the selected detail' : 'the product, its shadow and all props'} well inside the middle of the frame, ` +
+        'away from the edges that will be cut.',
+    );
   }
-  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, 400)}`);
+  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, EXTRA_MAX)}`);
   // ไกด์มุม (ตั้งมุมเอง): รูปต่อจาก สินค้า / ช็อตต้นแบบ / รูปฉาก / รูปพร็อพ — route ต้องเรียงรูปตามนี้ · อยู่ก่อนบรรทัด Most important แบบที่ทดสอบ
   if (p.guideFor != null && !shot) out.push(guideSentence(p.guideFor, (propImage ?? setImage ?? (ref ? 2 : 1)) + 1));
   // ย้ำมุม/ระยะเป็นบรรทัดสุดท้าย: บทเรียน camera ของหน้านางแบบ (21 ต.ค.) ไม่ย้ำ = AI ยึดกรอบภาพ/มุมของรูปที่ส่งไปแทน
@@ -120,19 +164,32 @@ export function buildPackshotPrompt(p: PackshotInput) {
 }
 
 // ชุดภาพสินค้า มุมที่ 2 เป็นต้นไป: รูปที่ 1 = รูปแรกของชุด (ฉาก/พร็อพ/แสงที่ต้องเหมือนเดิม), รูปที่ 2 = รูปสินค้า (รายละเอียดสินค้า)
-export type PackshotSetInput = { what: string; place: string; flat: boolean; lens: string; angle: string; framing: string; crop?: string | null; extra?: string | null };
+export type PackshotSetInput = {
+  what: string;
+  place: string;
+  flat: boolean;
+  lens: string;
+  angle: string;
+  framing: string;
+  crop?: string | null;
+  extra?: string | null;
+};
 
 export function buildPackshotSetPrompt(p: PackshotSetInput) {
   const out = [
-    `Image 1 is the first photo of a product shoot of ${p.what}. Create another photo from the same shoot, as if the photographer only moved `
-      + 'the camera: the same product on the same set, with the same props in the same places, the same light and the same color grading.',
+    `Image 1 is the first photo of a product shoot of ${p.what}. Create another photo from the same shoot, as if the photographer only moved ` +
+      'the camera: the same product on the same set, with the same props in the same places, the same light and the same color grading.',
+    PRODUCT_FIRST(2),
     `New camera: ${p.lens}, ${p.angle}. Framing: ${p.framing}.`,
     p.place,
     fidelity(2) + ' The product must look exactly like it does in Image 1 and Image 2.',
     PRODUCT_REALISM,
   ];
-  if (p.crop) out.push(`The photo will be cropped to ${p.crop}: keep the product and its shadow well inside the middle of the frame.`);
-  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, 400)}`);
+  if (p.crop)
+    out.push(
+      `The photo will be cropped to ${p.crop}: keep the product and its shadow well inside the middle of the frame.`,
+    );
+  if (p.extra?.trim()) out.push(`Also: ${p.extra.trim().slice(0, EXTRA_MAX)}`);
   out.push(`Most important: ${p.angle}, with ${p.framing}.`);
   return out.join(' ');
 }
@@ -142,24 +199,30 @@ export function buildPackshotSetPrompt(p: PackshotSetInput) {
 // มือ = หญิงไทยผิวกลางๆ เล็บนู้ด ไม่มีเครื่องประดับ แขนเสื้อถักสีครีม · ลำตัว = ตัดใต้คาง เสื้อถักครีม กางเกงสีอ่อน ไม่มีโลโก้
 const HAND_SHOT = {
   hand: {
-    framing: 'a close shot: the hand and the product fill most of the frame, the product large and sharp in the middle, the hand and wrist entering from the lower edge of the frame',
-    who: 'The hand belongs to a young Thai woman with a natural light-medium skin tone: slender fingers, short neat nails with a sheer nude polish, no rings, bracelets or watch, '
-      + 'and real skin texture with fine creases at the knuckles, not waxy or airbrushed. A plain cream knit sleeve ends at the wrist.',
+    framing:
+      'a close shot: the hand and the product fill most of the frame, the product large and sharp in the middle, the hand and wrist entering from the lower edge of the frame',
+    who:
+      'The hand belongs to a young Thai woman with a natural light-medium skin tone: slender fingers, short neat nails with a sheer nude polish, no rings, bracelets or watch, ' +
+      'and real skin texture with fine creases at the knuckles, not waxy or airbrushed. A plain cream knit sleeve ends at the wrist.',
   },
   body: {
-    framing: "a medium shot of the person's body cropped from just below the chin to mid-thigh, the product at the visual center of the frame",
-    who: 'The person is a young Thai woman with a natural light-medium skin tone; her face is never shown, the frame starts below her chin. '
-      + 'She wears a plain cream knit top and simple light trousers with no logos or prints, so the product stands out. '
-      + 'Short neat nails with a sheer nude polish, no rings, bracelets or watch, real skin texture, not waxy or airbrushed.',
+    framing:
+      "a medium shot of the person's body cropped from just below the chin to mid-thigh, the product at the visual center of the frame",
+    who:
+      'The person is a young Thai woman with a natural light-medium skin tone; her face is never shown, the frame starts below her chin. ' +
+      'She wears a plain cream knit top and simple light trousers with no logos or prints, so the product stands out. ' +
+      'Short neat nails with a sheer nude polish, no rings, bracelets or watch, real skin texture, not waxy or airbrushed.',
   },
 } as const;
-const HAND_LENS = 'shot on a full-frame camera with an 85mm lens at f/4, at the height of the product, natural perspective with no wide-angle distortion; '
-  + 'the product and the holding fingers sharp, the background softly out of focus';
-const HAND_REALISM = 'It must look like an unretouched photo by a professional photographer with a real camera, not a CGI render or an AI image. '
-  + 'The product has real weight and is naturally supported by the hand, with slight pressure where the fingers touch it; handles and straps obey gravity. '
-  + 'The product keeps its true real-world size next to the hand. Soft finger shadows fall on the product where the light would put them. '
-  + 'Hands are anatomically correct: each hand has exactly five fingers in natural, relaxed positions, with real knuckles and nail beds. '
-  + 'Not oversaturated, not over-sharpened, no glow, no invented reflections, nothing floating.';
+const HAND_LENS =
+  'shot on a full-frame camera with an 85mm lens at f/4, at the height of the product, natural perspective with no wide-angle distortion; ' +
+  'the product and the holding fingers sharp, the background softly out of focus';
+const HAND_REALISM =
+  'It must look like an unretouched photo by a professional photographer with a real camera, not a CGI render or an AI image. ' +
+  'The product has real weight and is naturally supported by the hand, with slight pressure where the fingers touch it; handles and straps obey gravity. ' +
+  'The product keeps its true real-world size next to the hand. Soft finger shadows fall on the product where the light would put them. ' +
+  'Hands are anatomically correct: each hand has exactly five fingers in natural, relaxed positions, with real knuckles and nail beds. ' +
+  'Not oversaturated, not over-sharpened, no glow, no invented reflections, nothing floating.';
 export const HANDSHOT_SET = 'a plain seamless backdrop in a soft color that complements the product';
 
 export type HandshotInput = {
@@ -177,7 +240,11 @@ export function buildHandshotPrompt(p: HandshotInput) {
   const m = HAND_SHOT[p.mode];
   return [
     `A professional handheld product photograph of ${p.single ?? p.what} from Image 1 for a brand's Instagram feed: ${m.framing}.`,
-    fidelity(1, 'Treat the product as a real three-dimensional object and photograph it fresh as described here, showing its real depth. '),
+    PRODUCT_FIRST(1),
+    fidelity(
+      1,
+      'Treat the product as a real three-dimensional object and photograph it fresh as described here, showing its real depth. ',
+    ),
     p.single ? `Image 1 shows ${p.what}: show only ${p.single}, never both.` : 'Show exactly one product.',
     `Pose: ${p.pose}`,
     m.who,
@@ -185,24 +252,38 @@ export function buildHandshotPrompt(p: HandshotInput) {
     `Camera: ${HAND_LENS}.`,
     `Lighting: ${p.light}`,
     HAND_REALISM,
-    p.crop ? `The photo will be cropped to ${p.crop}: keep the product and the hand holding it well inside the middle of the frame, away from the edges that will be cut.` : '',
-    p.extra?.trim() ? `Also: ${p.extra.trim().slice(0, 400)}` : '',
+    p.crop
+      ? `The photo will be cropped to ${p.crop}: keep the product and the hand holding it well inside the middle of the frame, away from the edges that will be cut.`
+      : '',
+    p.extra?.trim() ? `Also: ${p.extra.trim().slice(0, EXTRA_MAX)}` : '',
     // ย้ำท่าและระยะเป็นบรรทัดสุดท้าย เหมือน "Most important" ของ buildPackshotPrompt
     `Most important: ${p.single ? 'only ' + p.single : 'exactly one product'}, ${p.short}, with ${m.framing}.`,
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 // ใช้แผนกำกับภาพชุดเดียว ไม่เติมฉาก/แสง/เลนส์จาก preset ซ้ำจนคำสั่งขัดกัน
-export function buildCreativePackshotPrompt(p: { what: string; concept: string; crop?: string | null; extra?: string | null }) {
+export function buildCreativePackshotPrompt(p: {
+  what: string;
+  concept: string;
+  crop?: string | null;
+  extra?: string | null;
+}) {
   return [
     `Create one creative editorial still-life product photograph of ${p.what} from Image 1.`,
+    PRODUCT_FIRST(1),
     fidelity(1),
     // รูปสินค้ามีหลายชิ้น/หลายสีได้ (กระเป๋าสองใบในรูปเดียว): เอาเฉพาะชิ้นที่ไอเดียพูดถึง
     'Show exactly one product, the one the art direction describes; leave out any other items or color variants that appear in the product photos.',
     `Selected art direction: ${p.concept}`,
     PRODUCT_REALISM,
     'Follow this art direction as one coordinated scene. Keep the product the hero and its existing label legible. Do not add ingredient, scent or benefit claims, new lettering or graphic overlays.',
-    p.crop ? `The result will be cropped to ${p.crop}. Keep the product and important composition inside the safe center area.` : '',
-    p.extra?.trim() ? `Additional user direction: ${p.extra.trim().slice(0, 400)}` : '',
-  ].filter(Boolean).join(' ');
+    p.crop
+      ? `The result will be cropped to ${p.crop}. Keep the product and important composition inside the safe center area.`
+      : '',
+    p.extra?.trim() ? `Additional user direction: ${p.extra.trim().slice(0, EXTRA_MAX)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }

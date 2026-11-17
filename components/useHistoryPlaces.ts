@@ -1,18 +1,24 @@
 'use client';
 // a studio page's history strip <-> /gallery (TryOn, Packshot); place rules live in app/api/update and app/api/delete
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { track, trackKept, type StudioPage } from '@/lib/analytics';
 import { api } from '@/lib/browser';
+import { failText } from '@/lib/errors';
+import { toast } from '@/lib/toast';
 
-type Placed = { src: string; inGallery?: boolean };
+type Placed = { src: string; inGallery?: boolean; editedFrom?: string };
 
 export function useHistoryPlaces<R extends Placed>(
   results: R[],
   setResults: Dispatch<SetStateAction<R[]>>,
   setCurrent: Dispatch<SetStateAction<number | null>>,
-  setStatus: (status: string) => void,
+  page: StudioPage, // GA: image_kept (via gallery) / gallery_remove
 ) {
+  const [removingSrc, setRemovingSrc] = useState<string | null>(null);
   const latest = useRef(results); // read after awaits: results can grow at the front (new generation) meanwhile
-  useEffect(() => { latest.current = results; }, [results]);
+  useEffect(() => {
+    latest.current = results;
+  }, [results]);
   const pending = useRef(new Map<string, Promise<unknown>>()); // in-flight bookmark request per src
 
   // optimistic; taps on the same image are ignored until its request settles (else update/delete can land out of order)
@@ -22,13 +28,17 @@ export function useHistoryPlaces<R extends Placed>(
     const mark = (v: boolean) => setResults((list) => list.map((r) => (r.src === src ? { ...r, inGallery: v } : r)));
     mark(!inGallery);
     const request = api('/api/update', { src, inGallery: !inGallery });
-    pending.current.set(src, request.catch(() => undefined));
+    pending.current.set(
+      src,
+      request.catch(() => undefined),
+    );
     try {
       await request;
-      setStatus('');
+      if (inGallery) track('gallery_remove', { page });
+      else trackKept(page, latest.current.find((r) => r.src === src) ?? { src }, 'gallery');
     } catch (err) {
       mark(inGallery);
-      setStatus((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
+      toast.error(failText(inGallery ? 'เอาออกจากแกลลอรี่' : 'บันทึกลงแกลลอรี่', err));
     } finally {
       pending.current.delete(src);
     }
@@ -41,7 +51,7 @@ export function useHistoryPlaces<R extends Placed>(
     try {
       await api('/api/delete', { src, from: 'history', permanent });
     } catch (err) {
-      return setStatus((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกไม่สำเร็จ: ') + (err as Error).message);
+      return toast.error(failText(permanent ? 'ลบ' : 'เอาออก', err));
     }
     const i = latest.current.findIndex((r) => r.src === src);
     if (i < 0) return;
@@ -50,5 +60,41 @@ export function useHistoryPlaces<R extends Placed>(
     setCurrent((c) => (c === i ? (left ? Math.min(i, left - 1) : null) : c !== null && c > i ? c - 1 : c));
   }
 
-  return { toggleGallery, removeFromHistory };
+  const removeDialog = removingSrc
+    ? {
+        inOtherPlace: Boolean(results.find((r) => r.src === removingSrc)?.inGallery),
+        onCancel: () => setRemovingSrc(null),
+        onConfirm: () => {
+          const src = removingSrc;
+          setRemovingSrc(null);
+          void removeFromHistory(src);
+        },
+      }
+    : null;
+
+  return { toggleGallery, removeFromHistory, askRemove: setRemovingSrc, removeDialog };
+}
+
+// ← → step through the history strip in on-screen order (order = results indices as drawn, sets grouped); "รูปใหม่" (null) comes first
+export function useHistoryKeys(order: number[], setCurrent: Dispatch<SetStateAction<number | null>>) {
+  const latest = useRef(order);
+  useEffect(() => {
+    latest.current = order;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return; // Cmd/Alt+← = browser back
+      if (document.querySelector('dialog[open]')) return; // a confirm/viewer dialog is on top
+      if ((e.target as Element).closest?.('input, textarea, select')) return; // sliders, radios, text keep their arrows
+      e.preventDefault(); // no native sideways scroll on top of ours
+      const seq = [null, ...latest.current];
+      setCurrent((c) => seq[Math.min(seq.length - 1, Math.max(0, seq.indexOf(c) + step))]);
+      requestAnimationFrame(() =>
+        document.querySelector('.history .active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+      );
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setCurrent]);
 }

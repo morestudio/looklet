@@ -1,13 +1,15 @@
-// usage.ts — นับการใช้งานและโควตาของลูกค้า (ตาราง usage / invites ใน supabase/schema.sql) ใช้ฝั่ง server เท่านั้น
+// usage.ts — นับการใช้งานและโควตาของทุกบัญชี (ตาราง usage / accounts ใน supabase/schema.sql) ใช้ฝั่ง server เท่านั้น
 // route ที่สร้างรูป (generate / packshot / local-edit / refine-skin): quotaBlock() ก่อนเรียก AI, recordUsage() หลังได้ผล (สำเร็จหรือพัง)
 import 'server-only';
-import { isCustomer, me } from './account';
+import { errorResponse } from './api-error';
+import { isLimited, me, type Account } from './account';
 import type { GenerateLog, PackshotLog } from './genlog';
-import { serviceClient, supabaseEnabled } from './storage-supabase';
+import { sbCountUploads, serviceClient, supabaseEnabled } from './storage-supabase';
 
 // ค่า AI โดยประมาณต่อรูป (บาท): GPT Image 2.5 คุณภาพสูง ~฿2 ต่อรูป (ทดสอบจริง 27 ต.ค.) ต่ำกว่านั้นถูกลงตามสัดส่วน
 const COST_THB: Record<string, Record<string, number>> = {
   'openai:gpt-image-2.5-sunburst': { high: 2, medium: 1, low: 0.5 },
+  'openai:gpt-image-2.6-sunburst': { high: 2, medium: 1, low: 0.5 }, // ราคาต่อโทเคนเท่า 2.5 (โทเคน high เท่ากันในการทดสอบ 16 พ.ย.)
 };
 export const estimateCost = (model: string, quality: string, calls = 1) => (COST_THB[model]?.[quality] ?? 2) * calls;
 
@@ -18,41 +20,99 @@ export const estimateCost = (model: string, quality: string, calls = 1) => (COST
 export const DEFAULT_TOKEN_QUOTA = 300_000;
 // แถวที่ไม่รู้โทเคน (รูปก่อนเริ่มนับโทเคน หรือ AI ไม่บอก) นับแบบประมาณ ไม่ให้สร้างฟรี
 export const ESTIMATED_TOKENS = 6_000;
-export const tokensOf = (r: { status: string; tokens?: number | null }) => (r.status === 'ok' ? r.tokens ?? ESTIMATED_TOKENS : 0);
+export const tokensOf = (r: { status: string; tokens?: number | null }) =>
+  r.status === 'ok' ? (r.tokens ?? ESTIMATED_TOKENS) : 0;
 
-// quota = จำนวนรูปแบบเดิม ไม่ใช้แล้ว (เก็บคอลัมน์ไว้) · token_quota = โควตาจริง
-export type Invite = { code: string; user_id: string; label: string; quota: number; token_quota: number; disabled: boolean; created: string };
+// one row per account (was `invites`, 16 Nov): code = invite code, null = email + password login
+// quota = old image-count column, unused · token_quota = the real quota
+// pending = signed up at /signup, waiting for a superadmin (app/api/signup); phone / line only on those rows
+export type AccountRow = {
+  user_id: string;
+  code: string | null;
+  label: string;
+  quota: number;
+  token_quota: number;
+  disabled: boolean;
+  created: string;
+  pending?: boolean;
+  phone?: string | null;
+  line?: string | null;
+};
 
-export async function inviteOf(userId: string): Promise<Invite | null> {
-  const { data, error } = await serviceClient().from('invites').select('*').eq('user_id', userId).maybeSingle();
-  if (error) throw new Error('อ่านโค้ดเชิญไม่สำเร็จ: ' + error.message);
-  return data;
+// email accounts: rows for existing ones come from the backfill in schema.sql; one added later gets its row on first use
+// (same defaults as a new invite code). Code accounts get theirs from /admin with the code; a code account whose row
+// was deleted by hand comes back as an email-style row (code null), accepted: rows are never deleted by the app
+export async function accountOf(a: NonNullable<Account>): Promise<AccountRow | null> {
+  const read = async () => {
+    const { data, error } = await serviceClient().from('accounts').select('*').eq('user_id', a.id).maybeSingle();
+    if (error) throw new Error('อ่านข้อมูลบัญชีไม่สำเร็จ: ' + error.message);
+    return data as AccountRow | null;
+  };
+  const row = await read();
+  if (row) return row;
+  const { error } = await serviceClient()
+    .from('accounts')
+    .insert({ user_id: a.id, code: null, label: a.email.slice(0, 80), token_quota: DEFAULT_TOKEN_QUOTA });
+  if (error && error.code !== '23505') throw new Error('สร้างข้อมูลบัญชีไม่สำเร็จ: ' + error.message); // 23505 = a parallel request made it
+  return read();
 }
 
-// โทเคนของรูปที่สร้างสำเร็จ (นับโควตา) — รูปที่พังไม่นับ · Supabase ส่งได้ครั้งละ 1,000 แถว พอสำหรับโควตาหลักแสนถึงไม่กี่ล้าน
+const DISABLED = () => errorResponse(403, 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล');
+
+// โทเคนของรูปที่สร้างสำเร็จ (นับโควตา) — รูปที่พังไม่นับ
+// PostgREST returns at most 1,000 rows per request: page by id (email accounts can have long histories)
+const PAGE = 1000;
 export async function usedTokens(userId: string) {
-  const { data, error } = await serviceClient().from('usage').select('status, tokens').eq('user_id', userId).eq('status', 'ok');
-  if (error) throw new Error('อ่านการใช้งานไม่สำเร็จ: ' + error.message);
-  return (data ?? []).reduce((sum, r) => sum + tokensOf(r), 0);
+  let sum = 0;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await serviceClient()
+      .from('usage')
+      .select('status, tokens')
+      .eq('user_id', userId)
+      .eq('status', 'ok')
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error('อ่านการใช้งานไม่สำเร็จ: ' + error.message);
+    for (const r of data ?? []) sum += tokensOf(r);
+    if ((data ?? []).length < PAGE) return sum;
+  }
 }
 
-// ลูกค้าที่ถูกปิด / ใช้ครบโควตา -> ตอบ error ก่อนเสียเงินเรียก AI · ทีมไม่มีโควตา
+// บัญชีที่ถูกปิด / ใช้ครบโควตา -> ตอบ error ก่อนเสียเงินเรียก AI · superadmin ไม่มีโควตา
 // รู้โทเคนหลังสร้างเสร็จเท่านั้น: ยังเหลือ = สร้างได้ รูปสุดท้ายอาจเกินนิดหน่อย · ชุดภาพหลายมุมยิงพร้อมกัน อาจเกินได้ไม่กี่รูป
 export async function quotaBlock(pendingTokens = 0): Promise<Response | null> {
   const account = me();
-  if (!isCustomer(account) || !supabaseEnabled) return null;
-  const invite = await inviteOf(account!.id);
-  if (!invite || invite.disabled) return Response.json({ error: 'บัญชีนี้ถูกปิดการใช้งาน ติดต่อผู้ดูแล' }, { status: 403 });
+  if (!isLimited(account) || !supabaseEnabled) return null;
+  const row = await accountOf(account!);
+  if (!row || row.disabled || row.pending) return DISABLED(); // pending: not approved yet (proxy blocks it too)
   const used = await usedTokens(account!.id);
-  if (used + Math.max(0, pendingTokens) >= invite.token_quota) {
-    return Response.json({ error: `ใช้โทเคนครบ ${invite.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
+  if (used + Math.max(0, pendingTokens) >= row.token_quota) {
+    return errorResponse(429, `ใช้โทเคนครบ ${row.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา`);
+  }
+  return null;
+}
+
+// upload cap per account, all kinds together (incl. removed product photos: they still use storage; deleting the product frees them)
+// 409, not 403/429: api() reports those as quota_blocked; parallel uploads can pass the cap by a few, like the token quota
+export const MAX_UPLOADS = 100;
+export async function uploadBlock(): Promise<Response | null> {
+  const account = me();
+  if (!isLimited(account) || !supabaseEnabled) return null;
+  const [row, uploads] = await Promise.all([accountOf(account!), sbCountUploads(account!.id)]);
+  if (!row || row.disabled || row.pending) return DISABLED(); // pending: not approved yet (proxy blocks it too)
+  if (uploads >= MAX_UPLOADS) {
+    return errorResponse(409, `อัปโหลดครบ ${MAX_UPLOADS} รูปแล้ว ลบรูปที่ไม่ใช้ก่อนเพิ่มใหม่`);
   }
   return null;
 }
 
 export type UsageEntry = {
-  page: 'model' | 'product'; action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin';
-  model: string; quality: string; status: 'ok' | 'error'; calls?: number; // calls = เรียก AI สร้างรูปกี่ครั้ง (harmonize = 2)
+  page: 'model' | 'product';
+  action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin';
+  model: string;
+  quality: string;
+  status: 'ok' | 'error';
+  calls?: number; // calls = เรียก AI สร้างรูปกี่ครั้ง (harmonize = 2)
   tokens?: number; // โทเคนที่ AI คิดจริงรวมทุกครั้ง (0/ไม่มี = ไม่รู้ -> ESTIMATED_TOKENS)
   log?: GenerateLog | PackshotLog; // สิ่งที่ส่งให้ AI (พรอมต์ รูป ค่าที่เลือก) -> หน้าตรวจงาน /admin/audit · result = log.result
 };
@@ -63,13 +123,22 @@ export async function recordUsage(entry: UsageEntry) {
   const account = me();
   try {
     const row = {
-      user_id: account?.id ?? null, email: account?.email ?? 'local', page: entry.page, action: entry.action,
-      model: entry.model, quality: entry.quality, status: entry.status, tokens: entry.tokens || null,
+      user_id: account?.id ?? null,
+      email: account?.email ?? 'local',
+      page: entry.page,
+      action: entry.action,
+      model: entry.model,
+      quality: entry.quality,
+      status: entry.status,
+      tokens: entry.tokens || null,
       cost_thb: entry.status === 'ok' ? estimateCost(entry.model, entry.quality, entry.calls) : 0,
     };
-    let { error } = await serviceClient().from('usage').insert({ ...row, result: entry.log?.result ?? null, log: entry.log ?? null });
+    let { error } = await serviceClient()
+      .from('usage')
+      .insert({ ...row, result: entry.log?.result ?? null, log: entry.log ?? null });
     // ฐานข้อมูลยังไม่มีคอลัมน์ result/log (ยังไม่ได้รัน db-apply หลัง 2 พ.ย.) -> บันทึกแบบเดิม โควตาต้องนับต่อได้เสมอ
-    if (error && /column.*\b(result|log)\b|\b(result|log)\b.*column/i.test(error.message)) ({ error } = await serviceClient().from('usage').insert(row));
+    if (error && /column.*\b(result|log)\b|\b(result|log)\b.*column/i.test(error.message))
+      ({ error } = await serviceClient().from('usage').insert(row));
     if (error) console.error('บันทึกการใช้งานไม่สำเร็จ', error.message);
   } catch (e) {
     console.error('บันทึกการใช้งานไม่สำเร็จ', e);

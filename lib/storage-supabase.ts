@@ -21,20 +21,29 @@ export const serviceClient = sb;
 export type Row = { path: string; meta: Record<string, unknown>; created: string };
 
 // ---------- ที่อยู่ไฟล์ใน bucket (จัดโฟลเดอร์ 10 พ.ย. ผู้ใช้เลือก) ----------
-// team/                  คลังร่วมของทีม (รูปไม่มีเจ้าของ รวมทุกรูปก่อนมีบัญชีลูกค้า 27 ต.ค.)
-// customers/<id บัญชี>/   ลูกค้าแต่ละคน (meta.owner) — ใช้ id บัญชี ไม่ใช้รหัสเชิญ เพราะรหัสเชิญคือรหัสผ่าน และนักพัฒนาเห็นแดชบอร์ด Supabase
+// team/                  old shared team library (owner-less rows, all images before 16 Nov's per-account change); hidden from every account
+// accounts/<account id>/ every account, email or invite code (meta.owner; was customers/<id>/ until 16 Nov, moved by scripts/storage-rearrange.mjs)
+//                        account id, never the invite code: the code is a password and developers see the Supabase dashboard
 //   ข้างในเหมือนกัน: results/model | results/product = รูปที่สร้างจากหน้านางแบบ / หน้าสินค้า, uploads/<ประเภท> = รูปที่เพิ่มเอง
 // ลิงก์รูป (/api/files/...) และคอลัมน์ path ไม่เปลี่ยน (ประวัติ กลุ่มสินค้า editedFrom log หน้าตรวจงาน อ้างด้วย path) ที่อยู่จริงอยู่ในคอลัมน์ object
 // แถวที่ object = null = ไฟล์ยังอยู่ที่ path เดิม (ก่อนย้ายด้วย scripts/storage-rearrange.mjs) อ่านได้ทั้งสองแบบ
 // thumbs/ (รูปย่อ) กับ guides/ (ภาพไฮไลต์ของแก้เฉพาะจุด) ตั้งชื่อตาม path อยู่แล้ว ไม่ต้องย้าย
 export function objectKey(path: string, area: string, kind: string | null, meta: Record<string, unknown>) {
-  const owner = typeof meta.owner === 'string' && meta.owner ? `customers/${meta.owner.replace(/[^\w-]/g, '_')}` : 'team';
+  const owner =
+    typeof meta.owner === 'string' && meta.owner ? `accounts/${meta.owner.replace(/[^\w-]/g, '_')}` : 'team';
   const folder = area === 'results' ? `results/${meta.page === 'product' ? 'product' : 'model'}` : `uploads/${kind}`;
   return `${owner}/${folder}/${path.slice(path.lastIndexOf('/') + 1)}`;
 }
 const fileOf = (row: { object?: string | null }, path: string) => row.object || path;
 
-export async function sbSave(key: string, area: string, kind: string | null, data: Buffer, mime: string, meta: Record<string, unknown>) {
+export async function sbSave(
+  key: string,
+  area: string,
+  kind: string | null,
+  data: Buffer,
+  mime: string,
+  meta: Record<string, unknown>,
+) {
   const object = objectKey(key, area, kind, meta);
   const up = await sb().storage.from(BUCKET).upload(object, data, { contentType: mime, upsert: false });
   if (up.error) throw new Error('เก็บรูปลง Supabase ไม่สำเร็จ: ' + up.error.message);
@@ -46,12 +55,26 @@ export async function sbSave(key: string, area: string, kind: string | null, dat
 }
 
 // ใหม่สุดก่อน — kind = null คือรูปที่สร้าง (results)
-export async function sbList(area: string, kind: string | null): Promise<Row[]> {
+// owner filtered in the query (16 Nov): the 1,000 cap (PostgREST's max rows per request) now counts per account,
+// so other accounts' newer rows can't push someone's older images out of their list; owner null = owner-less rows (no login)
+export async function sbList(area: string, kind: string | null, owner: string | null): Promise<Row[]> {
   let q = sb().from('images').select('path, meta, created').eq('area', area);
   q = kind === null ? q.is('kind', null) : q.eq('kind', kind);
+  q = owner === null ? q.is('meta->>owner', null) : q.eq('meta->>owner', owner);
   const { data, error } = await q.order('created', { ascending: false }).limit(1000);
   if (error) throw new Error('อ่านคลังรูปจาก Supabase ไม่สำเร็จ: ' + error.message);
   return data as Row[];
+}
+
+// uploads owned by one account, every kind (MAX_UPLOADS in lib/usage.ts); thumbs/guides have no row so they don't count
+export async function sbCountUploads(owner: string) {
+  const { count, error } = await sb()
+    .from('images')
+    .select('path', { count: 'exact', head: true })
+    .eq('area', 'uploads')
+    .eq('meta->>owner', owner);
+  if (error) throw new Error('นับรูปที่อัปโหลดไม่สำเร็จ: ' + error.message);
+  return count ?? 0;
 }
 
 // เช็กแถวในตารางก่อน: CDN ของ Supabase เก็บไฟล์ไว้ 1 ชม. ลบแล้วยังโหลดได้ (แผนฟรีไม่ล้าง cache ตอนลบ) — ไม่มีแถว = ลบแล้ว
@@ -68,10 +91,17 @@ export async function sbMeta(key: string): Promise<Record<string, unknown> | nul
   return data ? data.meta : null;
 }
 
-export async function sbUpdateMeta(key: string, meta: Record<string, string | boolean | number>, allowed: (meta: Record<string, unknown>) => boolean) {
+export async function sbUpdateMeta(
+  key: string,
+  meta: Record<string, string | boolean | number>,
+  allowed: (meta: Record<string, unknown>) => boolean,
+) {
   const { data } = await sb().from('images').select('meta').eq('path', key).maybeSingle();
   if (!data || !allowed(data.meta)) return false;
-  const { error } = await sb().from('images').update({ meta: { ...data.meta, ...meta } }).eq('path', key);
+  const { error } = await sb()
+    .from('images')
+    .update({ meta: { ...data.meta, ...meta } })
+    .eq('path', key);
   if (error) throw new Error('แก้ข้อมูลรูปไม่สำเร็จ: ' + error.message);
   return true;
 }
@@ -81,7 +111,9 @@ export async function sbDelete(key: string) {
   const { data: row } = await sb().from('images').select('object').eq('path', key).maybeSingle();
   const { error } = await sb().from('images').delete().eq('path', key);
   if (error) throw new Error('ลบข้อมูลรูปไม่สำเร็จ: ' + error.message);
-  await sb().storage.from(BUCKET).remove([fileOf(row ?? {}, key), ...THUMB_WIDTHS.map((w) => thumbKey(key, w))]);
+  await sb()
+    .storage.from(BUCKET)
+    .remove([fileOf(row ?? {}, key), ...THUMB_WIDTHS.map((w) => thumbKey(key, w))]);
   return true;
 }
 
@@ -105,12 +137,19 @@ export const GRID_THUMB = 512; // ตรงกับ thumbSrc ใน lib/browser
 const thumbKey = (key: string, width: number) => `thumbs/${width}/${key}.jpg`;
 
 export async function sbSaveThumb(key: string, width: number, data: Buffer) {
-  const { error } = await sb().storage.from(BUCKET).upload(thumbKey(key, width), data, { contentType: 'image/jpeg', upsert: true });
+  const { error } = await sb()
+    .storage.from(BUCKET)
+    .upload(thumbKey(key, width), data, { contentType: 'image/jpeg', upsert: true });
   if (error) console.error('เก็บรูปย่อไม่สำเร็จ', key, error.message); // ไม่เป็นไร เปิดครั้งหน้าทำใหม่
 }
 
 // มีรูปย่อแล้ว = ส่งรูปย่อ · ยังไม่มี (รูปก่อน 10 พ.ย. หรือเก็บรูปย่อไม่สำเร็จ) = ดึงรูปเต็มครั้งเดียว ย่อ แล้วเก็บไว้
-export async function sbReadThumb(key: string, width: number, allowed: (meta: Record<string, unknown>) => boolean, make: (full: Buffer) => Promise<Buffer>) {
+export async function sbReadThumb(
+  key: string,
+  width: number,
+  allowed: (meta: Record<string, unknown>) => boolean,
+  make: (full: Buffer) => Promise<Buffer>,
+) {
   const row = await sb().from('images').select('meta, object').eq('path', key).maybeSingle();
   if (!row.data || !allowed(row.data.meta)) return null;
   const saved = await sb().storage.from(BUCKET).download(thumbKey(key, width));

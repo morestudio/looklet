@@ -9,7 +9,13 @@ import { ACCESSORY_TYPES, type AccessoryInfo } from '@/lib/catalog';
 // mode: add = ของใหม่ที่ AI ดูไม่ออก, edit = แก้ชิ้นที่เพิ่มไว้แล้ว
 // onDone(null) = กดยกเลิก/กด Esc
 export default function AccessoryDialog({
-  mode, preview, initial, onDone, types = ACCESSORY_TYPES, noun = 'ของเสริม', hint = 'บอก AI ว่าต้องใส่ของชิ้นนี้ตรงไหน',
+  mode,
+  preview,
+  initial,
+  onDone,
+  types = ACCESSORY_TYPES,
+  noun = 'ของเสริม',
+  hint = 'บอก AI ว่าต้องใส่ของชิ้นนี้ตรงไหน',
 }: {
   mode: 'add' | 'edit';
   preview: string;
@@ -30,25 +36,46 @@ export default function AccessoryDialog({
 
   return (
     <dialog ref={ref} onClose={() => onDone(chosen.current)}>
-      <form method="dialog" onSubmit={() => {
-        chosen.current = { name: name.trim() || types.find((t) => t.id === type)!.name, type: type! };
-      }}>
-        <h2>{mode === 'add' ? 'เพิ่ม' : 'แก้'}{noun}</h2>
+      <form
+        method="dialog"
+        onSubmit={() => {
+          chosen.current = { name: name.trim() || types.find((t) => t.id === type)!.name, type: type! };
+        }}
+      >
+        <h2>
+          {mode === 'add' ? 'เพิ่ม' : 'แก้'}
+          {noun}
+        </h2>
         <img id="accPreview" src={preview} alt="" />
-        <label className="field">ชื่อสินค้า
-          <input value={name} maxLength={80} placeholder="ไม่ใส่ก็ได้ จะใช้ชื่อประเภทแทน" onChange={(e) => setName(e.target.value)} />
+        <label className="field">
+          ชื่อสินค้า
+          <input
+            value={name}
+            maxLength={80}
+            placeholder="ไม่ใส่ก็ได้ จะใช้ชื่อประเภทแทน"
+            onChange={(e) => setName(e.target.value)}
+          />
         </label>
         <p className="sub">ประเภท — {mode === 'add' ? 'AI ดูไม่ออกว่าเป็นอะไร เลือกให้หน่อย' : hint}</p>
         <div className="chips">
           {types.map((t) => (
-            <button key={t.id} type="button" className={'chip' + (type === t.id ? ' active' : '')} onClick={() => setType(t.id)}>
+            <button
+              key={t.id}
+              type="button"
+              className={'chip' + (type === t.id ? ' active' : '')}
+              onClick={() => setType(t.id)}
+            >
               {t.name}
             </button>
           ))}
         </div>
         <div className="retouch-actions">
-          <button type="button" className="btn btn-tertiary" onClick={() => ref.current?.close()}>ยกเลิก</button>
-          <button className="btn btn-primary" disabled={!type}>{mode === 'add' ? 'เพิ่ม' : 'บันทึก'}</button>
+          <button type="button" className="btn btn-tertiary" onClick={() => ref.current?.close()}>
+            ยกเลิก
+          </button>
+          <button className="btn btn-primary" disabled={!type}>
+            {mode === 'add' ? 'เพิ่ม' : 'บันทึก'}
+          </button>
         </div>
       </form>
     </dialog>

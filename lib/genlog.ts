@@ -24,11 +24,20 @@ export type GenerateLog = {
   model: LogImage;
   element: {
     outfit: LogImage | string; // 'ชุดเดิม' = ไม่ได้เปลี่ยนชุด · 'เปลี่ยนแยกชิ้น' = ดู top / bottom / shoes
-    top?: LogImage; bottom?: LogImage; shoes?: LogImage; // เสื้อผ้าแยกชิ้น (ขั้นเสื้อผ้า 29 ต.ค.)
+    top?: LogImage;
+    bottom?: LogImage;
+    shoes?: LogImage; // เสื้อผ้าแยกชิ้น (ขั้นเสื้อผ้า 29 ต.ค.)
     accessories: LogImage[];
     scene: LogImage | { name?: string; text: string } | string; // รูปฉาก / ฉากแบบคำบรรยาย / 'ฉากเดิม'
   };
-  pose: { mode: string; moment?: string; headGaze?: string; plan_th?: string; plan_en?: string; director?: DirectorPlan } & Partial<LogImage>; // headGaze = ทิศหน้า/สายตาที่สุ่ม (HEAD_GAZES)
+  pose: {
+    mode: string;
+    moment?: string;
+    headGaze?: string;
+    plan_th?: string;
+    plan_en?: string;
+    director?: DirectorPlan;
+  } & Partial<LogImage>; // headGaze = ทิศหน้า/สายตาที่สุ่ม (HEAD_GAZES)
   delivery?: StoredPosePlan | null;
   set?: { shot: string } & Partial<LogImage>; // ชุดภาพหลายมุม: มุมของรูปนี้ + รูปหลักที่ใช้เป็นต้นแบบ
   style: Record<string, string | string[] | boolean>;
@@ -82,7 +91,9 @@ export async function writeGenerateLog<T extends GenerateLog | PackshotLog>(entr
   } catch (e) {
     console.error('เขียน log ไม่สำเร็จ', e); // log พังห้ามทำให้การเจนรูปพัง
   }
-  console.log(`[generate] ${entry.status} · ${entry.ai.model} · ${entry.duration}`
-    + `${entry.error ? ' · ' + entry.error : ''} (log: logs/${path.basename(file)})`);
+  console.log(
+    `[generate] ${entry.status} · ${entry.ai.model} · ${entry.duration}` +
+      `${entry.error ? ' · ' + entry.error : ''} (log: logs/${path.basename(file)})`,
+  );
   return entry;
 }

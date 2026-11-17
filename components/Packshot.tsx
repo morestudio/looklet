@@ -3,37 +3,127 @@
 // โครงหน้าเหมือนหน้านางแบบ (components/TryOn.tsx) และใช้ class CSS ชุดเดียวกัน: เมนูขั้นตอนซ้าย แผงเลือก รูปตรงกลาง แผงปรับแต่งขวา
 // หน้าเว็บส่งแค่ id ของตัวเลือก (lib/packshot.ts) ไป app/api/packshot แล้ว server แปลงเป็นคำสั่งเอง
 // คลังรูปแยกจากหน้านางแบบ: สินค้า / ช็อตต้นแบบ / รูปฉาก (KINDS ใน lib/storage.ts) รูปที่สร้างติดป้าย page = 'product'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
 import ProductLibrary from './ProductLibrary';
-import { useHistoryPlaces } from './useHistoryPlaces';
+import { useHistoryKeys, useHistoryPlaces } from './useHistoryPlaces';
 import { useRecipeSync } from './useRecipeSync';
 import { recipeKey } from '@/lib/recipe';
+import type { ResultBase, StoredResultBase, StylePlan } from '@/lib/result-types';
 import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
-import { PRODUCT_SAMPLES, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
-import { SignOutButton } from './AuthForm';
+import { errorReason, itemSource, stopwatch, track, trackKept } from '@/lib/analytics';
 import {
-  IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
+  PRODUCT_SAMPLES,
+  isSampleGroup,
+  productGroups,
+  productSources,
+  type ProductGroup,
+  type ProductPhoto,
+} from '@/lib/product-groups';
+import { AccountMenu } from './AuthForm';
+import {
+  IconAngle,
+  IconBag,
+  IconCopy,
+  IconDownload,
+  IconFrame,
+  IconHand,
+  IconLeaf,
+  IconPalette,
+  IconReset,
+  IconRetouch,
+  IconScene,
+  IconSearch,
+  IconSettings,
 } from './icons';
 import { HandArt, HandView } from './HandView';
 import Turntable, { turnSrc } from './Turntable';
 import { defaultTurn, turnFill } from '@/lib/turntable';
-import { AddCard, Card, ChipGroup, ConfirmDialog, DeleteButton, GalleryLink, PageSwitch, PendingCard, GalleryToggle, RemoveImageDialog, SaveImageDialog, Section, TokenUsage, useChosenSteps } from './ui';
+import {
+  AddCard,
+  Card,
+  ChipGroup,
+  ConfirmDialog,
+  DeleteButton,
+  GalleryLink,
+  PageSwitch,
+  PendingCard,
+  GalleryToggle,
+  RemoveImageDialog,
+  SaveImageDialog,
+  Section,
+  StartFromImageDialog,
+  TokenUsage,
+  useChosenSteps,
+} from './ui';
 import { useRetouchCanvas, type Amounts } from './useRetouchCanvas';
 import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors';
 import { NO_FILM } from '@/lib/film';
-import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, thumbSrc, toWebImage, uploadImage,
+  PRESET,
+  REF_SHOT,
+  START,
+  creativeScopeOf,
+  idOf,
+  pickUsed,
+  readRecipe,
+  shotTypeDefaults,
+  stepUsed,
+  type PickKey as Key,
+  type Recipe,
+  type StepKey,
+} from '@/lib/packshot-recipe';
+import {
+  api,
+  canOpenImage,
+  canvasJpeg,
+  finishedCanvas,
+  guessProduct,
+  inAppBrowser,
+  isHeic,
+  jpegBase64,
+  saveImageFile,
+  storeUpload,
+  thumbSrc,
+  toWebImage,
 } from '@/lib/browser';
+import { failText, friendlyError } from '@/lib/errors';
+import { toast } from '@/lib/toast';
 import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
-  DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
-  PRODUCT_ASPECTS, PRODUCT_FRAMINGS, PRODUCT_PRESETS,
-  NO_PROPS, PROP_GROUPS, REF_MODES, SETS, colorable, productType, scenePreset, propStyle, type RefMode,
-  HAND_MODES, HAND_POSES, handPoses, resolveHandPose, CUSTOM_ANGLE, customAngleShot, turntableAngle,
+  DETAIL_TARGETS,
+  SCALE_REFERENCES,
+  SHOT_TYPES,
+  PRODUCT_SET_SHOTS,
+  shotSets,
+  shotFramings,
+  resolveProductBackground,
+  shotAngles,
+  resolveProductAngle,
+  automaticProductAngle,
+  type ShotType,
+  PRODUCT_ASPECTS,
+  PRODUCT_FRAMINGS,
+  PRODUCT_PRESETS,
+  NO_PROPS,
+  PROP_GROUPS,
+  REF_MODES,
+  SETS,
+  colorable,
+  productType,
+  scenePreset,
+  propStyle,
+  type RefMode,
+  HAND_MODES,
+  HAND_POSES,
+  handPoses,
+  resolveHandPose,
+  CUSTOM_ANGLE,
+  customAngleShot,
+  turntableAngle,
+  EXTRA_MAX,
 } from '@/lib/packshot';
 
 const KIND = { product: 'products', ref: 'product-refs', scene: 'product-scenes', prop: 'product-props' } as const;
@@ -48,142 +138,281 @@ const SHOT_TYPE_ORDER = [
   ...OPEN_SHOT_TYPES.map((id) => SHOT_TYPES.find((t) => t.id === id)!),
   ...SHOT_TYPES.filter((t) => !OPEN_SHOT_TYPES.includes(t.id)),
 ];
-type Plan = { name: string; th: string }; // พร็อพที่ AI คิดให้
-type SetTag = { id: string; index: number }; // ชุดภาพสินค้า (เหมือน SetTag ใน lib/storage.ts)
-type Result = { src: string; caption: string; set?: SetTag; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe>; inGallery?: boolean };
-type Stored = ProductPhoto & { src: string; name?: string; caption?: string; type?: string; set?: SetTag; page?: string; editedFrom?: string; stylePlan?: Plan; recipe?: Partial<Recipe>; inGallery?: boolean; inHistory?: boolean };
+type Result = ResultBase<Recipe> & { stylePlan?: StylePlan };
+type Stored = ProductPhoto & StoredResultBase<Recipe> & { stylePlan?: StylePlan };
 type Library = { results: Stored[]; uploads: Record<string, Stored[]> };
 type AiModel = { id: string; label: string };
 const newSetId = () => crypto.randomUUID().slice(0, 13);
 const downloadName = (ext: string) => `lolo-product-${Date.now()}.${ext}`; // ชื่อไฟล์ดาวน์โหลด (เรียกตอนกดเท่านั้น)
 
+const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = (
+  [
+    { key: 'product', label: 'สินค้า', title: 'เลือกสินค้า', Icon: IconBag },
+    { key: 'shot', label: 'ประเภทภาพ', title: 'เลือกประเภทภาพ', Icon: IconFrame },
+    { key: 'creative', label: 'ไอเดียภาพ', title: 'ไอเดียภาพ', Icon: IconPalette },
+    { key: 'hand', label: 'ท่าถือ', title: 'เลือกท่าถือ', Icon: () => <IconHand size={22} /> }, // Handshot เท่านั้น
+    // ช็อตต้นแบบอยู่ก่อนฉาก/พร็อพ/มุม: ลอกทั้งช็อตแล้วขั้นพวกนั้นไม่ถูกใช้ จะได้รู้ก่อนไปเลือก
+    { key: 'ref', label: 'ช็อตต้นแบบ', title: 'ช็อตต้นแบบ', Icon: IconCopy },
+    { key: 'set', label: 'ฉากและพื้น', title: 'เลือกฉากและพื้น', Icon: IconScene },
+    { key: 'props', label: 'พร็อพ', title: 'พร็อพ', Icon: IconLeaf },
+    { key: 'angle', label: 'มุมกล้อง', title: 'เลือกมุมกล้อง', Icon: IconAngle },
+    { key: 'framing', label: 'ระยะ', title: 'เลือกระยะ', Icon: IconFrame },
+    { key: 'settings', label: 'ตั้งค่า', title: 'ตั้งค่าและสร้างรูป', Icon: IconSettings },
+  ] as const
+).filter((s) => REF_SHOT || s.key !== 'ref');
 
-const STEPS: { key: StepKey; label: string; title: string; Icon: () => ReactNode }[] = ([
-  { key: 'product', label: 'สินค้า', title: 'เลือกสินค้า', Icon: IconBag },
-  { key: 'shot', label: 'ประเภทภาพ', title: 'เลือกประเภทภาพ', Icon: IconFrame },
-  { key: 'creative', label: 'ไอเดียภาพ', title: 'ไอเดียภาพ', Icon: IconPalette },
-  { key: 'hand', label: 'ท่าถือ', title: 'เลือกท่าถือ', Icon: () => <IconHand size={22} /> }, // Handshot เท่านั้น
-  // ช็อตต้นแบบอยู่ก่อนฉาก/พร็อพ/มุม: ลอกทั้งช็อตแล้วขั้นพวกนั้นไม่ถูกใช้ จะได้รู้ก่อนไปเลือก
-  { key: 'ref', label: 'ช็อตต้นแบบ', title: 'ช็อตต้นแบบ', Icon: IconCopy },
-  { key: 'set', label: 'ฉากและพื้น', title: 'เลือกฉากและพื้น', Icon: IconScene },
-  { key: 'props', label: 'พร็อพ', title: 'พร็อพ', Icon: IconLeaf },
-  { key: 'angle', label: 'มุมกล้อง', title: 'เลือกมุมกล้อง', Icon: IconAngle },
-  { key: 'framing', label: 'ระยะ', title: 'เลือกระยะ', Icon: IconFrame },
-  { key: 'settings', label: 'ตั้งค่า', title: 'ตั้งค่าและสร้างรูป', Icon: IconSettings },
-] as const).filter((s) => REF_SHOT || s.key !== 'ref');
+// ขั้นสูง (คุณภาพ) — เอาออก 16 พ.ย. (ผู้ใช้ขอ เหมือนหน้านางแบบ): คุณภาพตามโมเดลเสมอ (GPT 2.5 = high) รวมรูปเก่าที่เปิดมา · เปิดใหม่ = true
+const ADVANCED = false;
+const plainRecipe = (r: Recipe, model: string): Recipe => (ADVANCED ? r : { ...r, quality: defaultQuality(model) });
 
 // สัดส่วน "อัตโนมัติ": 4:5 (ฟีด IG) · ลอกทั้งช็อต = สัดส่วนที่ใกล้รูปต้นแบบที่สุด
-const nearestAspect = (w: number, h: number) => PRODUCT_ASPECTS.map((a) => a.id).reduce((best, a) => {
-  const diff = (id: string) => {
-    const [x, y] = id.split(':').map(Number);
-    return Math.abs(Math.log(x / y / (w / h)));
-  };
-  return diff(a) < diff(best) ? a : best;
-}, '4:5' as string);
+const nearestAspect = (w: number, h: number) =>
+  PRODUCT_ASPECTS.map((a) => a.id).reduce((best, a) => {
+    const diff = (id: string) => {
+      const [x, y] = id.split(':').map(Number);
+      return Math.abs(Math.log(x / y / (w / h)));
+    };
+    return diff(a) < diff(best) ? a : best;
+  }, '4:5' as string);
 
 // แสดงวัสดุและองค์ประกอบคร่าวๆ ไม่ใช้รูปสำเร็จที่อาจทำให้เข้าใจว่าเป็นผลลัพธ์จริง
 function ScenePreview({ id, color, large = false }: { id: string; color?: string; large?: boolean }) {
-  const wall = color ?? ({ pastel: '#dcd8e2', plywood: '#cfd8dc', table: '#d9d2c7', 'dark-fabric': '#3a3a3c', concrete: '#c6c7c4', plaster: '#e7decf', linen: '#eee9e1' }[id] ?? '#efefed');
+  const wall =
+    color ??
+    {
+      pastel: '#dcd8e2',
+      plywood: '#cfd8dc',
+      table: '#d9d2c7',
+      'dark-fabric': '#3a3a3c',
+      concrete: '#c6c7c4',
+      plaster: '#e7decf',
+      linen: '#eee9e1',
+    }[id] ??
+    '#efefed';
   const floor = id === 'plywood' ? '#c8aa7d' : id === 'table' || id === 'ledge' ? '#f8f8f4' : wall;
   const fabric = id === 'linen' || id === 'dark-fabric';
   const textured = id === 'concrete' || id === 'plaster';
-  return <svg className={'scene-preview' + (large ? ' large' : '')} viewBox="0 0 240 150" role="img" aria-label={`ภาพจำลอง${SETS.find((s) => s.id === id)?.name ?? 'ฉาก'}`}>
-    <rect width="240" height="150" fill={wall} />
-    {id === 'cove' ? <path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".025" />
-      : <rect y="91" width="240" height="59" fill={floor} />}
-    {['pastel', 'table', 'plywood'].includes(id) && <path d="M0 91 H240" stroke="#000" opacity=".12" />}
-    {id === 'pastel' && <rect y="92" width="240" height="58" fill="#7278a2" opacity=".16" />}
-    {id === 'plywood' && <g stroke="#896639" opacity=".3" fill="none"><path d="M0 104 Q80 95 240 107 M0 122 Q120 110 240 125 M0 143 Q100 129 240 145" /></g>}
-    {fabric && <g fill="none" stroke={id === 'dark-fabric' ? '#ddd' : '#b2a99a'} opacity=".25" strokeWidth="5"><path d="M0 30 Q60 75 10 150 M70 0 Q120 90 75 150 M190 0 Q130 85 230 150" /></g>}
-    {textured && <g fill="#a18f78" opacity=".18"><ellipse cx="40" cy="50" rx="28" ry="15" /><ellipse cx="198" cy="114" rx="36" ry="18" /><circle cx="150" cy="35" r="15" /></g>}
-    {id === 'ledge' && <path d="M0 95 H240 V103 H0 M0 111 H240 M0 116 H240" fill="#fff" stroke="#ccc" />}
-    {id === 'plinth' && <path d="M84 99 110 90 157 97 137 108 84 105Z M84 105 V150 H137 V108 M137 108 157 97 V150 H137" fill="#d8cebd" stroke="#b3a999" />}
-    <ellipse cx="120" cy={id === 'plinth' ? 96 : 115} rx="38" ry="7" fill="#000" opacity=".1" />
-    <rect x="96" y={id === 'plinth' ? 46 : 58} width="48" height="49" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
-    <path d={id === 'plinth' ? 'M104 55 H136 M104 62 H125' : 'M104 67 H136 M104 74 H125'} stroke={LABEL} strokeWidth="2" />
-  </svg>;
+  return (
+    <svg
+      className={'scene-preview' + (large ? ' large' : '')}
+      viewBox="0 0 240 150"
+      role="img"
+      aria-label={`ภาพจำลอง${SETS.find((s) => s.id === id)?.name ?? 'ฉาก'}`}
+    >
+      <rect width="240" height="150" fill={wall} />
+      {id === 'cove' ? (
+        <path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".025" />
+      ) : (
+        <rect y="91" width="240" height="59" fill={floor} />
+      )}
+      {['pastel', 'table', 'plywood'].includes(id) && <path d="M0 91 H240" stroke="#000" opacity=".12" />}
+      {id === 'pastel' && <rect y="92" width="240" height="58" fill="#7278a2" opacity=".16" />}
+      {id === 'plywood' && (
+        <g stroke="#896639" opacity=".3" fill="none">
+          <path d="M0 104 Q80 95 240 107 M0 122 Q120 110 240 125 M0 143 Q100 129 240 145" />
+        </g>
+      )}
+      {fabric && (
+        <g fill="none" stroke={id === 'dark-fabric' ? '#ddd' : '#b2a99a'} opacity=".25" strokeWidth="5">
+          <path d="M0 30 Q60 75 10 150 M70 0 Q120 90 75 150 M190 0 Q130 85 230 150" />
+        </g>
+      )}
+      {textured && (
+        <g fill="#a18f78" opacity=".18">
+          <ellipse cx="40" cy="50" rx="28" ry="15" />
+          <ellipse cx="198" cy="114" rx="36" ry="18" />
+          <circle cx="150" cy="35" r="15" />
+        </g>
+      )}
+      {id === 'ledge' && <path d="M0 95 H240 V103 H0 M0 111 H240 M0 116 H240" fill="#fff" stroke="#ccc" />}
+      {id === 'plinth' && (
+        <path
+          d="M84 99 110 90 157 97 137 108 84 105Z M84 105 V150 H137 V108 M137 108 157 97 V150 H137"
+          fill="#d8cebd"
+          stroke="#b3a999"
+        />
+      )}
+      <ellipse cx="120" cy={id === 'plinth' ? 96 : 115} rx="38" ry="7" fill="#000" opacity=".1" />
+      <rect
+        x="96"
+        y={id === 'plinth' ? 46 : 58}
+        width="48"
+        height="49"
+        rx="5"
+        fill={PAPER}
+        stroke={INK}
+        strokeWidth="1.2"
+      />
+      <path
+        d={id === 'plinth' ? 'M104 55 H136 M104 62 H125' : 'M104 67 H136 M104 74 H125'}
+        stroke={LABEL}
+        strokeWidth="2"
+      />
+    </svg>
+  );
 }
 
 // ภาพจำลองประเภทภาพ: วาดคร่าวๆ แบบเดียวกับ ScenePreview (ไม่ใช้รูปจริงที่อาจเข้าใจว่าเป็นผลลัพธ์)
-function Box({ x, y, w = 48, h = 49, label = true }: { x: number; y: number; w?: number; h?: number; label?: boolean }) {
-  return <>
-    <ellipse cx={x + w / 2} cy={y + h + 8} rx={w * 0.8} ry="7" fill="#000" opacity=".1" />
-    <rect x={x} y={y} width={w} height={h} rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
-    {label && <path d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`} stroke={LABEL} strokeWidth="2" />}
-  </>;
+function Box({
+  x,
+  y,
+  w = 48,
+  h = 49,
+  label = true,
+}: {
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+  label?: boolean;
+}) {
+  return (
+    <>
+      <ellipse cx={x + w / 2} cy={y + h + 8} rx={w * 0.8} ry="7" fill="#000" opacity=".1" />
+      <rect x={x} y={y} width={w} height={h} rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+      {label && (
+        <path
+          d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`}
+          stroke={LABEL}
+          strokeWidth="2"
+        />
+      )}
+    </>
+  );
 }
 
 function ShotTypePreview({ id }: { id: ShotType }) {
-  const studio = <><rect width="240" height="150" fill={WALL} /><path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".03" /></>;
-  return <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
-    {id === 'clean' && <>{studio}<Box x={96} y={58} /></>}
-    {id === 'handshot' && <HandArt pose="hold" />}
-    {id === 'styled' && <>
-      <rect width="240" height="150" fill="#e7decf" />
-      <path d="M22 0 H66 L112 91 H68Z" fill="#fff" opacity=".3" />
-      <rect y="91" width="240" height="59" fill="#d6bf9c" />
-      <path d="M0 91 H240" stroke="#000" opacity=".12" />
-      <ellipse cx="62" cy="115" rx="15" ry="3.5" fill="#000" opacity=".1" />
-      <circle cx="62" cy="102" r="12" fill="#e8a23a" />
-      <path d="M62 90 q3 -6 9 -6" stroke="#6f8a52" strokeWidth="2" fill="none" />
-      <path d="M175 80 C171 62 162 54 152 50 M175 80 C178 60 187 51 198 46" stroke="#6f8a52" strokeWidth="2.5" fill="none" />
-      <ellipse cx="154" cy="51" rx="9" ry="4" fill="#8fa77a" transform="rotate(30 154 51)" />
-      <ellipse cx="196" cy="47" rx="9" ry="4" fill="#8fa77a" transform="rotate(-25 196 47)" />
-      <ellipse cx="175" cy="115" rx="13" ry="3" fill="#000" opacity=".1" />
-      <rect x="166" y="80" width="18" height="34" rx="6" fill="#f5f2ec" stroke="#b3a999" />
-      <Box x={96} y={58} />
-      {/* ปรับเองทีละส่วน */}
-      <path d="M204 14 H230 M204 23 H230 M204 32 H230" stroke={INK} strokeWidth="1.6" />
-      <g fill={PAPER} stroke={INK} strokeWidth="1.4"><circle cx="211" cy="14" r="3" /><circle cx="224" cy="23" r="3" /><circle cx="215" cy="32" r="3" /></g>
-    </>}
-    {id === 'creative' && <>
-      <rect width="240" height="150" fill="#f6d9cf" />
-      <circle cx="120" cy="66" r="48" fill="#ee9f86" opacity=".55" />
-      <rect y="104" width="240" height="46" fill="#e9b39f" />
-      <path d="M92 104 V138 H148 V104" fill="#f8efe9" stroke="#c99683" />
-      <ellipse cx="120" cy="104" rx="28" ry="5" fill="#fff6f1" stroke="#c99683" />
-      <rect x="98" y="53" width="44" height="49" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
-      <path d="M106 62 H134 M106 69 H124" stroke={LABEL} strokeWidth="2" />
-      {/* AI คิดคอนเซปต์ + โทนสีที่จับคู่ */}
-      <path d="m208 12 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z M224 36 l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill="#fff" />
-      <g stroke="#fff" strokeWidth="1.5"><circle cx="18" cy="134" r="6" fill="#ee9f86" /><circle cx="33" cy="134" r="6" fill="#f8efe9" /><circle cx="48" cy="134" r="6" fill="#7d8fb3" /></g>
-    </>}
-    {id === 'multi' && <>{studio}
-      <Box x={15} y={66} w={30} h={31} />
-      <Box x={75} y={66} w={30} h={31} label={false} />
-      <Box x={143} y={66} w={14} h={31} label={false} />
-      <ellipse cx="210" cy="105" rx="19" ry="6" fill="#000" opacity=".1" />
-      <path d="M197 66 H217 L225 61 V92 L217 97 H197Z" fill={PAPER} stroke={INK} strokeWidth="1.2" />
-      <path d="M217 66 V97" stroke={INK} strokeWidth="1.2" />
-      <g fill={ASH} fontSize="11" textAnchor="middle"><text x="30" y="128">หน้า</text><text x="90" y="128">หลัง</text><text x="150" y="128">ข้าง</text><text x="210" y="128">45°</text></g>
-    </>}
-    {id === 'detail' && <>
-      <rect width="240" height="150" fill={STUDIO} />
-      <rect x="-20" y="30" width="140" height="140" rx="10" fill={PAPER} stroke={INK} strokeWidth="1.2" />
-      <path d="M-20 44 H106 V170" fill="none" stroke={LABEL} strokeWidth="1.5" strokeDasharray="5 4" />
-      <circle cx="98" cy="50" r="12" fill="none" stroke={INK} strokeDasharray="3 3" />
-      <path d="M195 94 L222 121" stroke={INK} strokeWidth="7" strokeLinecap="round" />
-      <circle cx="168" cy="66" r="38" fill={PAPER} stroke={INK} strokeWidth="2" />
-      <path d="M134 58 H202 M136 80 H200" stroke={LABEL} strokeWidth="3" strokeDasharray="9 6" />
-    </>}
-    {id === 'scale' && <>{studio}
-      <Box x={92} y={48} w={56} h={57} />
-      <path d="M164 48 V105 M159 48 H169 M159 105 H169" stroke={INK} strokeWidth="1.4" />
-      <rect x="30" y="122" width="180" height="12" rx="2" fill="#efe3c4" stroke="#b3a999" />
-      <path d={Array.from({ length: 17 }, (_, i) => `M${40 + i * 10} 122 v${i % 5 ? 4 : 7}`).join(' ')} stroke="#9b8f78" />
-    </>}
-  </svg>;
+  const studio = (
+    <>
+      <rect width="240" height="150" fill={WALL} />
+      <path d="M0 95 Q120 86 240 95 V150 H0Z" fill="#000" opacity=".03" />
+    </>
+  );
+  return (
+    <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
+      {id === 'clean' && (
+        <>
+          {studio}
+          <Box x={96} y={58} />
+        </>
+      )}
+      {id === 'handshot' && <HandArt pose="hold" />}
+      {id === 'styled' && (
+        <>
+          <rect width="240" height="150" fill="#e7decf" />
+          <path d="M22 0 H66 L112 91 H68Z" fill="#fff" opacity=".3" />
+          <rect y="91" width="240" height="59" fill="#d6bf9c" />
+          <path d="M0 91 H240" stroke="#000" opacity=".12" />
+          <ellipse cx="62" cy="115" rx="15" ry="3.5" fill="#000" opacity=".1" />
+          <circle cx="62" cy="102" r="12" fill="#e8a23a" />
+          <path d="M62 90 q3 -6 9 -6" stroke="#6f8a52" strokeWidth="2" fill="none" />
+          <path
+            d="M175 80 C171 62 162 54 152 50 M175 80 C178 60 187 51 198 46"
+            stroke="#6f8a52"
+            strokeWidth="2.5"
+            fill="none"
+          />
+          <ellipse cx="154" cy="51" rx="9" ry="4" fill="#8fa77a" transform="rotate(30 154 51)" />
+          <ellipse cx="196" cy="47" rx="9" ry="4" fill="#8fa77a" transform="rotate(-25 196 47)" />
+          <ellipse cx="175" cy="115" rx="13" ry="3" fill="#000" opacity=".1" />
+          <rect x="166" y="80" width="18" height="34" rx="6" fill="#f5f2ec" stroke="#b3a999" />
+          <Box x={96} y={58} />
+          {/* ปรับเองทีละส่วน */}
+          <path d="M204 14 H230 M204 23 H230 M204 32 H230" stroke={INK} strokeWidth="1.6" />
+          <g fill={PAPER} stroke={INK} strokeWidth="1.4">
+            <circle cx="211" cy="14" r="3" />
+            <circle cx="224" cy="23" r="3" />
+            <circle cx="215" cy="32" r="3" />
+          </g>
+        </>
+      )}
+      {id === 'creative' && (
+        <>
+          <rect width="240" height="150" fill="#f6d9cf" />
+          <circle cx="120" cy="66" r="48" fill="#ee9f86" opacity=".55" />
+          <rect y="104" width="240" height="46" fill="#e9b39f" />
+          <path d="M92 104 V138 H148 V104" fill="#f8efe9" stroke="#c99683" />
+          <ellipse cx="120" cy="104" rx="28" ry="5" fill="#fff6f1" stroke="#c99683" />
+          <rect x="98" y="53" width="44" height="49" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+          <path d="M106 62 H134 M106 69 H124" stroke={LABEL} strokeWidth="2" />
+          {/* AI คิดคอนเซปต์ + โทนสีที่จับคู่ */}
+          <path d="m208 12 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z M224 36 l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill="#fff" />
+          <g stroke="#fff" strokeWidth="1.5">
+            <circle cx="18" cy="134" r="6" fill="#ee9f86" />
+            <circle cx="33" cy="134" r="6" fill="#f8efe9" />
+            <circle cx="48" cy="134" r="6" fill="#7d8fb3" />
+          </g>
+        </>
+      )}
+      {id === 'multi' && (
+        <>
+          {studio}
+          <Box x={15} y={66} w={30} h={31} />
+          <Box x={75} y={66} w={30} h={31} label={false} />
+          <Box x={143} y={66} w={14} h={31} label={false} />
+          <ellipse cx="210" cy="105" rx="19" ry="6" fill="#000" opacity=".1" />
+          <path d="M197 66 H217 L225 61 V92 L217 97 H197Z" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+          <path d="M217 66 V97" stroke={INK} strokeWidth="1.2" />
+          <g fill={ASH} fontSize="11" textAnchor="middle">
+            <text x="30" y="128">
+              หน้า
+            </text>
+            <text x="90" y="128">
+              หลัง
+            </text>
+            <text x="150" y="128">
+              ข้าง
+            </text>
+            <text x="210" y="128">
+              45°
+            </text>
+          </g>
+        </>
+      )}
+      {id === 'detail' && (
+        <>
+          <rect width="240" height="150" fill={STUDIO} />
+          <rect x="-20" y="30" width="140" height="140" rx="10" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+          <path d="M-20 44 H106 V170" fill="none" stroke={LABEL} strokeWidth="1.5" strokeDasharray="5 4" />
+          <circle cx="98" cy="50" r="12" fill="none" stroke={INK} strokeDasharray="3 3" />
+          <path d="M195 94 L222 121" stroke={INK} strokeWidth="7" strokeLinecap="round" />
+          <circle cx="168" cy="66" r="38" fill={PAPER} stroke={INK} strokeWidth="2" />
+          <path d="M134 58 H202 M136 80 H200" stroke={LABEL} strokeWidth="3" strokeDasharray="9 6" />
+        </>
+      )}
+      {id === 'scale' && (
+        <>
+          {studio}
+          <Box x={92} y={48} w={56} h={57} />
+          <path d="M164 48 V105 M159 48 H169 M159 105 H169" stroke={INK} strokeWidth="1.4" />
+          <rect x="30" y="122" width="180" height="12" rx="2" fill="#efe3c4" stroke="#b3a999" />
+          <path
+            d={Array.from({ length: 17 }, (_, i) => `M${40 + i * 10} 122 v${i % 5 ? 4 : 7}`).join(' ')}
+            stroke="#9b8f78"
+          />
+        </>
+      )}
+    </svg>
+  );
 }
 
 // มุมกล้อง / ระยะ: วาดภาพที่กล้องเห็นในแต่ละตัวเลือก แบบเดียวกับ ShotTypePreview (ฉากสตูดิโอ + สินค้ากล่องมีฉลาก)
 // แทนแผนผังมองจากด้านบนแบบเดิม (ผู้ใช้ขอ 28 ต.ค.: อยากได้ภาพทุกตัวเลือกเหมือนขั้นประเภทภาพ)
-const SIDE = CLOTH, TOPFACE = '#f2eee7', ASH = '#8a8478';
-const Studio = ({ horizon = 95 }: { horizon?: number }) => <>
-  <rect width="240" height="150" fill={WALL} />
-  <path d={`M0 ${horizon} Q120 ${horizon - 9} 240 ${horizon} V150 H0Z`} fill="#000" opacity=".035" />
-</>;
-const Shadow = ({ cx, cy, rx }: { cx: number; cy: number; rx: number }) => <ellipse cx={cx} cy={cy} rx={rx} ry="6" fill="#000" opacity=".1" />;
-const Label = ({ x, y, w }: { x: number; y: number; w: number }) => <path d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`} stroke={LABEL} strokeWidth="2" />;
+const SIDE = CLOTH,
+  TOPFACE = '#f2eee7',
+  ASH = '#8a8478';
+const Studio = ({ horizon = 95 }: { horizon?: number }) => (
+  <>
+    <rect width="240" height="150" fill={WALL} />
+    <path d={`M0 ${horizon} Q120 ${horizon - 9} 240 ${horizon} V150 H0Z`} fill="#000" opacity=".035" />
+  </>
+);
+const Shadow = ({ cx, cy, rx }: { cx: number; cy: number; rx: number }) => (
+  <ellipse cx={cx} cy={cy} rx={rx} ry="6" fill="#000" opacity=".1" />
+);
+const Label = ({ x, y, w }: { x: number; y: number; w: number }) => (
+  <path d={`M${x + 8} ${y + 9} H${x + w - 8} M${x + 8} ${y + 16} H${x + w * 0.6}`} stroke={LABEL} strokeWidth="2" />
+);
 
 function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
   let art: ReactNode;
@@ -191,81 +420,203 @@ function ViewPreview({ angle, framing }: { angle?: string; framing?: string }) {
     // ระยะ: ฉากเดิม สินค้าขนาดต่างกัน (ใกล้ = เกือบเต็มภาพแต่ยังเห็นทั้งชิ้น) · รายละเอียด = ครอปเห็นตะเข็บ ซิป และห่วงโลหะ
     const [size, bottom] = { wide: [54, 112], medium: [84, 116], close: [116, 138] }[framing] ?? [];
     if (size) {
-      const h = Math.round(size * 1.04), x = 120 - size / 2, y = bottom - h;
-      art = <><Studio /><Shadow cx={120} cy={y + h + 6} rx={size * 0.75} />
-        <rect x={x} y={y} width={size} height={h} rx={size / 10} fill={PAPER} stroke={INK} strokeWidth="1.2" />
-        <path d={`M${x + size * 0.17} ${y + h * 0.18} H${x + size * 0.83} M${x + size * 0.17} ${y + h * 0.31} H${x + size * 0.6}`} stroke={LABEL} strokeWidth={Math.max(2, size / 24)} /></>;
+      const h = Math.round(size * 1.04),
+        x = 120 - size / 2,
+        y = bottom - h;
+      art = (
+        <>
+          <Studio />
+          <Shadow cx={120} cy={y + h + 6} rx={size * 0.75} />
+          <rect x={x} y={y} width={size} height={h} rx={size / 10} fill={PAPER} stroke={INK} strokeWidth="1.2" />
+          <path
+            d={`M${x + size * 0.17} ${y + h * 0.18} H${x + size * 0.83} M${x + size * 0.17} ${y + h * 0.31} H${x + size * 0.6}`}
+            stroke={LABEL}
+            strokeWidth={Math.max(2, size / 24)}
+          />
+        </>
+      );
     } else {
-      art = <><rect width="240" height="150" fill={STUDIO} />
-        <rect x="-20" y="18" width="230" height="160" rx="16" fill={PAPER} stroke={INK} strokeWidth="1.4" />
-        <path d="M-20 40 H186 V178" fill="none" stroke={LABEL} strokeWidth="2.2" strokeDasharray="7 5" />
-        <path d="M30 70 H150" stroke={INK} strokeWidth="5" strokeLinecap="round" />
-        <path d="M34 66 v8 M44 66 v8 M54 66 v8 M64 66 v8 M74 66 v8 M84 66 v8 M94 66 v8 M104 66 v8 M114 66 v8 M124 66 v8 M134 66 v8 M144 66 v8" stroke={INK} strokeWidth="1.5" />
-        <rect x="150" y="62" width="14" height="22" rx="4" fill={SHADE} stroke={INK} />
-        <circle cx="70" cy="114" r="16" fill="none" stroke={INK} strokeWidth="4" /></>;
+      art = (
+        <>
+          <rect width="240" height="150" fill={STUDIO} />
+          <rect x="-20" y="18" width="230" height="160" rx="16" fill={PAPER} stroke={INK} strokeWidth="1.4" />
+          <path d="M-20 40 H186 V178" fill="none" stroke={LABEL} strokeWidth="2.2" strokeDasharray="7 5" />
+          <path d="M30 70 H150" stroke={INK} strokeWidth="5" strokeLinecap="round" />
+          <path
+            d="M34 66 v8 M44 66 v8 M54 66 v8 M64 66 v8 M74 66 v8 M84 66 v8 M94 66 v8 M104 66 v8 M114 66 v8 M124 66 v8 M134 66 v8 M144 66 v8"
+            stroke={INK}
+            strokeWidth="1.5"
+          />
+          <rect x="150" y="62" width="14" height="22" rx="4" fill={SHADE} stroke={INK} />
+          <circle cx="70" cy="114" r="16" fill="none" stroke={INK} strokeWidth="4" />
+        </>
+      );
     }
   } else {
     switch (angle) {
       case 'three-quarter': // เห็นหน้า + ด้านข้าง
-        art = <><Studio /><Shadow cx={118} cy={112} rx={40} />
-          <path d="M128 58 L152 51 V101 L128 108Z" fill={SIDE} stroke={INK} strokeWidth="1.2" />
-          <rect x="86" y="58" width="42" height="50" rx="4" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={86} y={58} w={42} /></>;
+        art = (
+          <>
+            <Studio />
+            <Shadow cx={118} cy={112} rx={40} />
+            <path d="M128 58 L152 51 V101 L128 108Z" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+            <rect x="86" y="58" width="42" height="50" rx="4" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+            <Label x={86} y={58} w={42} />
+          </>
+        );
         break;
       case 'side': // ด้านข้างแคบ ไม่เห็นฉลาก
-        art = <><Studio /><Shadow cx={120} cy={114} rx={24} />
-          <rect x="107" y="58" width="26" height="50" rx="4" fill={SIDE} stroke={INK} strokeWidth="1.2" /><path d="M120 62 V104" stroke={LABEL} strokeWidth="1.5" /></>;
+        art = (
+          <>
+            <Studio />
+            <Shadow cx={120} cy={114} rx={24} />
+            <rect x="107" y="58" width="26" height="50" rx="4" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+            <path d="M120 62 V104" stroke={LABEL} strokeWidth="1.5" />
+          </>
+        );
         break;
       case 'back': // ด้านหลัง: ไม่มีฉลาก มีสายและห่วงด้านหลัง
-        art = <><Studio /><Shadow cx={120} cy={114} rx={38} />
-          <rect x="96" y="58" width="48" height="50" rx="5" fill={SIDE} stroke={INK} strokeWidth="1.2" />
-          <path d="M106 62 V104 M134 62 V104" stroke={LABEL} strokeWidth="3" /><rect x="113" y="63" width="14" height="7" rx="2" fill="none" stroke={INK} /></>;
+        art = (
+          <>
+            <Studio />
+            <Shadow cx={120} cy={114} rx={38} />
+            <rect x="96" y="58" width="48" height="50" rx="5" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+            <path d="M106 62 V104 M134 62 V104" stroke={LABEL} strokeWidth="3" />
+            <rect x="113" y="63" width="14" height="7" rx="2" fill="none" stroke={INK} />
+          </>
+        );
         break;
-      case 'above': case 'high': // สูงนิดๆ มองลง: เห็นด้านบนของสินค้า เส้นขอบฉากสูงขึ้น
-        art = <><Studio horizon={74} /><Shadow cx={122} cy={115} rx={40} />
-          <path d="M96 66 L106 54 H154 L144 66Z" fill={TOPFACE} stroke={INK} strokeWidth="1.2" />
-          <path d="M144 66 L154 54 V98 L144 110Z" fill={SIDE} stroke={INK} strokeWidth="1.2" />
-          <rect x="96" y="66" width="48" height="44" rx="3" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={66} w={48} /></>;
+      case 'above':
+      case 'high': // สูงนิดๆ มองลง: เห็นด้านบนของสินค้า เส้นขอบฉากสูงขึ้น
+        art = (
+          <>
+            <Studio horizon={74} />
+            <Shadow cx={122} cy={115} rx={40} />
+            <path d="M96 66 L106 54 H154 L144 66Z" fill={TOPFACE} stroke={INK} strokeWidth="1.2" />
+            <path d="M144 66 L154 54 V98 L144 110Z" fill={SIDE} stroke={INK} strokeWidth="1.2" />
+            <rect x="96" y="66" width="48" height="44" rx="3" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+            <Label x={96} y={66} w={48} />
+          </>
+        );
         break;
       case 'top': // มองตรงลงมา: พื้นเต็มภาพ สินค้าวางนอน
-        art = <><rect width="240" height="150" fill={STUDIO} />
-          <path d="M0 30 Q120 22 240 34 M0 120 Q120 112 240 126" stroke="#000" opacity=".04" strokeWidth="6" fill="none" />
-          <rect x="89" y="40" width="70" height="74" rx="8" fill="#000" opacity=".08" />
-          <rect x="85" y="35" width="70" height="74" rx="8" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={85} y={40} w={70} /></>;
+        art = (
+          <>
+            <rect width="240" height="150" fill={STUDIO} />
+            <path
+              d="M0 30 Q120 22 240 34 M0 120 Q120 112 240 126"
+              stroke="#000"
+              opacity=".04"
+              strokeWidth="6"
+              fill="none"
+            />
+            <rect x="89" y="40" width="70" height="74" rx="8" fill="#000" opacity=".08" />
+            <rect x="85" y="35" width="70" height="74" rx="8" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+            <Label x={85} y={40} w={70} />
+          </>
+        );
         break;
       case 'bottom': // ด้านล่าง: เห็นฐานสินค้า (ปุ่มรองฐาน)
-        art = <><Studio /><Shadow cx={120} cy={116} rx={40} />
-          <rect x="90" y="50" width="60" height="58" rx="10" fill={STUDIO} stroke={INK} strokeWidth="1.2" />
-          <rect x="102" y="62" width="36" height="34" rx="6" fill="none" stroke={LABEL} strokeWidth="1.5" strokeDasharray="4 3" />
-          <g fill={INK}><circle cx="98" cy="58" r="2.5" /><circle cx="142" cy="58" r="2.5" /><circle cx="98" cy="100" r="2.5" /><circle cx="142" cy="100" r="2.5" /></g></>;
+        art = (
+          <>
+            <Studio />
+            <Shadow cx={120} cy={116} rx={40} />
+            <rect x="90" y="50" width="60" height="58" rx="10" fill={STUDIO} stroke={INK} strokeWidth="1.2" />
+            <rect
+              x="102"
+              y="62"
+              width="36"
+              height="34"
+              rx="6"
+              fill="none"
+              stroke={LABEL}
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+            />
+            <g fill={INK}>
+              <circle cx="98" cy="58" r="2.5" />
+              <circle cx="142" cy="58" r="2.5" />
+              <circle cx="98" cy="100" r="2.5" />
+              <circle cx="142" cy="100" r="2.5" />
+            </g>
+          </>
+        );
         break;
       case 'low': // มุมต่ำ มองขึ้น: เส้นขอบฉากต่ำ สินค้าดูสูงสง่า (ด้านบนแคบกว่าฐาน)
-        art = <><Studio horizon={122} /><Shadow cx={120} cy={120} rx={40} />
-          <path d="M90 116 H150 L143 44 H97Z" fill={PAPER} stroke={INK} strokeWidth="1.2" strokeLinejoin="round" />
-          <path d="M104 56 H136 M105 64 H124" stroke={LABEL} strokeWidth="2" /></>;
+        art = (
+          <>
+            <Studio horizon={122} />
+            <Shadow cx={120} cy={120} rx={40} />
+            <path d="M90 116 H150 L143 44 H97Z" fill={PAPER} stroke={INK} strokeWidth="1.2" strokeLinejoin="round" />
+            <path d="M104 56 H136 M105 64 H124" stroke={LABEL} strokeWidth="2" />
+          </>
+        );
         break;
       case 'auto': // อัตโนมัติ (รายละเอียด / เทียบขนาด): ระบบเลือกมุมให้
-        art = <><Studio /><Shadow cx={120} cy={114} rx={38} />
-          <rect x="96" y="58" width="48" height="50" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={58} w={48} />
-          <path d="m182 26 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z M200 54 l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill={INK} /></>;
+        art = (
+          <>
+            <Studio />
+            <Shadow cx={120} cy={114} rx={38} />
+            <rect x="96" y="58" width="48" height="50" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+            <Label x={96} y={58} w={48} />
+            <path d="m182 26 4 9 9 4-9 4-4 9-4-9-9-4 9-4Z M200 54 l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill={INK} />
+          </>
+        );
         break;
       default: // หน้าตรง
-        art = <><Studio /><Shadow cx={120} cy={114} rx={38} />
-          <rect x="96" y="58" width="48" height="50" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" /><Label x={96} y={58} w={48} /></>;
+        art = (
+          <>
+            <Studio />
+            <Shadow cx={120} cy={114} rx={38} />
+            <rect x="96" y="58" width="48" height="50" rx="5" fill={PAPER} stroke={INK} strokeWidth="1.2" />
+            <Label x={96} y={58} w={48} />
+          </>
+        );
     }
   }
   // การ์ดมุมกล้องอยู่ 2 คอลัมน์ ภาพเล็กกว่าขั้นประเภทภาพ -> ขยายสินค้าให้เห็นความต่างของมุมชัดขึ้น (ฉากยังเต็มกรอบ)
   if (!framing) art = <g transform="translate(120 84) scale(1.3) translate(-120 -84)">{art}</g>;
-  return <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">{art}</svg>;
+  return (
+    <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
+      {art}
+    </svg>
+  );
 }
 
 export default function Packshot() {
-  const [lists, setLists] = useState<Record<Key, ProductPhoto[]>>({ product: PRODUCT_SAMPLES, ref: [], scene: [], prop: [] });
+  const [lists, setLists] = useState<Record<Key, ProductPhoto[]>>({
+    product: PRODUCT_SAMPLES,
+    ref: [],
+    scene: [],
+    prop: [],
+  });
   // every step's choice lives here (lib/packshot-recipe.ts); a new option is added to Recipe, not as its own useState
   const [choices, setChoices] = useState<Recipe>(START);
-  const update = (patch: Partial<Recipe> | ((r: Recipe) => Partial<Recipe>)) => setChoices((r) => ({ ...r, ...(typeof patch === 'function' ? patch(r) : patch) }));
+  const update = (patch: Partial<Recipe> | ((r: Recipe) => Partial<Recipe>)) =>
+    setChoices((r) => ({ ...r, ...(typeof patch === 'function' ? patch(r) : patch) }));
   const {
-    pick, shotType, idea: creativeIdea, facts: creativeFacts, detailTarget, feature, scaleRef, handPose: handPoseId, dimensions, referenceSize, extraAngles,
-    scene: sceneId, color: colorId, props: propsId, propText, angle: angleId, turn, framing: framingId, refMode, aspect, quality, extra,
+    pick,
+    shotType,
+    idea: creativeIdea,
+    facts: creativeFacts,
+    detailTarget,
+    feature,
+    scaleRef,
+    handPose: handPoseId,
+    dimensions,
+    referenceSize,
+    extraAngles,
+    scene: sceneId,
+    color: colorId,
+    props: propsId,
+    propText,
+    angle: angleId,
+    turn,
+    framing: framingId,
+    refMode,
+    aspect,
+    quality,
+    extra,
   } = choices;
   const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
   const newTileRef = useRef<HTMLButtonElement>(null); // "รูปใหม่" history tile: gets focus after "ล้าง"
@@ -273,11 +624,12 @@ export default function Packshot() {
   const [planning, setPlanning] = useState(false);
   const planningRef = useRef(false);
   const [groupBusy, setGroupBusy] = useState(false);
+  const [pickingMain, setPickingMain] = useState<string | null>(null); // สินค้าที่ AI กำลังเลือกรูปหลัก
+  const mainChecked = useRef(new Set<string>()); // สินค้าที่ถาม AI แล้วในรอบนี้ (ไม่ถามซ้ำ แม้ AI ตอบไม่ได้)
   const [aiModels, setAiModels] = useState<AiModel[] | null>(null);
   const [aiModel, setAiModel] = useState('');
   const [results, setResults] = useState<Result[]>([]);
   const [current, setCurrent] = useState<number | null>(null); // null = รูปสินค้าที่เลือก (ยังไม่ได้สร้าง)
-  const [status, setStatus] = useState('');
   const [canvasStatus, setCanvasStatus] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false); // generate() running: spinner tile in History (Go list item 10)
@@ -285,7 +637,6 @@ export default function Packshot() {
   const [analyzing, setAnalyzing] = useState<string[]>([]); // รูปสินค้าที่ AI กำลังดูว่าเป็นอะไร
   const [saving, setSaving] = useState<{ key: Key; url: string }[]>([]); // รูปที่กำลังเก็บขึ้น server
   const [localEdit, setLocalEdit] = useState<Result | null>(null);
-  const [removingSrc, setRemovingSrc] = useState<string | null>(null); // pending ConfirmDialog
   const [libReady, setLibReady] = useState(false); // library loaded (product is preselected then)
   const [deletingUpload, setDeletingUpload] = useState<{ key: Key; item: Item } | null>(null); // pending ConfirmDialog
   const [deletingProduct, setDeletingProduct] = useState<ProductGroup | null>(null); // pending ConfirmDialog
@@ -303,12 +654,16 @@ export default function Packshot() {
   const selectedShots = PRODUCT_SET_SHOTS.filter((s, i) => i < 4 || extraAngles.includes(s.id));
   const shotCount = selectedShots.length;
   const validSize = (v: string) => Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 10000;
-  const scaleReady = shotType !== 'scale' || (Object.values(dimensions).every(validSize)
-    && (scaleRef !== 'laptop' || Object.values(referenceSize).every(validSize)));
+  const scaleReady =
+    shotType !== 'scale' ||
+    (Object.values(dimensions).every(validSize) &&
+      (scaleRef !== 'laptop' || Object.values(referenceSize).every(validSize)));
   const detailReady = shotType !== 'detail' || detailTarget !== 'feature' || Boolean(feature.trim());
   const groups = useMemo(() => productGroups(lists.product), [lists.product]);
   const selectedGroup = groups.find((g) => g.id === pick.product);
-  const product = selectedGroup?.main ? { ...selectedGroup.main, name: selectedGroup.name, type: selectedGroup.type } : undefined;
+  const product = selectedGroup?.main
+    ? { ...selectedGroup.main, name: selectedGroup.name, type: selectedGroup.type }
+    : undefined;
   // ท่าที่เลือกไว้ไม่เข้ากับสินค้าที่เปลี่ยนมา (เช่น หิ้วหูกระเป๋า -> รองเท้า) = ท่าแรกที่ใช้ได้ ตรงกับที่ API ทำ
   const handPose = resolveHandPose(product?.type, handPoseId);
   const inspiration = shotType === 'creative' ? find(lists.ref, pick.ref) : undefined; // ภาพแรงบันดาลใจ (ไม่บังคับ)
@@ -338,7 +693,9 @@ export default function Packshot() {
   // ตั้งมุมเอง (Clean / Custom): มุมมาจากตัวเลขที่หมุน ไม่ใช่รายการมุม · ช็อตต้นแบบลอกทั้งช็อตไม่ใช้มุมที่ตั้ง (API ก็ไม่ใช้)
   const customAngle = customAngleShot(shotType) && angleId === CUSTOM_ANGLE && !shot;
   const curTurn = turn ?? defaultTurn(product?.type);
-  const angle = customAngle ? turntableAngle(product?.type, curTurn) : resolveProductAngle(shotType, angleId, preset.angle, detailTarget, scaleRef);
+  const angle = customAngle
+    ? turntableAngle(product?.type, curTurn)
+    : resolveProductAngle(shotType, angleId, preset.angle, detailTarget, scaleRef);
   const automaticAngle = automaticProductAngle(shotType);
   const framing = PRODUCT_FRAMINGS.find((f) => f.id === (framingId === PRESET ? preset.framing : framingId))!;
   // ภาพตั้งมุม: สัดส่วนเดียวกับรูปที่จะสร้าง + สินค้าใหญ่ตามระยะ (ตรงกับที่ API วาดส่ง AI)
@@ -348,7 +705,14 @@ export default function Packshot() {
   const shown = current === null ? null : results[current];
 
   const { canvasRef, fullRef, fullSrcRef } = useRetouchCanvas(
-    { src: shown?.src ?? product?.src ?? BLANK, tone: null, amounts: NO_RETOUCH, zoomed: false, original: false, film: NO_FILM },
+    {
+      src: shown?.src ?? product?.src ?? BLANK,
+      tone: null,
+      amounts: NO_RETOUCH,
+      zoomed: false,
+      original: false,
+      film: NO_FILM,
+    },
     setCanvasStatus,
   );
 
@@ -359,21 +723,45 @@ export default function Packshot() {
       .then((r) => (r.ok ? (r.json() as Promise<Library>) : null))
       .then((lib) => {
         if (!lib || cancelled) return;
-        const past = lib.results.filter((r) => r.page === 'product' && r.inHistory !== false)
-          .map((r) => ({ src: r.src, caption: r.caption || 'รูปที่สร้างไว้', set: r.set, editedFrom: r.editedFrom, stylePlan: r.stylePlan, recipe: r.recipe, inGallery: r.inGallery }));
+        const past = lib.results
+          .filter((r) => r.page === 'product' && r.inHistory !== false)
+          .map((r) => ({
+            src: r.src,
+            caption: r.caption || 'รูปที่สร้างไว้',
+            set: r.set,
+            editedFrom: r.editedFrom,
+            stylePlan: r.stylePlan,
+            recipe: r.recipe,
+            inGallery: r.inGallery,
+          }));
         setResults(past);
         const at = past.findIndex((r) => r.src === new URLSearchParams(location.search).get('image')); // ✎ on /gallery
         if (at >= 0) setCurrent(at);
-        const uploaded = (key: Key) => [...(lib.uploads[KIND[key]] ?? [])].reverse()
-          .map((u): ProductPhoto => ({ ...u, name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
+        const uploaded = (key: Key) =>
+          [...(lib.uploads[KIND[key]] ?? [])]
+            .reverse()
+            .map((u): ProductPhoto => ({ ...u, name: u.name ?? 'รูปที่เพิ่ม', src: u.src, type: u.type, uploaded: true }));
         // สินค้าตัวอย่างอยู่ก่อน (เก่าสุด) รายการแสดงใหม่สุดก่อน -> สินค้าของผู้ใช้ขึ้นก่อน ตัวอย่างต่อท้าย · ยังไม่มีสินค้าเลย = เลือกตัวอย่างไว้ให้
-        const next = { product: [...PRODUCT_SAMPLES, ...uploaded('product')], ref: uploaded('ref'), scene: uploaded('scene'), prop: uploaded('prop') };
+        const next = {
+          product: [...PRODUCT_SAMPLES, ...uploaded('product')],
+          ref: uploaded('ref'),
+          scene: uploaded('scene'),
+          prop: uploaded('prop'),
+        };
         setLists(next);
-        update((r) => (r.pick.product || !next.product.length ? {} : { pick: { ...r.pick, product: productGroups(next.product).at(-1)?.id ?? null } })); // เลือกสินค้าล่าสุดไว้ให้
+        update((r) =>
+          r.pick.product || !next.product.length
+            ? {}
+            : { pick: { ...r.pick, product: productGroups(next.product).at(-1)?.id ?? null } },
+        ); // เลือกสินค้าล่าสุดไว้ให้
       })
       .catch((err) => console.error('โหลดคลังรูปไม่สำเร็จ', err))
-      .finally(() => { if (!cancelled) setLibReady(true); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setLibReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -382,19 +770,20 @@ export default function Packshot() {
       .catch(() => [] as AiModel[])
       .then((list) => {
         setAiModels(list);
-        if (list.length) { // มีโมเดลเดียว (DEFAULT_AI_MODEL) เลือกเองไม่ได้แล้ว · คุณภาพเริ่มต้นตามโมเดล
+        if (list.length) {
+          // มีโมเดลเดียว (DEFAULT_AI_MODEL) เลือกเองไม่ได้แล้ว · คุณภาพเริ่มต้นตามโมเดล
           const id = (list.find((m) => m.id === DEFAULT_AI_MODEL) ?? list[0]).id;
           setAiModel(id);
           update({ quality: defaultQuality(id) });
-        }
-        else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
+        } else toast.error('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
 
   function chooseShotType(id: string) {
     const next = id as ShotType;
     update((r) => ({
-      shotType: next, ...shotTypeDefaults(next),
+      shotType: next,
+      ...shotTypeDefaults(next),
       pick: { product: r.pick.product, ref: null, scene: null, prop: pickUsed('prop', next) ? r.pick.prop : null }, // unused picks never stay in state
     }));
   }
@@ -415,21 +804,31 @@ export default function Packshot() {
 
   // อัปโหลดแล้วเก็บไว้ในคลัง แล้วเลือกให้เลย
   async function addUpload(key: Key, file: File, name: string, type?: string, supporting = false, groupId?: string) {
-    const targetGroupId = key === 'product' ? groupId ?? (supporting ? selectedGroup?.id : undefined) : undefined;
-    const groupMeta = key === 'product' ? targetGroupId ? { productGroup: targetGroupId } : { productGroupName: name, productGroupType: type || 'other' } : {};
-    let src: string;
+    const targetGroupId = key === 'product' ? (groupId ?? (supporting ? selectedGroup?.id : undefined)) : undefined;
+    const groupMeta =
+      key === 'product'
+        ? targetGroupId
+          ? { productGroup: targetGroupId }
+          : { productGroupName: name, productGroupType: type || 'other' }
+        : {};
+    // throws on a refused upload (storeUpload: cap, disabled account, bad file), same as TryOn's addUpload; every caller shows the message
     const preview = URL.createObjectURL(file);
     setSaving((s) => [...s, { key, url: preview }]);
+    let stored: Awaited<ReturnType<typeof storeUpload>>;
     try {
-      ({ src } = await api('/api/upload', { kind: KIND[key], name, type, ...groupMeta, ...(await uploadImage(file)) }));
-    } catch (err) {
-      src = URL.createObjectURL(file); // เก็บไม่ได้ -> ใช้ชั่วคราวไปก่อน
-      setStatus(`เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง`);
+      // product photos are never kept as temporary copies (onProductFiles uses the first one's src as the product id)
+      stored = await storeUpload({ kind: KIND[key], name, type, ...groupMeta }, file, { temporary: key !== 'product' });
     } finally {
       setSaving((s) => s.filter((x) => x.url !== preview));
       URL.revokeObjectURL(preview);
     }
-    setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, ...groupMeta, productView: 'unspecified', uploaded: true }] }));
+    const { src, warning } = stored;
+    if (warning) toast.error(warning);
+    else track('upload', { page: 'product', kind: KIND[key], extra_photo: Boolean(targetGroupId) });
+    setLists((l) => ({
+      ...l,
+      [key]: [...l[key], { name, src, type, ...groupMeta, productView: 'unspecified', uploaded: true }],
+    }));
     if (!targetGroupId) select(key, src);
     return src;
   }
@@ -438,7 +837,19 @@ export default function Packshot() {
   function applyRecipe(r: Recipe, steps: StepKey[]) {
     const inspirationSrc = r.shotType === 'creative' ? find(lists.ref, r.pick.ref)?.src : undefined;
     setChoices(r);
-    setConceptState(r.concept ? { scope: creativeScopeOf(groups.find((g) => g.id === r.pick.product), r.idea, r.facts, inspirationSrc), concepts: [r.concept] } : null);
+    setConceptState(
+      r.concept
+        ? {
+            scope: creativeScopeOf(
+              groups.find((g) => g.id === r.pick.product),
+              r.idea,
+              r.facts,
+              inspirationSrc,
+            ),
+            concepts: [r.concept],
+          }
+        : null,
+    );
     setChosen(new Set(steps));
     if (!stepUsed(STEPS[step].key, r.shotType)) setStep(STEPS.findIndex((s) => s.key === 'shot')); // rail greys that step out
   }
@@ -450,12 +861,59 @@ export default function Packshot() {
       const out = await api<{ src: string; patch: Record<string, string> }>('/api/product-groups', body);
       setLists((l) => ({ ...l, product: l.product.map((p) => (p.src === out.src ? { ...p, ...out.patch } : p)) }));
     } catch (err) {
-      setStatus('แก้สินค้าไม่สำเร็จ: ' + (err as Error).message);
+      toast.error(failText('แก้สินค้า', err));
       throw err;
-    } finally { setGroupBusy(false); }
+    } finally {
+      setGroupBusy(false);
+    }
   }
-  const renameGroup = (g: ProductGroup, name: string) => editGroup({ action: 'edit', group: g.id, name, type: g.type || 'other' });
-  const removePhoto = (g: ProductGroup, src: string) => editGroup({ action: 'remove', group: g.id, src });
+  const renameGroup = (g: ProductGroup, name: string) =>
+    editGroup({ action: 'edit', group: g.id, name, type: g.type || 'other' });
+  const setMainPhoto = (g: ProductGroup, src: string) => editGroup({ action: 'main', group: g.id, src }); // รูปหลัก = Image 1 ที่ AI ยึดทรง
+  const removePhoto = async (g: ProductGroup, src: string) => {
+    await editGroup({ action: 'remove', group: g.id, src });
+    if (src === g.main?.src && g.photos.length > 2) await autoMainBusy(g.id); // นำรูปหลักออก -> AI เลือกจากรูปที่เหลือ
+  };
+
+  // AI เลือกรูปหลัก (16 พ.ย.): สินค้า 2 รูปขึ้นไป · ไม่ทับรูปที่ผู้ใช้กดเลือกเอง (server เช็กซ้ำ) · AI ตอบไม่ได้ = ใช้รูปหลักเดิม
+  async function autoMain(groupId: string) {
+    mainChecked.current.add(groupId);
+    setPickingMain(groupId);
+    try {
+      const out = await api<{ src: string; patch: Record<string, string> }>('/api/product-groups', {
+        action: 'auto-main',
+        group: groupId,
+      });
+      if (Object.keys(out.patch).length)
+        setLists((l) => ({ ...l, product: l.product.map((p) => (p.src === out.src ? { ...p, ...out.patch } : p)) }));
+    } catch (err) {
+      console.warn('AI เลือกรูปหลักไม่สำเร็จ', err);
+    } finally {
+      setPickingMain(null);
+    }
+  }
+  // นอกขั้นอัปโหลด: groupBusy กันกดสร้างรูประหว่างรอ (ไม่งั้นได้รูปหลักเก่า)
+  async function autoMainBusy(groupId: string) {
+    setGroupBusy(true);
+    try {
+      await autoMain(groupId);
+    } finally {
+      setGroupBusy(false);
+    }
+  }
+  // สินค้าเดิม (ก่อน 16 พ.ย.) ที่ยังไม่เคยเลือกรูปหลัก: ถาม AI ครั้งเดียวตอนเปิดดู แล้วเก็บไว้ ครั้งต่อไปไม่ถามอีก
+  const needsMain =
+    selectedGroup && !isSampleGroup(selectedGroup) && selectedGroup.photos.length >= 2 && !selectedGroup.mainBy
+      ? selectedGroup.id
+      : null;
+  const pickMissingMain = useEffectEvent((id: string) => {
+    void autoMainBusy(id);
+  });
+  useEffect(() => {
+    if (!needsMain || mainChecked.current.has(needsMain) || groupBusy || busy !== null || productUploadRef.current)
+      return;
+    pickMissingMain(needsMain);
+  }, [needsMain, groupBusy, busy]);
   const restorePhoto = (g: ProductGroup, src: string) => editGroup({ action: 'restore', group: g.id, src });
 
   // การเลือกไฟล์หนึ่งครั้ง = สินค้าหนึ่งกลุ่ม รูปแรกเป็นภาพปก รูปที่เหลือใช้ id กลุ่มเดียวกัน
@@ -465,14 +923,13 @@ export default function Packshot() {
     if (append && !existing) return;
     productUploadRef.current = true;
     setGroupBusy(true);
-    setStatus('');
     let groupId = existing?.id;
     let name = existing?.name;
     let type = existing?.type;
     let failed = 0;
     let lastError = '';
     try {
-      for (const picked of files) {
+      for (const [i, picked] of files.entries()) {
         try {
           const file = isHeic(picked) ? await toWebImage(picked) : picked;
           if (!(await canOpenImage(file))) throw new Error('เปิดรูปไม่ได้ ลองใช้ JPG หรือ PNG');
@@ -488,14 +945,30 @@ export default function Packshot() {
               URL.revokeObjectURL(url);
             }
           }
-          const src = await addUpload('product', file, groupId ? picked.name.replace(/\.[^.]+$/, '') : name!, type, Boolean(groupId), groupId);
+          const src = await addUpload(
+            'product',
+            file,
+            groupId ? picked.name.replace(/\.[^.]+$/, '') : name!,
+            type,
+            Boolean(groupId),
+            groupId,
+          );
           if (!groupId) groupId = src;
         } catch (err) {
           failed++;
-          lastError = (err as Error).message;
+          lastError = friendlyError(err);
+          // upload cap (409) / disabled account (403): the rest would be refused too
+          const status = (err as { status?: number }).status;
+          if (status === 409 || status === 403) {
+            failed += files.length - 1 - i;
+            break;
+          }
         }
       }
-      if (failed) setStatus(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);
+      if (failed) toast.error(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);
+      // สินค้ามี 2 รูปขึ้นไป: AI เลือกรูปหลัก (ยังอยู่ใน groupBusy กันสร้างรูปด้วยรูปแรกที่อัปโหลด) · ไม่ทับที่ผู้ใช้เลือกเอง
+      if (groupId && (existing?.photos.length ?? 0) + files.length - failed >= 2 && existing?.mainBy !== 'user')
+        await autoMain(groupId);
     } finally {
       productUploadRef.current = false;
       setGroupBusy(false);
@@ -508,14 +981,16 @@ export default function Packshot() {
       const file = isHeic(picked) ? await toWebImage(picked) : picked;
       if (!(await canOpenImage(file))) throw new Error('เปิดรูปนี้ไม่ได้ ลองใช้ JPG หรือ PNG');
       await addUpload(key, file, picked.name.replace(/\.[^.]+$/, ''));
-    } catch (err) { setStatus((err as Error).message); }
+    } catch (err) {
+      toast.error(friendlyError(err));
+    }
   }
 
   async function deleteUpload(key: Key, item: Item) {
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
+      return toast.error(failText('ลบ', err));
     }
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
     update((r) => (r.pick[key] === idOf(item) ? { pick: { ...r.pick, [key]: null } } : {}));
@@ -524,7 +999,7 @@ export default function Packshot() {
   // own product = every photo in it (incl. removed ones), same flow as deleteUpload
   const productFiles = (g: ProductGroup) => lists.product.filter((p) => (p.productGroup || p.src) === g.id);
   async function deleteProduct(g: ProductGroup) {
-    if (groupBusy || busy !== null) return setStatus('ลบสินค้าไม่ได้ตอนนี้ — รอให้สร้างรูปหรือเก็บรูปเสร็จก่อน');
+    if (groupBusy || busy !== null) return toast.warn('ลบสินค้าไม่ได้ตอนนี้ — รอให้สร้างรูปหรือเก็บรูปเสร็จก่อน');
     // root last: it holds the group's name/type, so a partial failure keeps a smaller product instead of orphans
     const files = productFiles(g).sort((a, b) => Number(a.src === g.id) - Number(b.src === g.id));
     const deleted = new Set<string>();
@@ -535,21 +1010,22 @@ export default function Packshot() {
         deleted.add(p.src!);
       }
     } catch (err) {
-      setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
-    } finally { setGroupBusy(false); }
+      toast.error(failText('ลบ', err));
+    } finally {
+      setGroupBusy(false);
+    }
     const left = lists.product.filter((p) => !deleted.has(p.src!));
     setLists((l) => ({ ...l, product: l.product.filter((p) => !deleted.has(p.src!)) }));
     // selected one deleted -> newest remaining (as on page load)
     if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
-  const { toggleGallery, removeFromHistory } = useHistoryPlaces(results, setResults, setCurrent, setStatus);
+  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, 'product');
 
   async function planCreative() {
     if (!canPlan || planningRef.current || !product || !selectedGroup) return;
     planningRef.current = true;
     setPlanning(true);
-    setStatus('');
     const scope = creativeScope;
     try {
       const [main, extraPhotos, inspirationImage] = await Promise.all([
@@ -558,15 +1034,31 @@ export default function Packshot() {
         inspiration ? jpegBase64(inspiration.src!) : null,
       ]);
       const out = await api<{ concepts: CreativeConcept[] }>('/api/creative-concepts', {
-        product: main.data, support_images: extraPhotos, product_type: productType(product.type).id, product_name: product.name,
-        inspiration: inspirationImage?.data ?? null, idea: creativeIdea, facts: creativeFacts,
+        product: main.data,
+        support_images: extraPhotos,
+        product_type: productType(product.type).id,
+        product_name: product.name,
+        inspiration: inspirationImage?.data ?? null,
+        idea: creativeIdea,
+        facts: creativeFacts,
         previous: concepts.map((c) => c.title),
       });
       if (creativeScopeRef.current !== scope) return; // inputs changed or a past image loaded while planning
       setConceptState({ scope, concepts: out.concepts });
       update({ concept: null });
-    } catch (err) { setStatus('คิดไอเดียไม่สำเร็จ: ' + (err as Error).message); }
-    finally { planningRef.current = false; setPlanning(false); }
+      track('creative_ideas', {
+        result: 'success',
+        retry: concepts.length > 0,
+        has_idea: Boolean(creativeIdea.trim()),
+        has_inspiration: Boolean(inspiration),
+      });
+    } catch (err) {
+      track('creative_ideas', { result: 'error', reason: errorReason(err) }); // not generate_error: no image was asked for
+      toast.error(failText('คิดไอเดีย', err));
+    } finally {
+      planningRef.current = false;
+      setPlanning(false);
+    }
   }
 
   // ชุดหลายมุม: สร้าง Front ก่อน แล้วใช้เป็นต้นแบบให้มุมที่เหลือคงฉากและแสงเดียวกัน
@@ -575,29 +1067,61 @@ export default function Packshot() {
     const set = isMulti;
     if (!product) {
       setStep(0);
-      return setStatus('เลือกหรืออัปโหลดรูปสินค้าก่อน');
+      return toast.warn('เลือกหรืออัปโหลดรูปสินค้าก่อน');
     }
     if (!creativeReady) {
       setStep(STEPS.findIndex((s) => s.key === 'creative'));
-      return setStatus('เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
+      return toast.warn('เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
     }
     if (!scaleReady || !detailReady) {
       setStep(1);
-      return setStatus(!scaleReady ? 'กรอกขนาดสินค้าจริงเป็นเซนติเมตรให้ครบก่อน' : 'ระบุฟีเจอร์ที่ต้องการถ่ายก่อน');
+      return toast.warn(!scaleReady ? 'กรอกขนาดสินค้าจริงเป็นเซนติเมตรให้ครบก่อน' : 'ระบุฟีเจอร์ที่ต้องการถ่ายก่อน');
     }
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
-    setStatus('');
     const shotsAfter = selectedShots.slice(1);
-    const caption = shotType === 'handshot' ? [product.name, shotTypeDef.name, handPose.name, HAND_MODES.find((m) => m.id === handPose.mode)!.name]
-      .join(' · ') : [
-      product.name, shotTypeDef.name,
-      ...(ref ? [`${REF_MODES.find((m) => m.id === refMode)!.name}จากต้นแบบ`] : []),
-      ...(shotType === 'creative' ? [creativeConcept!.title] : shot || shotType === 'styled' ? [] : [preset.name]),
-      ...(shotType === 'creative' || refSet ? [] : [usePhoto ? 'ฉาก: ' + sceneImg!.name : setDef.name + (colorable(setDef) && color.id !== 'set' ? ` (${color.name})` : '')]),
-      ...(shotType === 'creative' || shot ? [] : [propsLabel, ...(isMulti ? [] : [angle.name]), framing.name]),
-    ].join(' · '); // no AI vendor/model name in what users see (Go list item 12)
+    const caption =
+      shotType === 'handshot'
+        ? [product.name, shotTypeDef.name, handPose.name, HAND_MODES.find((m) => m.id === handPose.mode)!.name].join(
+            ' · ',
+          )
+        : [
+            product.name,
+            shotTypeDef.name,
+            ...(ref ? [`${REF_MODES.find((m) => m.id === refMode)!.name}จากต้นแบบ`] : []),
+            ...(shotType === 'creative'
+              ? [creativeConcept!.title]
+              : shot || shotType === 'styled'
+                ? []
+                : [preset.name]),
+            ...(shotType === 'creative' || refSet
+              ? []
+              : [
+                  usePhoto
+                    ? 'ฉาก: ' + sceneImg!.name
+                    : setDef.name + (colorable(setDef) && color.id !== 'set' ? ` (${color.name})` : ''),
+                ]),
+            ...(shotType === 'creative' || shot ? [] : [propsLabel, ...(isMulti ? [] : [angle.name]), framing.name]),
+          ].join(' · '); // no AI vendor/model name in what users see (Go list item 12)
     const setCaption = (i: number, name: string) => `ชุดภาพ ${i + 1}/${shotCount} ${name} · ${caption}`;
+    // GA: ids only, never names or the typed text (lib/analytics.ts)
+    const ga = {
+      page: 'product',
+      shot_type: shotType,
+      aspect,
+      quality,
+      set,
+      product_src: itemSource(product.src),
+      scene_src: usePhoto ? itemSource(sceneImg?.src) : setDef.id,
+      prop_style: propsId,
+      own_prop: Boolean(ownName),
+      angle: customAngle ? 'custom' : angle.id,
+      framing: framing.id,
+      hand_pose: shotType === 'handshot' ? handPose.id : 'none',
+      has_extra: Boolean(extra.trim()),
+    };
+    const elapsed = stopwatch();
+    track('generate_start', ga);
     setGenerating(true);
     setBusy(set ? `AI กำลังสร้างรูปแรกของชุด (1/${shotCount})...` : 'AI กำลังสร้างรูป... (ประมาณ 20–90 วินาที)');
     try {
@@ -606,23 +1130,51 @@ export default function Packshot() {
       const sceneB = usePhoto ? await jpegBase64(sceneImg!.src!) : null;
       const propB = propImg ? await jpegBase64(propImg.src!) : null;
       const finalAspect = aspect !== 'auto' ? aspect : shot && refImg ? nearestAspect(refImg.w, refImg.h) : '4:5';
-      const refOf = (item: Item | undefined, img: { w: number; h: number } | null) => (item && img ? { name: item.name, src: item.src, w: img.w, h: img.h } : null);
+      const refOf = (item: Item | undefined, img: { w: number; h: number } | null) =>
+        item && img ? { name: item.name, src: item.src, w: img.w, h: img.h } : null;
       // ส่งแค่ id ('preset' = ตามฉาก ส่งเป็น null) server แปลงเป็นคำสั่งเอง (lib/packshot.ts)
-      const supporting = productSources(selectedGroup!, selectedGroup!.main, shotType === 'detail' ? 'detail' : angle.id);
+      const supporting = productSources(
+        selectedGroup!,
+        selectedGroup!.main,
+        shotType === 'detail' ? 'detail' : angle.id,
+      );
       const supportImages = await Promise.all(supporting.map(async (i) => (await jpegBase64(i.src!)).data));
       const body = {
         creative_concept: shotType === 'creative' ? creativeConcept : null,
-        shot_type: shotType, detail_target: detailTarget, feature: feature.trim(),
-        scale_reference: scaleRef, dimensions, reference_size: referenceSize, hand_pose: handPose.id, turn: customAngle ? curTurn : null,
-        support_images: supportImages, product_group: selectedGroup!.id,
-        model: choice.id, quality, aspect: finalAspect, extra: extra.trim(), finish: 'off',
-        product: productImg.data, product_type: productType(product.type).id, preset: preset.id,
-        set_id: sceneId === PRESET ? null : setDef.id, set_color: color.id, set_image: sceneB?.data ?? null,
-        props: propsId, light: null,
-        angle: automaticAngle ? 'auto' : angle.id, framing: framingId === PRESET ? null : framingId,
-        ref: refImg?.data ?? null, ref_mode: refMode, prop_text: ownProp, prop_image: propB?.data ?? null,
+        shot_type: shotType,
+        detail_target: detailTarget,
+        feature: feature.trim(),
+        scale_reference: scaleRef,
+        dimensions,
+        reference_size: referenceSize,
+        hand_pose: handPose.id,
+        turn: customAngle ? curTurn : null,
+        support_images: supportImages,
+        product_group: selectedGroup!.id,
+        model: choice.id,
+        quality,
+        aspect: finalAspect,
+        extra: extra.trim(),
+        finish: 'off',
+        product: productImg.data,
+        product_type: productType(product.type).id,
+        preset: preset.id,
+        set_id: sceneId === PRESET ? null : setDef.id,
+        set_color: color.id,
+        set_image: sceneB?.data ?? null,
+        props: propsId,
+        light: null,
+        angle: automaticAngle ? 'auto' : angle.id,
+        framing: framingId === PRESET ? null : framingId,
+        ref: refImg?.data ?? null,
+        ref_mode: refMode,
+        prop_text: ownProp,
+        prop_image: propB?.data ?? null,
         refs: {
-          product: { ...refOf(product, productImg), type: productType(product.type).name }, ref: refOf(ref, refImg), set_image: refOf(sceneImg, sceneB), prop_image: refOf(propImg, propB),
+          product: { ...refOf(product, productImg), type: productType(product.type).name },
+          ref: refOf(ref, refImg),
+          set_image: refOf(sceneImg, sceneB),
+          prop_image: refOf(propImg, propB),
           supports: supporting.map((i) => ({ name: i.name, src: i.src })), // รูปสินค้าเพิ่มเติมที่ส่งไป -> log / หน้าตรวจงาน
         },
         recipe, // stored with the image (lib/recipe.ts)
@@ -632,7 +1184,7 @@ export default function Packshot() {
       const showMade = () => {
         if (!sync.finished(sentKey)) {
           setCurrent((c) => (c === null ? c : c + 1)); // list grew at the front: keep the same image on the stage
-          setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
+          toast.ok('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
           return;
         }
         setCurrent(0);
@@ -640,9 +1192,16 @@ export default function Packshot() {
       const shootId = set ? newSetId() : null;
       const tag = (i: number) => (shootId ? { id: shootId, index: i } : undefined);
       const firstCaption = set ? setCaption(0, 'Front') : caption;
-      const out = await api<{ src: string; stylePlan: Plan | null }>('/api/packshot', { ...body, caption: firstCaption, set: tag(0) });
-      setResults((r) => [{ src: out.src, caption: firstCaption, set: tag(0), stylePlan: out.stylePlan ?? undefined, recipe }, ...r]);
-      if (out.stylePlan) setStatus(`${shotType === 'creative' ? 'ไอเดีย' : 'พร็อพที่ AI คิดให้'} (${out.stylePlan.name}): ${out.stylePlan.th}`);
+      const out = await api<{ src: string; stylePlan: StylePlan | null }>('/api/packshot', {
+        ...body,
+        caption: firstCaption,
+        set: tag(0),
+      });
+      track('generate_success', { ...ga, duration_s: elapsed() });
+      setResults((r) => [
+        { src: out.src, caption: firstCaption, set: tag(0), stylePlan: out.stylePlan ?? undefined, recipe },
+        ...r,
+      ]);
       showMade();
       frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       if (shootId) {
@@ -650,21 +1209,40 @@ export default function Packshot() {
         setPendingSet({ id: shootId, left: shotsAfter.length });
         setBusy(`AI กำลังสร้างอีก ${shotsAfter.length} มุมพร้อมกัน...`);
         const hero = await jpegBase64(out.src);
-        const rest = await Promise.allSettled(shotsAfter.map((s, j) => api('/api/packshot', {
-          ...body, ref: null, set_image: null, set_ref: hero.data, set_shot: s.id,
-          refs: { ...body.refs, ref: null, set_image: null, set_ref: { name: firstCaption, src: out.src, w: hero.w, h: hero.h } },
-          caption: setCaption(j + 1, s.name), set: tag(j + 1),
-        }).then(({ src }) => {
-          setResults((r) => [{ src, caption: setCaption(j + 1, s.name), set: tag(j + 1), recipe }, ...r]);
-          setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
-        }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
+        const rest = await Promise.allSettled(
+          shotsAfter.map((s, j) =>
+            api('/api/packshot', {
+              ...body,
+              ref: null,
+              set_image: null,
+              set_ref: hero.data,
+              set_shot: s.id,
+              refs: {
+                ...body.refs,
+                ref: null,
+                set_image: null,
+                set_ref: { name: firstCaption, src: out.src, w: hero.w, h: hero.h },
+              },
+              caption: setCaption(j + 1, s.name),
+              set: tag(j + 1),
+            })
+              .then(({ src }) => {
+                setResults((r) => [{ src, caption: setCaption(j + 1, s.name), set: tag(j + 1), recipe }, ...r]);
+                setCurrent((c) => (c === null ? c : c + 1)); // เพิ่มหน้ารายการ -> รูปที่ดูอยู่เลื่อนไป 1 ช่อง
+              })
+              .finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 })),
+          ),
+        );
         const failed = rest.filter((x) => x.status === 'rejected');
         if (failed.length) {
-          setStatus(`ชุดภาพได้ ${shotCount - failed.length}/${shotCount} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
+          toast.error(
+            `ชุดภาพได้ ${shotCount - failed.length}/${shotCount} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${friendlyError(failed[0].reason, true)}`,
+          );
         }
       }
     } catch (err) {
-      setStatus('สร้างรูปไม่สำเร็จ: ' + (err as Error).message);
+      track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
+      toast.error(failText('สร้างรูป', err, true));
     } finally {
       setBusy(null);
       setPendingSet(null);
@@ -678,16 +1256,29 @@ export default function Packshot() {
     setBusy('AI กำลังแก้เฉพาะจุด...');
     try {
       const result = await api<Result>('/api/local-edit', { ...request, src: source.src });
+      track('local_edit', { page: 'product', painted: Boolean(request.mask), result: 'success' });
       setResults((r) => [result, ...r]);
       setCurrent(0);
       setLocalEdit(null);
-      setStatus('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลังสินค้า');
-    } finally { setBusy(null); }
+      toast.ok('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลังสินค้า');
+    } catch (err) {
+      track('local_edit', {
+        page: 'product',
+        painted: Boolean(request.mask),
+        result: 'error',
+        reason: errorReason(err),
+      });
+      throw err;
+    } finally {
+      setBusy(null);
+    }
   }
 
   function outputBlob(canvas: HTMLCanvasElement, quality = 0.92) {
     return shown?.editedFrom
-      ? new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('บันทึก PNG ไม่สำเร็จ')), 'image/png'))
+      ? new Promise<Blob>((resolve, reject) =>
+          canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('บันทึก PNG ไม่สำเร็จ'))), 'image/png'),
+        )
       : canvasJpeg(canvas, quality);
   }
 
@@ -699,89 +1290,152 @@ export default function Packshot() {
     return full?.width && fullSrcRef.current === src ? full : finishedCanvas(src, NO_FILM);
   }
 
-  async function openViewer() { // เปิดแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม
+  async function openViewer() {
+    // เปิดแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม
     if (!shown && !product) return;
     try {
       const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
-      setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
+      toast.error(failText('เปิดรูป', err));
     }
   }
 
   async function save() {
     try {
       const cv = await currentCanvas();
-      if (inAppBrowser()) return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
-      await saveImageFile(await outputBlob(cv), downloadName(shown?.editedFrom ? 'png' : 'jpg'));
+      // GA North Star: only a generated image counts (with no result on stage this saves the product photo)
+      const kept = (via: 'download' | 'share' | 'inapp') => shown && trackKept('product', shown, via);
+      if (inAppBrowser()) {
+        kept('inapp');
+        return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
+      }
+      const how = await saveImageFile(await outputBlob(cv), downloadName(shown?.editedFrom ? 'png' : 'jpg'));
+      if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
-      setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
+      toast.error(failText('ดาวน์โหลด', err));
     }
   }
 
   function goStep(i: number) {
+    if (i !== step) track('step_view', { page: 'product', step: STEPS[i].key, step_index: i });
     setStep(i);
     setQuery('');
   }
 
   const cur = STEPS[step];
-  const { chosen, mark, setChosen } = useChosenSteps(cur.key);
+  const { chosen, mark, setChosen } = useChosenSteps(cur.key, 'product');
 
   // ---------- past image <-> panel (components/useRecipeSync.ts) ----------
   // stored / compared form of choices: the idea only for Creative and only while still valid
-  const recipe: Recipe = { ...choices, concept: shotType === 'creative' ? creativeConcept ?? null : null };
-  useEffect(() => { creativeScopeRef.current = creativeScope; });
+  const recipe: Recipe = { ...choices, concept: shotType === 'creative' ? (creativeConcept ?? null) : null };
+  useEffect(() => {
+    creativeScopeRef.current = creativeScope;
+  });
   const allSteps = STEPS.map((s) => s.key);
-  const shownRecipe = useMemo(() => (shown?.recipe ? readRecipe(shown.recipe, lists, aiModel, groups) : null), [shown, lists, aiModel, groups]);
+  const shownRecipe = useMemo(() => {
+    if (!shown?.recipe) return null;
+    const out = readRecipe(shown.recipe, lists, aiModel, groups);
+    return { ...out, recipe: plainRecipe(out.recipe, aiModel) };
+  }, [shown, lists, aiModel, groups]);
   const sync = useRecipeSync({
-    recipe, shownSrc: shown?.src ?? null, shown: shownRecipe, steps: allSteps, chosen,
+    recipe,
+    shownSrc: shown?.src ?? null,
+    shown: shownRecipe,
+    steps: allSteps,
+    chosen,
     ready: aiModels !== null && libReady, // quality is set when models load, product when the library loads
-    apply: applyRecipe, keep: () => conceptState, restore: setConceptState, close: () => setCurrent(null),
+    apply: applyRecipe,
+    keep: () => conceptState,
+    restore: setConceptState,
+    close: () => setCurrent(null),
     revalidate: (r) => {
-      const back = readRecipe(r, lists, aiModel, groups).recipe;
+      const back = plainRecipe(readRecipe(r, lists, aiModel, groups).recipe, aiModel);
       if (!back.pick.product) back.pick.product = groups.at(-1)?.id ?? null; // newest remaining, as deleteProduct does
       return back;
     },
   });
   const liveKey = sync.liveKey;
   // "ล้าง" under the stage label = the model page's: page-open choices, same step, but the selected product stays (it is the subject, not a setting)
-  const resetTo = sync.pageStart && { ...sync.pageStart, pick: { ...sync.pageStart.pick, product: choices.pick.product } };
+  const resetTo = sync.pageStart && {
+    ...sync.pageStart,
+    pick: { ...sync.pageStart.pick, product: choices.pick.product },
+  };
   const canReset = resetTo !== null && liveKey !== recipeKey(resetTo);
   const startOver = () => {
     if (!resetTo) return;
     sync.reset(resetTo);
-    setStatus('');
     newTileRef.current?.focus(); // the ล้าง button unmounts (nothing left to reset); keep keyboard focus on the page
   };
   const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
   // ขั้นที่ต้องมีของจริงก่อนถึงจะ "พร้อมไปต่อ" (ปุ่มถัดไปพื้นหินขอบหมึก) — ขั้นอื่นแค่ผู้ใช้เลือกอะไรสักอย่างก็พร้อม
-  const stepReady = chosen.has(cur.key) && (cur.key === 'product' ? Boolean(product) : cur.key === 'creative' ? Boolean(creativeConcept)
-    : cur.key === 'shot' ? scaleReady && detailReady : true);
+  const stepReady =
+    chosen.has(cur.key) &&
+    (cur.key === 'product'
+      ? Boolean(product)
+      : cur.key === 'creative'
+        ? Boolean(creativeConcept)
+        : cur.key === 'shot'
+          ? scaleReady && detailReady
+          : true);
   const nextStep = STEPS.findIndex((s, i) => i > step && used(s.key)); // ถัดไป: ข้ามขั้นที่ประเภทภาพนี้ไม่ใช้
   const stepDone: Record<StepKey, boolean> = {
-    creative: Boolean(creativeConcept), hand: handPose.id !== handPoses(product?.type)[0].id, shot: true, product: Boolean(product), ref: Boolean(ref),
-    set: sceneId !== PRESET || usePhoto || colorId !== 'set', props: propsId !== NO_PROPS || Boolean(ownName), angle: !automaticAngle && angleId !== PRESET, framing: framingId !== PRESET,
+    creative: Boolean(creativeConcept),
+    hand: handPose.id !== handPoses(product?.type)[0].id,
+    shot: true,
+    product: Boolean(product),
+    ref: Boolean(ref),
+    set: sceneId !== PRESET || usePhoto || colorId !== 'set',
+    props: propsId !== NO_PROPS || Boolean(ownName),
+    angle: !automaticAngle && angleId !== PRESET,
+    framing: framingId !== PRESET,
     settings: aspect !== 'auto' || Boolean(extra.trim()),
   };
 
-  const canGenerate = busy === null && !planning && creativeReady && !groupBusy && !saving.some((s) => s.key === 'product') && Boolean(aiModels?.length) && Boolean(product) && scaleReady && detailReady;
+  const canGenerate =
+    busy === null &&
+    !planning &&
+    creativeReady &&
+    !groupBusy &&
+    !saving.some((s) => s.key === 'product') &&
+    Boolean(aiModels?.length) &&
+    Boolean(product) &&
+    scaleReady &&
+    detailReady;
 
   // generate lives in the sticky bar on every step (Go list item 5, as on the model page) · ตั้งค่า step keeps why it's disabled
   const genLabel = busy !== null ? 'กำลังสร้างรูป…' : isMulti ? `สร้างชุดภาพ ${shotCount} มุม` : 'สร้างรูปทันที';
-  const genWhy = !product ? 'เลือกสินค้าในขั้นสินค้าก่อน' : !creativeReady ? 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป' : !scaleReady ? 'กรอกขนาดจริงให้ครบในขั้นประเภทภาพ'
-    : !detailReady ? 'ระบุฟีเจอร์ในขั้นประเภทภาพ' : undefined; // tooltip on the bar button
-  const genButtons = <>
-    {isMulti && <p className="muted-text">{selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป</p>}
-    {!creativeReady && <p className="note">เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป</p>}
-    {!scaleReady && <p className="note">กรอกขนาดจริงให้ครบในขั้นประเภทภาพ</p>}
-    {!detailReady && <p className="note">ระบุฟีเจอร์ในขั้นประเภทภาพ</p>}
-  </>;
+  const genWhy = !product
+    ? 'เลือกสินค้าในขั้นสินค้าก่อน'
+    : !creativeReady
+      ? 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป'
+      : !scaleReady
+        ? 'กรอกขนาดจริงให้ครบในขั้นประเภทภาพ'
+        : !detailReady
+          ? 'ระบุฟีเจอร์ในขั้นประเภทภาพ'
+          : undefined; // tooltip on the bar button
+  const genButtons = (
+    <>
+      {isMulti && (
+        <p className="muted-text">
+          {selectedShots.map((s) => s.name).join(' · ')} · ใช้ค่า AI {shotCount} รูป
+        </p>
+      )}
+      {!creativeReady && <p className="note">เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป</p>}
+      {!scaleReady && <p className="note">กรอกขนาดจริงให้ครบในขั้นประเภทภาพ</p>}
+      {!detailReady && <p className="note">ระบุฟีเจอร์ในขั้นประเภทภาพ</p>}
+    </>
+  );
 
   // ---------- แผงเลือก (ซ้าย) ----------
   const q = query.trim().toLowerCase();
   const visible = (key: Key) => lists[key].filter((i) => !q || i.name.toLowerCase().includes(q));
-  const picker = (key: Exclude<Key, 'product'>, kind: string, { special, muted = false }: { special?: ReactNode; muted?: boolean } = {}) => (
+  const picker = (
+    key: Exclude<Key, 'product'>,
+    kind: string,
+    { special, muted = false }: { special?: ReactNode; muted?: boolean } = {},
+  ) => (
     <>
       <label className="search">
         <IconSearch />
@@ -790,240 +1444,569 @@ export default function Packshot() {
       <div className={'grid ' + kind + (muted ? ' muted' : '')}>
         {!q && special}
         {visible(key).map((item) => (
-          <Card key={idOf(item)} item={item} active={idOf(item) === pick[key]} onClick={() => select(key, idOf(item))}
+          <Card
+            key={idOf(item)}
+            item={item}
+            active={idOf(item) === pick[key]}
+            onClick={() => select(key, idOf(item))}
             onDelete={() => setDeletingUpload({ key, item })}
- />
+          />
         ))}
-        {saving.filter((x) => x.key === key).map((x) => <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />)}
+        {saving
+          .filter((x) => x.key === key)
+          .map((x) => (
+            <PendingCard key={x.url} src={x.url} label="กำลังเก็บรูป..." />
+          ))}
         <AddCard onFile={(f) => void onFile(key, f)} />
       </div>
     </>
   );
   // ตัวเลือกแบบรายการ: ตัวแรก = ตามฉาก (บอกว่าฉากที่เลือกจับคู่อะไรให้)
-  const options = (list: { id: string; name: string; hint: string }[], value: string, choose: (id: string) => void,
-    { presetName, disabled = false }: { presetName?: string; disabled?: boolean } = {}) => (
+  const options = (
+    list: { id: string; name: string; hint: string }[],
+    value: string,
+    choose: (id: string) => void,
+    { presetName, disabled = false }: { presetName?: string; disabled?: boolean } = {},
+  ) => (
     <div className="options">
       {presetName !== undefined && (
-        <button type="button" className={'option' + (value === PRESET ? ' active' : '')} disabled={disabled} onClick={() => choose(PRESET)}>
-          <b>ตามฉาก (แนะนำ)</b><small>{setDef.name}: {presetName}</small>
+        <button
+          type="button"
+          className={'option' + (value === PRESET ? ' active' : '')}
+          disabled={disabled}
+          onClick={() => choose(PRESET)}
+        >
+          <b>ตามฉาก (แนะนำ)</b>
+          <small>
+            {setDef.name}: {presetName}
+          </small>
         </button>
       )}
       {list.map((c) => (
-        <button key={c.id} type="button" className={'option' + (value === c.id ? ' active' : '')} disabled={disabled} onClick={() => choose(c.id)}>
-          <b>{c.name}</b><small>{c.hint}</small>
+        <button
+          key={c.id}
+          type="button"
+          className={'option' + (value === c.id ? ' active' : '')}
+          disabled={disabled}
+          onClick={() => choose(c.id)}
+        >
+          <b>{c.name}</b>
+          <small>{c.hint}</small>
         </button>
       ))}
     </div>
   );
-  const shotNote = (what: string) => shot && <p className="note">ลอกทั้งช็อตจากรูปต้นแบบอยู่: {what}ตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>;
+  const shotNote = (what: string) =>
+    shot && <p className="note">ลอกทั้งช็อตจากรูปต้นแบบอยู่: {what}ตามรูปต้นแบบ ที่เลือกตรงนี้จะไม่ถูกใช้</p>;
 
   let panel: ReactNode = null;
   if (cur.key === 'product') {
-    panel = <>
-      <ProductLibrary groups={groups} selected={selectedGroup} busy={groupBusy || busy !== null}
-        analyzing={analyzing} saving={saving.filter((s) => s.key === 'product')}
-        onSelect={(id) => select('product', id)} onUpload={onProductFiles}
-        onRename={renameGroup} onRemovePhoto={removePhoto} onRestorePhoto={restorePhoto} onDelete={setDeletingProduct} />
-    </>;
+    panel = (
+      <>
+        <ProductLibrary
+          groups={groups}
+          selected={selectedGroup}
+          busy={groupBusy || busy !== null}
+          analyzing={analyzing}
+          saving={saving.filter((s) => s.key === 'product')}
+          onSelect={(id) => select('product', id)}
+          onUpload={onProductFiles}
+          onRename={renameGroup}
+          onSetMain={setMainPhoto}
+          pickingMain={pickingMain === selectedGroup?.id}
+          onRemovePhoto={removePhoto}
+          onRestorePhoto={restorePhoto}
+          onDelete={setDeletingProduct}
+        />
+      </>
+    );
   } else if (cur.key === 'creative') {
-    panel = <CreativeShot idea={creativeIdea} onIdea={(idea) => update({ idea })}
-      facts={creativeFacts} onFacts={(facts) => update({ facts })} inspiration={picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!inspiration} onClick={() => select('ref', null)} /> })}
-      concepts={concepts} selected={creativeConcept} onSelect={(id) => update({ concept: concepts.find((c) => c.id === id) ?? null })} onPlan={() => void planCreative()}
-      planning={planning} canPlan={canPlan} hasProduct={Boolean(product)}
-      onGenerate={() => void generate()} canGenerate={canGenerate} generating={busy !== null} />;
+    panel = (
+      <CreativeShot
+        idea={creativeIdea}
+        onIdea={(idea) => update({ idea })}
+        facts={creativeFacts}
+        onFacts={(facts) => update({ facts })}
+        inspiration={picker('ref', 'refs', {
+          special: <Card item={{ name: 'ไม่ใช้' }} active={!inspiration} onClick={() => select('ref', null)} />,
+        })}
+        concepts={concepts}
+        selected={creativeConcept}
+        onSelect={(id) => update({ concept: concepts.find((c) => c.id === id) ?? null })}
+        onPlan={() => void planCreative()}
+        planning={planning}
+        canPlan={canPlan}
+        hasProduct={Boolean(product)}
+        onGenerate={() => void generate()}
+        canGenerate={canGenerate}
+        generating={busy !== null}
+      />
+    );
   } else if (cur.key === 'shot') {
-    panel = <>
-      <p className="note">เลือกจุดประสงค์ของภาพ เราจับคู่ตัวเลือกเริ่มต้นให้ ปรับรายละเอียดได้ในขั้นถัดไป</p>
-      <div className="options shot-type-options">
-        {SHOT_TYPE_ORDER.map((t) => <button key={t.id} type="button" aria-pressed={shotType === t.id}
-          className={'option' + (shotType === t.id ? ' active' : '')} disabled={!OPEN_SHOT_TYPES.includes(t.id)} onClick={() => chooseShotType(t.id)}>
-          <ShotTypePreview id={t.id} /><b>{t.name}</b><small>{t.hint}</small><span className="shot-usage">{OPEN_SHOT_TYPES.includes(t.id) ? t.usage : 'เร็วๆ นี้'}</span>
-        </button>)}
-      </div>
-      {isMulti && <Section title="มุมในชุดภาพ" note={`สร้าง ${shotCount} รูป · ใช้ค่า AI ${shotCount} รูป`}>
-        <p className="muted-text">Front · Back · Side · 45°</p>
-        <div className="chips">{PRODUCT_SET_SHOTS.slice(4).map((a) => <button key={a.id} type="button"
-          aria-pressed={extraAngles.includes(a.id)} className={'chip' + (extraAngles.includes(a.id) ? ' active' : '')}
-          onClick={() => update((r) => ({ extraAngles: r.extraAngles.includes(a.id) ? r.extraAngles.filter((id) => id !== a.id) : [...r.extraAngles, a.id] }))}>+ {a.name}</button>)}</div>
-        <p className="muted-text">เพิ่มรูปด้านหลัง ด้านข้าง และฐานจริงในขั้นสินค้า เพื่อให้รายละเอียดตรงกับสินค้าจริง</p>
-      </Section>}
-      {shotType === 'detail' && <Section title="ต้องการเน้นจุดไหน">
-        {options(DETAIL_TARGETS, detailTarget, (v) => update({ detailTarget: v }))}
-        <label className="shot-field">ตำแหน่ง / ฟีเจอร์{detailTarget === 'feature' ? ' (จำเป็น)' : ' (เพิ่มเติม)'}
-          <textarea className="text-input" value={feature} maxLength={200} onChange={(e) => update({ feature: e.target.value })} placeholder="เช่น ซิปช่องด้านหน้ากระเป๋า" />
-        </label>
-      </Section>}
-      {shotType === 'scale' && <>
-        <Section title="ขนาดสินค้าจริง" note="เซนติเมตร · กรอกครบทั้ง 3 ด้าน">
-          <div className="shot-dimensions">{(['width', 'height', 'depth'] as const).map((key, i) => <label className="shot-field" key={key}>
-            {['กว้าง', 'สูง', 'ลึก'][i]} (ซม.)<input className="text-input" type="number" min="0.1" max="10000" step="any" required
-              value={dimensions[key]} onChange={(e) => update((r) => ({ dimensions: { ...r.dimensions, [key]: e.target.value } }))} />
-          </label>)}</div>
-        </Section>
-        <Section title="เทียบขนาดกับ">{options(SCALE_REFERENCES, scaleRef, (v) => update({ scaleRef: v }))}</Section>
-        {scaleRef === 'laptop' && <Section title="ขนาด Laptop จริง" note="ขนาดตัวเครื่องเป็นเซนติเมตร ไม่ใช่นิ้วหน้าจอ">
-          <div className="shot-dimensions">{(['width', 'depth'] as const).map((key, i) => <label className="shot-field" key={key}>
-            {['กว้าง', 'ลึก'][i]} (ซม.)<input className="text-input" type="number" min="0.1" max="10000" step="any" required
-              value={referenceSize[key]} onChange={(e) => update((r) => ({ referenceSize: { ...r.referenceSize, [key]: e.target.value } }))} />
-          </label>)}</div>
-        </Section>}
-        <p className="muted-text">ภาพ AI ช่วยสื่อสัดส่วนโดยประมาณ ควรแสดงขนาดจริงบนหน้าสินค้าด้วย</p>
-      </>}
-    </>;
+    panel = (
+      <>
+        <p className="note">เลือกจุดประสงค์ของภาพ เราจับคู่ตัวเลือกเริ่มต้นให้ ปรับรายละเอียดได้ในขั้นถัดไป</p>
+        <div className="options shot-type-options">
+          {SHOT_TYPE_ORDER.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={shotType === t.id}
+              className={'option' + (shotType === t.id ? ' active' : '')}
+              disabled={!OPEN_SHOT_TYPES.includes(t.id)}
+              onClick={() => chooseShotType(t.id)}
+            >
+              <ShotTypePreview id={t.id} />
+              <b>{t.name}</b>
+              <small>{t.hint}</small>
+              <span className="shot-usage">{OPEN_SHOT_TYPES.includes(t.id) ? t.usage : 'เร็วๆ นี้'}</span>
+            </button>
+          ))}
+        </div>
+        {isMulti && (
+          <Section title="มุมในชุดภาพ" note={`สร้าง ${shotCount} รูป · ใช้ค่า AI ${shotCount} รูป`}>
+            <p className="muted-text">Front · Back · Side · 45°</p>
+            <div className="chips">
+              {PRODUCT_SET_SHOTS.slice(4).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-pressed={extraAngles.includes(a.id)}
+                  className={'chip' + (extraAngles.includes(a.id) ? ' active' : '')}
+                  onClick={() =>
+                    update((r) => ({
+                      extraAngles: r.extraAngles.includes(a.id)
+                        ? r.extraAngles.filter((id) => id !== a.id)
+                        : [...r.extraAngles, a.id],
+                    }))
+                  }
+                >
+                  + {a.name}
+                </button>
+              ))}
+            </div>
+            <p className="muted-text">เพิ่มรูปด้านหลัง ด้านข้าง และฐานจริงในขั้นสินค้า เพื่อให้รายละเอียดตรงกับสินค้าจริง</p>
+          </Section>
+        )}
+        {shotType === 'detail' && (
+          <Section title="ต้องการเน้นจุดไหน">
+            {options(DETAIL_TARGETS, detailTarget, (v) => update({ detailTarget: v }))}
+            <label className="shot-field">
+              ตำแหน่ง / ฟีเจอร์{detailTarget === 'feature' ? ' (จำเป็น)' : ' (เพิ่มเติม)'}
+              <textarea
+                className="text-input"
+                value={feature}
+                maxLength={200}
+                onChange={(e) => update({ feature: e.target.value })}
+                placeholder="เช่น ซิปช่องด้านหน้ากระเป๋า"
+              />
+            </label>
+          </Section>
+        )}
+        {shotType === 'scale' && (
+          <>
+            <Section title="ขนาดสินค้าจริง" note="เซนติเมตร · กรอกครบทั้ง 3 ด้าน">
+              <div className="shot-dimensions">
+                {(['width', 'height', 'depth'] as const).map((key, i) => (
+                  <label className="shot-field" key={key}>
+                    {['กว้าง', 'สูง', 'ลึก'][i]} (ซม.)
+                    <input
+                      className="text-input"
+                      type="number"
+                      min="0.1"
+                      max="10000"
+                      step="any"
+                      required
+                      value={dimensions[key]}
+                      onChange={(e) => update((r) => ({ dimensions: { ...r.dimensions, [key]: e.target.value } }))}
+                    />
+                  </label>
+                ))}
+              </div>
+            </Section>
+            <Section title="เทียบขนาดกับ">{options(SCALE_REFERENCES, scaleRef, (v) => update({ scaleRef: v }))}</Section>
+            {scaleRef === 'laptop' && (
+              <Section title="ขนาด Laptop จริง" note="ขนาดตัวเครื่องเป็นเซนติเมตร ไม่ใช่นิ้วหน้าจอ">
+                <div className="shot-dimensions">
+                  {(['width', 'depth'] as const).map((key, i) => (
+                    <label className="shot-field" key={key}>
+                      {['กว้าง', 'ลึก'][i]} (ซม.)
+                      <input
+                        className="text-input"
+                        type="number"
+                        min="0.1"
+                        max="10000"
+                        step="any"
+                        required
+                        value={referenceSize[key]}
+                        onChange={(e) =>
+                          update((r) => ({ referenceSize: { ...r.referenceSize, [key]: e.target.value } }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              </Section>
+            )}
+            <p className="muted-text">ภาพ AI ช่วยสื่อสัดส่วนโดยประมาณ ควรแสดงขนาดจริงบนหน้าสินค้าด้วย</p>
+          </>
+        )}
+      </>
+    );
   } else if (cur.key === 'hand') {
     // ท่าถือ (Handshot): 2 กลุ่ม มืออย่างเดียว / เห็นแขนและลำตัว · ซ่อนท่าที่ไม่เข้ากับประเภทสินค้า (handPoses)
     const poses = handPoses(product?.type);
-    panel = <>
-      <p className="note">ฉากพื้นเรียบสีเข้ากับสินค้า แสงหน้าต่างนุ่ม ไม่เห็นหน้า{poses.length < HAND_POSES.length ? ' · แสดงเฉพาะท่าที่เหมาะกับสินค้าชิ้นนี้' : ''}</p>
-      {HAND_MODES.map((m) => poses.some((p) => p.mode === m.id) && <Section key={m.id} title={m.name} note={m.hint}>
-        <div className="options view-options">
-          {poses.filter((p) => p.mode === m.id).map((p) => <button key={p.id} type="button" aria-pressed={handPose.id === p.id}
-            className={'option view-option' + (handPose.id === p.id ? ' active' : '')} onClick={() => update({ handPose: p.id })}>
-            <HandView pose={p.id} /><b>{p.name}</b><small>{p.hint}</small>
-          </button>)}
-        </div>
-      </Section>)}
-    </>;
+    panel = (
+      <>
+        <p className="note">
+          ฉากพื้นเรียบสีเข้ากับสินค้า แสงหน้าต่างนุ่ม ไม่เห็นหน้า
+          {poses.length < HAND_POSES.length ? ' · แสดงเฉพาะท่าที่เหมาะกับสินค้าชิ้นนี้' : ''}
+        </p>
+        {HAND_MODES.map(
+          (m) =>
+            poses.some((p) => p.mode === m.id) && (
+              <Section key={m.id} title={m.name} note={m.hint}>
+                <div className="options view-options">
+                  {poses
+                    .filter((p) => p.mode === m.id)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        aria-pressed={handPose.id === p.id}
+                        className={'option view-option' + (handPose.id === p.id ? ' active' : '')}
+                        onClick={() => update({ handPose: p.id })}
+                      >
+                        <HandView pose={p.id} />
+                        <b>{p.name}</b>
+                        <small>{p.hint}</small>
+                      </button>
+                    ))}
+                </div>
+              </Section>
+            ),
+        )}
+      </>
+    );
   } else if (cur.key === 'ref') {
-    panel = <>
-      {picker('ref', 'refs', { special: <Card item={{ name: 'ไม่ใช้' }} active={!ref} onClick={() => select('ref', null)} /> })}
-      {ref && <Section title="เอาอะไรจากรูปต้นแบบ">
-        <ChipGroup options={[...REF_MODES]} value={refMode} onChange={(v) => update({ refMode: v as RefMode })} />
-        <p className="muted-text">{REF_MODES.find((m) => m.id === refMode)!.hint}</p>
-      </Section>}
-    </>;
+    panel = (
+      <>
+        {picker('ref', 'refs', {
+          special: <Card item={{ name: 'ไม่ใช้' }} active={!ref} onClick={() => select('ref', null)} />,
+        })}
+        {ref && (
+          <Section title="เอาอะไรจากรูปต้นแบบ">
+            <ChipGroup options={[...REF_MODES]} value={refMode} onChange={(v) => update({ refMode: v as RefMode })} />
+            <p className="muted-text">{REF_MODES.find((m) => m.id === refMode)!.hint}</p>
+          </Section>
+        )}
+      </>
+    );
   } else if (cur.key === 'set') {
     const chooseScene = (id: string) => {
       update((r) => ({ scene: id, color: shotTypeDefaults(r.shotType).color, pick: { ...r.pick, scene: null } }));
     };
-    const sceneCards = (title: string) => <Section title={title}>
-      <div className="options scene-options">
-        {shotSets(shotType, scaleRef).map((s) => <button key={s.id} type="button"
-          className={'option' + (setDef.id === s.id && !usePhoto ? ' active' : '')}
-          aria-pressed={setDef.id === s.id && !usePhoto} disabled={refSet || background.automatic}
-          onClick={() => chooseScene(s.id)}>
-          <ScenePreview id={s.id} /><b>{s.name}{background.automatic ? ' · อัตโนมัติ' : ''}</b><small>{s.hint}</small>
-        </button>)}
-      </div>
-    </Section>;
+    const sceneCards = (title: string) => (
+      <Section title={title}>
+        <div className="options scene-options">
+          {shotSets(shotType, scaleRef).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={'option' + (setDef.id === s.id && !usePhoto ? ' active' : '')}
+              aria-pressed={setDef.id === s.id && !usePhoto}
+              disabled={refSet || background.automatic}
+              onClick={() => chooseScene(s.id)}
+            >
+              <ScenePreview id={s.id} />
+              <b>
+                {s.name}
+                {background.automatic ? ' · อัตโนมัติ' : ''}
+              </b>
+              <small>{s.hint}</small>
+            </button>
+          ))}
+        </div>
+      </Section>
+    );
     // Custom: รูปฉากของฉันก่อน แล้วตัวเลือกฉาก ไม่มีเลือกสี/ภาพจำลอง (27 ต.ค.) — สีพื้นหลังให้ AI จับคู่กับสินค้า ('match')
-    panel = shotType === 'styled' ? <>
-      {refSet && <p className="note">ใช้ฉากและพื้นจากรูปต้นแบบอยู่ ตัวเลือกฉากจะไม่ถูกใช้</p>}
-      <Section title="ใช้รูปฉากของฉัน" note="จับคู่แสง มุมมอง และเงาสัมผัสกับรูปฉาก">
-        {picker('scene', 'scenes', {
-          special: <Card item={{ name: 'ไม่ใช้รูป' }} active={!sceneImg} onClick={() => select('scene', null)} />, muted: refSet,
-        })}
-      </Section>
-      {sceneCards('ตัวเลือกฉาก')}
-    </> : <>
-      <p className="note">{background.automatic ? shotType === 'detail'
-        ? 'อัตโนมัติ: ฉากเรียบ ไม่แย่งรายละเอียด และเบลออย่างนุ่มนวล'
-        : 'อัตโนมัติ: มือ / คนใช้สตูดิโอเรียบ ส่วน A4 / Laptop ใช้โต๊ะเรียบเพื่อเทียบขนาด'
-        : isMulti ? 'ใช้ฉาก สี และแสงเดียวกันทุกมุมในชุดภาพ' : 'เลือกฉากก่อน แล้วเลือกสีที่เข้ากัน แสงเริ่มต้นจะจับคู่ให้'}</p>
-      {sceneCards(background.automatic ? 'ฉากที่จับคู่ให้' : '1. เลือกฉากและพื้น')}
-      {background.colors.length > 0 && <Section title="2. เลือกสีที่เข้ากัน" note="คัดสีให้เหมาะกับฉากนี้">
-        <div className="background-colors">{background.colors.map((c) => <button type="button" key={c.id}
-          className={'background-color' + (color.id === c.id ? ' active' : '')} aria-pressed={color.id === c.id}
-          onClick={() => update({ color: c.id })}>
-          <span className={'background-swatch' + (!c.swatch ? ' color-auto' : '')} style={c.swatch ? { background: c.swatch } : undefined} />
-          <span>{c.name}{c.id === 'white' ? ' (แนะนำ)' : ''}</span>
-        </button>)}</div>
-      </Section>}
-      <Section title="ภาพจำลองคู่ฉากและสี" note="ตัวอย่างองค์ประกอบ ไม่ใช่ภาพที่สร้างแล้ว">
-        <ScenePreview id={setDef.id} color={color.swatch} large />
-        <p className="muted-text">{setDef.name} · {color.name} · {light.name}</p>
-      </Section>
-    </>;
+    panel =
+      shotType === 'styled' ? (
+        <>
+          {refSet && <p className="note">ใช้ฉากและพื้นจากรูปต้นแบบอยู่ ตัวเลือกฉากจะไม่ถูกใช้</p>}
+          <Section title="ใช้รูปฉากของฉัน" note="จับคู่แสง มุมมอง และเงาสัมผัสกับรูปฉาก">
+            {picker('scene', 'scenes', {
+              special: <Card item={{ name: 'ไม่ใช้รูป' }} active={!sceneImg} onClick={() => select('scene', null)} />,
+              muted: refSet,
+            })}
+          </Section>
+          {sceneCards('ตัวเลือกฉาก')}
+        </>
+      ) : (
+        <>
+          <p className="note">
+            {background.automatic
+              ? shotType === 'detail'
+                ? 'อัตโนมัติ: ฉากเรียบ ไม่แย่งรายละเอียด และเบลออย่างนุ่มนวล'
+                : 'อัตโนมัติ: มือ / คนใช้สตูดิโอเรียบ ส่วน A4 / Laptop ใช้โต๊ะเรียบเพื่อเทียบขนาด'
+              : isMulti
+                ? 'ใช้ฉาก สี และแสงเดียวกันทุกมุมในชุดภาพ'
+                : 'เลือกฉากก่อน แล้วเลือกสีที่เข้ากัน แสงเริ่มต้นจะจับคู่ให้'}
+          </p>
+          {sceneCards(background.automatic ? 'ฉากที่จับคู่ให้' : '1. เลือกฉากและพื้น')}
+          {background.colors.length > 0 && (
+            <Section title="2. เลือกสีที่เข้ากัน" note="คัดสีให้เหมาะกับฉากนี้">
+              <div className="background-colors">
+                {background.colors.map((c) => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className={'background-color' + (color.id === c.id ? ' active' : '')}
+                    aria-pressed={color.id === c.id}
+                    onClick={() => update({ color: c.id })}
+                  >
+                    <span
+                      className={'background-swatch' + (!c.swatch ? ' color-auto' : '')}
+                      style={c.swatch ? { background: c.swatch } : undefined}
+                    />
+                    <span>
+                      {c.name}
+                      {c.id === 'white' ? ' (แนะนำ)' : ''}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+          <Section title="ภาพจำลองคู่ฉากและสี" note="ตัวอย่างองค์ประกอบ ไม่ใช่ภาพที่สร้างแล้ว">
+            <ScenePreview id={setDef.id} color={color.swatch} large />
+            <p className="muted-text">
+              {setDef.name} · {color.name} · {light.name}
+            </p>
+          </Section>
+        </>
+      );
   } else if (cur.key === 'props') {
     // พร็อพของฉันก่อน แล้วตัวเลือกพร็อพ (27 ต.ค.) · เลือกได้อย่างเดียว ไม่เลือกอะไร = ไม่มีพร็อพ
-    panel = <>
-      {shotNote('พร็อพ')}
-      <Section title="พร็อพของฉัน" note="ใช้แทนตัวเลือกพร็อพด้านล่าง">
-        <textarea className="text-input" value={propText} maxLength={200} disabled={shot} onChange={(e) => {
-          const v = e.target.value;
-          update({ propText: v, ...(v.trim() ? { props: NO_PROPS } : {}) });
-        }}
-          placeholder="พิมพ์พร็อพที่อยากได้ เช่น แก้วกาแฟเซรามิกสีครีม, ช่อลาเวนเดอร์แห้ง" />
-        <p className="muted-text">หรือใช้รูปของจริง เช่น กล่องหรือแก้วของแบรนด์ — AI วางของชิ้นนั้นให้เหมือนในรูป</p>
-        {picker('prop', 'props', { special: <Card item={{ name: 'ไม่ใช้รูป' }} active={!propImg} onClick={() => select('prop', null)} />, muted: shot })}
-      </Section>
-      <Section title="ตัวเลือกพร็อพ" note="กดอันที่เลือกอยู่ซ้ำ = ไม่ใช้พร็อพ">
-        <div className="prop-options">
-          {PROP_GROUPS.map((g) => <Section key={g.name} title={g.name}>
-            {options(g.ids.map((id) => propStyle(id)!), propsId, chooseProp, { disabled: shot })}
-          </Section>)}
-        </div>
-      </Section>
-    </>;
+    panel = (
+      <>
+        {shotNote('พร็อพ')}
+        <Section title="พร็อพของฉัน" note="ใช้แทนตัวเลือกพร็อพด้านล่าง">
+          <textarea
+            className="text-input"
+            value={propText}
+            maxLength={200}
+            disabled={shot}
+            onChange={(e) => {
+              const v = e.target.value;
+              update({ propText: v, ...(v.trim() ? { props: NO_PROPS } : {}) });
+            }}
+            placeholder="พิมพ์พร็อพที่อยากได้ เช่น แก้วกาแฟเซรามิกสีครีม, ช่อลาเวนเดอร์แห้ง"
+          />
+          <p className="muted-text">หรือใช้รูปของจริง เช่น กล่องหรือแก้วของแบรนด์ — AI วางของชิ้นนั้นให้เหมือนในรูป</p>
+          {picker('prop', 'props', {
+            special: <Card item={{ name: 'ไม่ใช้รูป' }} active={!propImg} onClick={() => select('prop', null)} />,
+            muted: shot,
+          })}
+        </Section>
+        <Section title="ตัวเลือกพร็อพ" note="กดอันที่เลือกอยู่ซ้ำ = ไม่ใช้พร็อพ">
+          <div className="prop-options">
+            {PROP_GROUPS.map((g) => (
+              <Section key={g.name} title={g.name}>
+                {options(
+                  g.ids.map((id) => propStyle(id)!),
+                  propsId,
+                  chooseProp,
+                  { disabled: shot },
+                )}
+              </Section>
+            ))}
+          </div>
+        </Section>
+      </>
+    );
   } else if (cur.key === 'angle') {
     const recommended = resolveProductAngle(shotType, PRESET, preset.angle);
-    panel = <>
-      {shotNote('มุมกล้อง')}
-      {automaticAngle ? <Section title={angle.name}>
-        <div className="option active view-option camera-auto"><ViewPreview angle="auto" /><b>{angle.name}</b><small>{angle.hint}</small></div>
-        <p className="muted-text">{shotType === 'detail'
-          ? 'เปลี่ยนจุดที่ต้องการเน้นในขั้นประเภทภาพ เช่น โลโก้ถ่ายตรง ซิปหรืออะไหล่เอียงเล็กน้อยให้เห็นรูปทรง'
-          : 'เปลี่ยนวิธีเทียบขนาดในขั้นประเภทภาพ กล้องจะปรับให้เห็นสัดส่วนจริง ลดภาพหลอกตา'}</p>
-      </Section> : <>
-        <p className="note">{shotType === 'styled' ? 'เริ่มจากมุมที่เข้ากับฉาก แล้วปรับได้ตามภาพที่ต้องการ' : 'แนะนำหน้าตรงสำหรับภาพหลัก เลือกมุมอื่นเพื่อแสดงทรงและด้านต่างๆ'}</p>
-        <div className="options view-options">
-          {shotType === 'styled' && <button type="button" className={'option view-option' + (angleId === PRESET ? ' active' : '')}
-            aria-pressed={angleId === PRESET} disabled={shot} onClick={() => update({ angle: PRESET })}>
-            <ViewPreview angle={recommended.id} /><b>ตามฉาก (แนะนำ)</b><small>{setDef.name} · {recommended.name}</small>
-          </button>}
-          {shotAngles(shotType).map((a) => <button key={a.id} type="button" className={'option view-option' + ((shotType === 'styled' ? angleId === a.id : angle.id === a.id) ? ' active' : '')}
-            aria-pressed={shotType === 'styled' ? angleId === a.id : angle.id === a.id} disabled={shot} onClick={() => update({ angle: a.id })}>
-            <ViewPreview angle={a.id} /><b>{a.name}{shotType === 'clean' && a.id === 'front' ? ' (แนะนำ)' : ''}</b><small>{a.hint}</small>
-          </button>)}
-          {/* ตั้งมุมเอง (2 พ.ย.): ภาพการ์ด = มุมที่ตั้งอยู่ (ตัวแทนสามมิติเดียวกับที่ส่ง AI) */}
-          {customAngleShot(shotType) && <button type="button" className={'option view-option' + (customAngle ? ' active' : '')}
-            aria-pressed={customAngle} disabled={shot} onClick={() => update({ angle: CUSTOM_ANGLE })}>
-            <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
-              <image href={turnSrc(product?.type, curTurn, 'landscape', 0.42)} width="240" height="150" preserveAspectRatio="xMidYMid slice" />
-            </svg>
-            <b>ตั้งมุมเอง</b><small>{customAngle ? angle.hint : 'หมุนสินค้าและปรับความสูงกล้องเอง'}</small>
-          </button>}
-        </div>
-        {customAngle && <Section title="ตั้งมุมเอง" note="ลากภาพ หรือใช้แถบเลื่อน">
-          <Turntable type={product?.type} turn={curTurn} onChange={(t) => update({ turn: t })} orient={turnOrient} fill={turnFillAmount} />
-        </Section>}
-      </>}
-    </>;
+    panel = (
+      <>
+        {shotNote('มุมกล้อง')}
+        {automaticAngle ? (
+          <Section title={angle.name}>
+            <div className="option active view-option camera-auto">
+              <ViewPreview angle="auto" />
+              <b>{angle.name}</b>
+              <small>{angle.hint}</small>
+            </div>
+            <p className="muted-text">
+              {shotType === 'detail'
+                ? 'เปลี่ยนจุดที่ต้องการเน้นในขั้นประเภทภาพ เช่น โลโก้ถ่ายตรง ซิปหรืออะไหล่เอียงเล็กน้อยให้เห็นรูปทรง'
+                : 'เปลี่ยนวิธีเทียบขนาดในขั้นประเภทภาพ กล้องจะปรับให้เห็นสัดส่วนจริง ลดภาพหลอกตา'}
+            </p>
+          </Section>
+        ) : (
+          <>
+            <p className="note">
+              {shotType === 'styled'
+                ? 'เริ่มจากมุมที่เข้ากับฉาก แล้วปรับได้ตามภาพที่ต้องการ'
+                : 'แนะนำหน้าตรงสำหรับภาพหลัก เลือกมุมอื่นเพื่อแสดงทรงและด้านต่างๆ'}
+            </p>
+            <div className="options view-options">
+              {shotType === 'styled' && (
+                <button
+                  type="button"
+                  className={'option view-option' + (angleId === PRESET ? ' active' : '')}
+                  aria-pressed={angleId === PRESET}
+                  disabled={shot}
+                  onClick={() => update({ angle: PRESET })}
+                >
+                  <ViewPreview angle={recommended.id} />
+                  <b>ตามฉาก (แนะนำ)</b>
+                  <small>
+                    {setDef.name} · {recommended.name}
+                  </small>
+                </button>
+              )}
+              {shotAngles(shotType).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={
+                    'option view-option' +
+                    ((shotType === 'styled' ? angleId === a.id : angle.id === a.id) ? ' active' : '')
+                  }
+                  aria-pressed={shotType === 'styled' ? angleId === a.id : angle.id === a.id}
+                  disabled={shot}
+                  onClick={() => update({ angle: a.id })}
+                >
+                  <ViewPreview angle={a.id} />
+                  <b>
+                    {a.name}
+                    {shotType === 'clean' && a.id === 'front' ? ' (แนะนำ)' : ''}
+                  </b>
+                  <small>{a.hint}</small>
+                </button>
+              ))}
+              {/* ตั้งมุมเอง (2 พ.ย.): ภาพการ์ด = มุมที่ตั้งอยู่ (ตัวแทนสามมิติเดียวกับที่ส่ง AI) */}
+              {customAngleShot(shotType) && (
+                <button
+                  type="button"
+                  className={'option view-option' + (customAngle ? ' active' : '')}
+                  aria-pressed={customAngle}
+                  disabled={shot}
+                  onClick={() => update({ angle: CUSTOM_ANGLE })}
+                >
+                  <svg className="scene-preview" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
+                    <image
+                      href={turnSrc(product?.type, curTurn, 'landscape', 0.42)}
+                      width="240"
+                      height="150"
+                      preserveAspectRatio="xMidYMid slice"
+                    />
+                  </svg>
+                  <b>ตั้งมุมเอง</b>
+                  <small>{customAngle ? angle.hint : 'หมุนสินค้าและปรับความสูงกล้องเอง'}</small>
+                </button>
+              )}
+            </div>
+            {customAngle && (
+              <Section title="ตั้งมุมเอง" note="ลากภาพ หรือใช้แถบเลื่อน">
+                <Turntable
+                  type={product?.type}
+                  turn={curTurn}
+                  onChange={(t) => update({ turn: t })}
+                  orient={turnOrient}
+                  fill={turnFillAmount}
+                />
+              </Section>
+            )}
+          </>
+        )}
+      </>
+    );
   } else if (cur.key === 'framing') {
     // ระยะ: การ์ดมีภาพเหมือนมุมกล้อง (ภาพเดียวกัน ขนาดสินค้าในภาพต่างกัน)
-    const framingCard = (id: string, active: boolean, title: string, hint: string, value: string) => <button key={id} type="button"
-      className={'option view-option' + (active ? ' active' : '')} aria-pressed={active} disabled={shot} onClick={() => update({ framing: value })}>
-      <ViewPreview framing={id} /><b>{title}</b><small>{hint}</small>
-    </button>;
-    panel = <>{shotNote('ระยะ')}<div className="options view-options">
-      {framingCard(preset.framing, framingId === PRESET, 'ตามฉาก (แนะนำ)', `${setDef.name}: ${PRODUCT_FRAMINGS.find((f) => f.id === preset.framing)!.name}`, PRESET)}
-      {shotFramings(shotType).map((f) => framingCard(f.id, framingId === f.id, f.name, f.hint, f.id))}
-    </div></>;
+    const framingCard = (id: string, active: boolean, title: string, hint: string, value: string) => (
+      <button
+        key={id}
+        type="button"
+        className={'option view-option' + (active ? ' active' : '')}
+        aria-pressed={active}
+        disabled={shot}
+        onClick={() => update({ framing: value })}
+      >
+        <ViewPreview framing={id} />
+        <b>{title}</b>
+        <small>{hint}</small>
+      </button>
+    );
+    panel = (
+      <>
+        {shotNote('ระยะ')}
+        <div className="options view-options">
+          {framingCard(
+            preset.framing,
+            framingId === PRESET,
+            'ตามฉาก (แนะนำ)',
+            `${setDef.name}: ${PRODUCT_FRAMINGS.find((f) => f.id === preset.framing)!.name}`,
+            PRESET,
+          )}
+          {shotFramings(shotType).map((f) => framingCard(f.id, framingId === f.id, f.name, f.hint, f.id))}
+        </div>
+      </>
+    );
   } else if (cur.key === 'settings') {
-    panel = <>
-      {/* เลือกตามที่จะโพสต์ (IG / Facebook / TikTok / ร้านค้า) แทนตัวเลขสัดส่วน — กรอบเล็กวาดตามสัดส่วนจริง (28 ต.ค.) */}
-      <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect === 'auto' ? '4:5' : aspect}`}>
-        <div className="options aspect-options">{PRODUCT_ASPECTS.map((a) => <button key={a.id} type="button" aria-pressed={aspect === a.id}
-          className={'option aspect-option' + (aspect === a.id ? ' active' : '')} onClick={() => update({ aspect: a.id })}>
-          <span className="aspect-slot" aria-hidden="true"><i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} /></span>
-          <span><b>{a.name}</b><small>{a.use} · {a.id}</small></span>
-        </button>)}</div>
-      </Section>
-      <Section title="สั่งเพิ่มเติม">
-        <textarea className="text-input" value={extra} maxLength={1000} onChange={(e) => update({ extra: e.target.value })} placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย" />
-      </Section>
-      <details className="advanced">
-        <summary>ขั้นสูง <small>คุณภาพ</small></summary>
-        {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
+    panel = (
+      <>
+        {/* เลือกตามที่จะโพสต์ (IG / Facebook / TikTok / ร้านค้า) แทนตัวเลขสัดส่วน — กรอบเล็กวาดตามสัดส่วนจริง (28 ต.ค.) */}
+        <Section title="ใช้ภาพที่ไหน" note={`สัดส่วน ${aspect === 'auto' ? '4:5' : aspect}`}>
+          <div className="options aspect-options">
+            {PRODUCT_ASPECTS.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                aria-pressed={aspect === a.id}
+                className={'option aspect-option' + (aspect === a.id ? ' active' : '')}
+                onClick={() => update({ aspect: a.id })}
+              >
+                <span className="aspect-slot" aria-hidden="true">
+                  <i className="aspect-frame" style={{ aspectRatio: a.id.replace(':', ' / ') }} />
+                </span>
+                <span>
+                  <b>{a.name}</b>
+                  <small>
+                    {a.use} · {a.id}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Section>
+        <Section title="สั่งเพิ่มเติม">
+          <textarea
+            className="text-input"
+            value={extra}
+            maxLength={EXTRA_MAX}
+            onChange={(e) => update({ extra: e.target.value })}
+            placeholder="เช่น ให้สายกระเป๋าพาดลงพื้น, เปิดฝากระเป๋าเล็กน้อย"
+          />
+        </Section>
         {aiModels?.length === 0 && <p className="note">ยังไม่มี API key ในไฟล์ .env</p>}
-        {aiModel.startsWith('openai:') && (
-          <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
-            <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
-          </Section>
+        {ADVANCED && (
+          <details className="advanced">
+            <summary>
+              ขั้นสูง <small>คุณภาพ</small>
+            </summary>
+            {/* เลือกโมเดลไม่ได้แล้ว (27 ต.ค. เปิดให้ลูกค้าทดลอง): ใช้ DEFAULT_AI_MODEL เสมอ server บังคับซ้ำ (lib/route.ts) */}
+            {aiModel.startsWith('openai:') && (
+              <Section title="คุณภาพ" note={isGpt25(aiModel) ? 'สูงขึ้น = ผิวหนัง/ฝีเข็มชัดขึ้น แต่ช้าและแพงขึ้น' : undefined}>
+                <ChipGroup options={qualitiesFor(aiModel)} value={quality} onChange={(v) => update({ quality: v })} />
+              </Section>
+            )}
+          </details>
         )}
-      </details>
-      {genButtons}
-    </>;
+        {genButtons}
+      </>
+    );
   }
 
   // ---------- ประวัติรูป: รูปในชุดภาพเดียวกันอยู่ในกรอบเดียว เรียงตามลำดับในชุด ----------
@@ -1032,53 +2015,76 @@ export default function Packshot() {
       <button className={current === i ? 'active' : ''} title={results[i].caption} onClick={() => setCurrent(i)}>
         <img src={thumbSrc(results[i].src)} alt={results[i].caption} loading="lazy" decoding="async" />
       </button>
-      <DeleteButton onClick={() => setRemovingSrc(results[i].src)} />
+      <DeleteButton
+        title={results[i].inGallery ? 'เอาออกจากรูปที่สร้างแล้ว' : 'ลบรูปนี้ถาวร'}
+        onClick={() => askRemove(results[i].src)}
+      />
       <GalleryToggle inGallery={Boolean(results[i].inGallery)} onClick={() => void toggleGallery(results[i].src)} />
       {label && <span className="set-label">{label}</span>}
     </div>
   );
   const historyItems: ReactNode[] = [];
+  const historyOrder: number[] = []; // results indices as drawn, for ← →
   const seenSets = new Set<string>();
   results.forEach((r, i) => {
-    if (!r.set) return void historyItems.push(thumb(i));
+    if (!r.set) {
+      historyOrder.push(i);
+      return void historyItems.push(thumb(i));
+    }
     const id = r.set.id;
     if (seenSets.has(id)) return;
     seenSets.add(id);
-    const members = results.map((x, j) => ({ x, j })).filter(({ x }) => x.set?.id === id).sort((a, b) => a.x.set!.index - b.x.set!.index);
+    const members = results
+      .map((x, j) => ({ x, j }))
+      .filter(({ x }) => x.set?.id === id)
+      .sort((a, b) => a.x.set!.index - b.x.set!.index);
+    historyOrder.push(...members.map(({ j }) => j));
     const left = pendingSet?.id === id ? pendingSet.left : 0;
     historyItems.push(
       <div className="set-group" key={'set-' + id}>
-        <div className="set-head">ชุดภาพ <span>{left ? 'กำลังสร้าง...' : `${members.length} มุม`}</span></div>
+        <div className="set-head">
+          ชุดภาพ <span>{left ? 'กำลังสร้าง...' : `${members.length} มุม`}</span>
+        </div>
         <div className="set-items">
           {members.map(({ x, j }) => thumb(j, x.set!.index === 0 ? 'รูปแรก' : `มุม ${x.set!.index + 1}`))}
-          {Array.from({ length: left }, (_, k) => <div className="set-pending" key={k}><div className="spinner" /></div>)}
+          {Array.from({ length: left }, (_, k) => (
+            <div className="set-pending" key={k}>
+              <div className="spinner" />
+            </div>
+          ))}
         </div>
       </div>,
     );
   });
+  useHistoryKeys(historyOrder, setCurrent);
 
   const empty = !shown && !product;
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">Lolo <span className="beta">Beta</span></div>
-        <PageSwitch current="product" />
-        <div className="status" role="status" title={status}>
-          {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
+        <div className="brand">
+          Lolo <span className="beta">Beta</span>
         </div>
+        <PageSwitch current="product" />
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
           <GalleryLink />
           <TokenUsage />
-          <SignOutButton />
+          <AccountMenu />
         </div>
       </header>
 
       <div className="workspace">
         <nav className="rail" aria-label="ขั้นตอน">
           {STEPS.map((s, i) => (
-            <button key={s.key} className={'rail-btn' + (step === i ? ' active' : '')} onClick={() => goStep(i)} aria-current={step === i ? 'step' : undefined}
-              disabled={!used(s.key)} title={used(s.key) ? undefined : `${shotTypeDef.name} ไม่ใช้ขั้นนี้`}>
+            <button
+              key={s.key}
+              className={'rail-btn' + (step === i ? ' active' : '')}
+              onClick={() => goStep(i)}
+              aria-current={step === i ? 'step' : undefined}
+              disabled={!used(s.key)}
+              title={used(s.key) ? undefined : `${shotTypeDef.name} ไม่ใช้ขั้นนี้`}
+            >
               <span className="n">{i + 1}</span>
               <s.Icon />
               <span>{s.label}</span>
@@ -1089,22 +2095,35 @@ export default function Packshot() {
 
         <aside className="panel has-bar" onClickCapture={mark} onInputCapture={mark}>
           <div className="panel-body">
-          <div className="panel-head">
-            <span className="num">{step + 1}</span>
-            <h2>{cur.title}</h2>
-          </div>
-          {shownRecipe && <p className="note">
-            <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูปทันที จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
-            {missingNames.length > 0 && <>ถูกลบไปแล้ว: {missingNames.join(', ')} ·{' '}</>}
-            <button type="button" className="link-btn" onClick={() => setCurrent(null)}>กลับไปรูปใหม่ที่ทำค้างไว้</button>
-          </p>}
-          {panel}
+            <div className="panel-head">
+              <span className="num">{step + 1}</span>
+              <h2>{cur.title}</h2>
+            </div>
+            {shownRecipe && (
+              <p className="note">
+                <b>ตั้งค่าของรูปนี้</b> ถูกโหลดมาให้แล้ว · เปลี่ยนตัวเลือกแล้วกดสร้างรูปทันที จะได้รูปใหม่ รูปเดิมไม่หาย ·{' '}
+                {missingNames.length > 0 && <>ถูกลบไปแล้ว: {missingNames.join(', ')} · </>}
+                <button type="button" className="link-btn" onClick={() => setCurrent(null)}>
+                  กลับไปรูปใหม่ที่ทำค้างไว้
+                </button>
+              </p>
+            )}
+            {panel}
           </div>
           {/* ตั้งค่า is the last step -> generate only */}
           <div className="sticky-bar">
-            {nextStep >= 0 && <button className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')} disabled={busy !== null}
-              onClick={() => goStep(nextStep)}>ถัดไป: {STEPS[nextStep].label} →</button>}
-            <button className="btn btn-primary" disabled={!canGenerate} title={genWhy} onClick={() => void generate()}>{genLabel}</button>
+            {nextStep >= 0 && (
+              <button
+                className={'btn bar-next ' + (stepReady ? 'btn-ready' : 'btn-secondary')}
+                disabled={busy !== null}
+                onClick={() => goStep(nextStep)}
+              >
+                ถัดไป: {STEPS[nextStep].label} →
+              </button>
+            )}
+            <button className="btn btn-primary" disabled={!canGenerate} title={genWhy} onClick={() => void generate()}>
+              {genLabel}
+            </button>
           </div>
         </aside>
 
@@ -1115,61 +2134,167 @@ export default function Packshot() {
               {empty && <p className="muted-text">อัปโหลดรูปสินค้าในขั้นที่ 1 แล้วกด &quot;สร้างรูปทันที&quot;</p>}
             </figure>
             {/* same corner label + ล้าง as the model page's paper doll (.doll-head) */}
-            {current === null && !empty && <div className="doll-head stage-head">
-              <div className="doll-label">พร้อมสร้าง</div>
-              {canReset && <button type="button" className="link-btn" disabled={busy !== null} onClick={() => setConfirmReset(true)}><IconReset /><span>ล้าง</span></button>}
-            </div>}
-            {canvasStatus && <div className="frame-hint" role="status">{canvasStatus}</div>}
-            <div className="overlay"><div className="spinner" /><div>{busy}</div></div>
+            {current === null && !empty && (
+              <div className="doll-head stage-head">
+                <div className="doll-label">พร้อมสร้าง</div>
+                {canReset && (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    disabled={busy !== null}
+                    onClick={() => setConfirmReset(true)}
+                  >
+                    <IconReset />
+                    <span>ล้าง</span>
+                  </button>
+                )}
+              </div>
+            )}
+            {canvasStatus && (
+              <div className="frame-hint" role="status">
+                {canvasStatus}
+              </div>
+            )}
+            <div className="overlay">
+              <div className="spinner" />
+              <div>{busy}</div>
+            </div>
           </div>
           <div className="stage-tools">
             {/* Go list item 9: download only a generated image, never the user's own product photo */}
-            <button className="btn btn-secondary tool" disabled={!shown} onClick={save}><IconDownload /> ดาวน์โหลด</button>
-            {shown && <button className="btn btn-secondary tool" disabled={busy !== null || planning}
-              onClick={() => setLocalEdit(shown)}><IconRetouch /> แก้เฉพาะจุด</button>}
-            {shown?.editedFrom && <button className="btn btn-secondary tool" disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
-              onClick={() => setCurrent(results.findIndex((r) => r.src === shown.editedFrom))}>ดูต้นฉบับ</button>}
-            <div className="caption" title={shown?.caption}>{shown ? shown.caption : product ? `รูปสินค้า: ${product.name} (ยังไม่ได้สร้าง)` : ''}</div>
+            <button className="btn btn-secondary tool" disabled={!shown} onClick={save}>
+              <IconDownload /> ดาวน์โหลด
+            </button>
+            {shown && (
+              <button
+                className="btn btn-secondary tool"
+                disabled={busy !== null || planning}
+                onClick={() => setLocalEdit(shown)}
+              >
+                <IconRetouch /> แก้เฉพาะจุด
+              </button>
+            )}
+            {shown?.editedFrom && (
+              <button
+                className="btn btn-secondary tool"
+                disabled={busy !== null || !results.some((r) => r.src === shown.editedFrom)}
+                onClick={() => setCurrent(results.findIndex((r) => r.src === shown.editedFrom))}
+              >
+                ดูต้นฉบับ
+              </button>
+            )}
+            <div className="caption" title={shown?.caption}>
+              {shown ? shown.caption : product ? `รูปสินค้า: ${product.name} (ยังไม่ได้สร้าง)` : ''}
+            </div>
           </div>
-          <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
+          {/* what the AI planned for this image (props, or the creative idea): stored with it, so past images show it too */}
+          {shown?.stylePlan && (
+            <p className="plan-note">
+              {/* no stored recipe (older images): the shot type is unknown, so a neutral label */}
+              <b>
+                {shown.recipe?.shotType === 'creative' ? 'ไอเดีย' : shown.recipe ? 'พร็อพที่ AI คิดให้' : 'AI คิดให้'} (
+                {shown.stylePlan.name})
+              </b>{' '}
+              · {shown.stylePlan.th}
+            </p>
+          )}
+          <div className="history-head">
+            รูปที่สร้างแล้ว <span>{results.length}</span>
+          </div>
           <div className="history">
             {/* "รูปใหม่" = the setup in progress (product photo on the stage); first tile, always there, as on the model page */}
-            <button type="button" ref={newTileRef} className={'new-tile' + (current === null ? ' active' : '')} onClick={() => setCurrent(null)}
-              aria-pressed={current === null} title="รูปใหม่ที่ทำค้างไว้">
-              {generating && !pendingSet
-                ? <><div className="spinner" aria-hidden="true" /><span>กำลังสร้าง</span></>
-                : <><span className="new-plus" aria-hidden="true">+</span><span>รูปใหม่</span></>}
+            <button
+              type="button"
+              ref={newTileRef}
+              className={'new-tile' + (current === null ? ' active' : '')}
+              onClick={() => setCurrent(null)}
+              aria-pressed={current === null}
+              title="รูปใหม่ที่ทำค้างไว้"
+            >
+              {generating && !pendingSet ? (
+                <>
+                  <div className="spinner" aria-hidden="true" />
+                  <span>กำลังสร้าง</span>
+                </>
+              ) : (
+                <>
+                  <span className="new-plus" aria-hidden="true">
+                    +
+                  </span>
+                  <span>รูปใหม่</span>
+                </>
+              )}
             </button>
             {historyItems}
-            {!results.length && !generating && <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูปทันที&quot;</p>}
+            {!results.length && !generating && (
+              <p className="muted-text">ยังไม่มี เลือกของแต่ละขั้นแล้วกด &quot;สร้างรูปทันที&quot;</p>
+            )}
           </div>
         </section>
-
       </div>
 
-      {localEdit && <LocalEditDialog src={localEdit.src} models={aiModels ?? []} initialModel={aiModel} onClose={() => setLocalEdit(null)} onEdit={editLocalArea} />}
-      {confirmReset && <ConfirmDialog title="ล้างตัวเลือกทั้งหมด?"
-        body="ตัวเลือกทุกขั้นยกเว้นสินค้าจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
-        cancel="ยกเลิก" confirm="ล้าง"
-        onCancel={() => setConfirmReset(false)}
-        onConfirm={() => { setConfirmReset(false); startOver(); }} />}
-      {sync.confirm && <ConfirmDialog title="เริ่มจากรูปนี้?" body="ตัวเลือกที่เลือกไว้แต่ยังไม่ได้สร้างรูปจะถูกแทนที่ด้วยการตั้งค่าของรูปนี้"
-        cancel="ยกเลิก" confirm="เริ่มจากรูปนี้" onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
-      {deletingUpload && <ConfirmDialog title={`ลบ "${deletingUpload.item.name}"?`} body="รูปจะถูกย้ายไปถังขยะ" cancel="ยกเลิก" confirm="ลบ"
-        onCancel={() => setDeletingUpload(null)}
-        onConfirm={() => { setDeletingUpload(null); void deleteUpload(deletingUpload.key, deletingUpload.item); }} />}
-      {removingSrc && <RemoveImageDialog from="history" inOtherPlace={Boolean(results.find((r) => r.src === removingSrc)?.inGallery)}
-        onCancel={() => setRemovingSrc(null)}
-        onConfirm={() => { setRemovingSrc(null); void removeFromHistory(removingSrc); }} />}
-      {deletingProduct && <ConfirmDialog title={`ลบ "${deletingProduct.name}"?`} body={`รูปสินค้าทั้ง ${productFiles(deletingProduct).length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
-        cancel="ยกเลิก" confirm="ลบ" onCancel={() => setDeletingProduct(null)}
-        onConfirm={() => { setDeletingProduct(null); void deleteProduct(deletingProduct); }} />}
+      {localEdit && (
+        <LocalEditDialog
+          src={localEdit.src}
+          models={aiModels ?? []}
+          initialModel={aiModel}
+          onClose={() => setLocalEdit(null)}
+          onEdit={editLocalArea}
+        />
+      )}
+      {confirmReset && (
+        <ConfirmDialog
+          title="ล้างตัวเลือกทั้งหมด?"
+          body="ตัวเลือกทุกขั้นยกเว้นสินค้าจะกลับเป็นค่าเริ่มต้น รูปที่สร้างไว้แล้วไม่หาย"
+          cancel="ยกเลิก"
+          confirm="ล้าง"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={() => {
+            setConfirmReset(false);
+            startOver();
+          }}
+        />
+      )}
+      {sync.confirm && <StartFromImageDialog onCancel={sync.confirm.cancel} onConfirm={sync.confirm.accept} />}
+      {deletingUpload && (
+        <ConfirmDialog
+          title={`ลบ "${deletingUpload.item.name}"?`}
+          body="รูปจะถูกย้ายไปถังขยะ"
+          cancel="ยกเลิก"
+          confirm="ลบ"
+          onCancel={() => setDeletingUpload(null)}
+          onConfirm={() => {
+            setDeletingUpload(null);
+            void deleteUpload(deletingUpload.key, deletingUpload.item);
+          }}
+        />
+      )}
+      {removeDialog && <RemoveImageDialog from="history" {...removeDialog} />}
+      {deletingProduct && (
+        <ConfirmDialog
+          title={`ลบ "${deletingProduct.name}"?`}
+          body={`รูปสินค้าทั้ง ${productFiles(deletingProduct).length} รูปจะถูกย้ายไปถังขยะ รูปที่สร้างไว้แล้วยังอยู่`}
+          cancel="ยกเลิก"
+          confirm="ลบ"
+          onCancel={() => setDeletingProduct(null)}
+          onConfirm={() => {
+            setDeletingProduct(null);
+            void deleteProduct(deletingProduct);
+          }}
+        />
+      )}
       {saveSrc && <SaveImageDialog src={saveSrc} onClose={() => setSaveSrc(null)} />}
-      {viewer && <ImageViewer key={viewer.src} src={viewer.src} alt={viewer.alt} onClose={() => {
-        if (viewer.temp) URL.revokeObjectURL(viewer.src);
-        setViewer(null);
-      }} />}
-
+      {viewer && (
+        <ImageViewer
+          key={viewer.src}
+          src={viewer.src}
+          alt={viewer.alt}
+          onClose={() => {
+            if (viewer.temp) URL.revokeObjectURL(viewer.src);
+            setViewer(null);
+          }}
+        />
+      )}
     </div>
   );
 }

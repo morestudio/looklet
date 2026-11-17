@@ -4,15 +4,35 @@
 import { useState, type ChangeEvent } from 'react';
 import { isSampleGroup, type ProductGroup } from '@/lib/product-groups';
 import { thumbSrc } from '@/lib/browser';
-import { DeleteButton, PendingCard } from './ui';
+import { DeleteButton, PendingCard, PreviewButton } from './ui';
 
 const ACCEPT = 'image/*,.heic,.heif';
 
-export default function ProductLibrary({ groups, selected, busy, analyzing, saving, onSelect, onUpload, onRename, onRemovePhoto, onRestorePhoto, onDelete }: {
-  groups: ProductGroup[]; selected?: ProductGroup; busy: boolean;
-  analyzing: string[]; saving: { url: string }[];
-  onSelect: (id: string) => void; onUpload: (files: File[], append?: boolean) => Promise<void>;
+export default function ProductLibrary({
+  groups,
+  selected,
+  busy,
+  analyzing,
+  saving,
+  onSelect,
+  onUpload,
+  onRename,
+  onSetMain,
+  pickingMain,
+  onRemovePhoto,
+  onRestorePhoto,
+  onDelete,
+}: {
+  groups: ProductGroup[];
+  selected?: ProductGroup;
+  busy: boolean;
+  analyzing: string[];
+  saving: { url: string }[];
+  onSelect: (id: string) => void;
+  onUpload: (files: File[], append?: boolean) => Promise<void>;
   onRename: (group: ProductGroup, name: string) => Promise<void>;
+  onSetMain: (group: ProductGroup, src: string) => Promise<void>;
+  pickingMain: boolean; // AI กำลังเลือกรูปหลักของสินค้าที่เลือก
   onRemovePhoto: (group: ProductGroup, src: string) => Promise<void>;
   onRestorePhoto: (group: ProductGroup, src: string) => Promise<void>;
   onDelete: (group: ProductGroup) => void;
@@ -25,11 +45,27 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
   const [loaded, setLoaded] = useState<Set<string>>(() => new Set());
   const done = (src: string) => setLoaded((s) => (s.has(src) ? s : new Set(s).add(src)));
   const loading = (src?: string) => Boolean(src) && !loaded.has(src!);
-  const img = (src: string, alt: string) => <>
-    {/* cached img can complete before hydration attaches onLoad */}
-    <img src={thumbSrc(src)} alt={alt} loading="lazy" decoding="async" onLoad={() => done(src)} onError={() => done(src)} ref={(el) => { if (el?.complete) done(src); }} />
-    {loading(src) && <div className="pending-spin"><div className="spinner" /></div>}
-  </>;
+  const img = (src: string, alt: string) => (
+    <>
+      {/* cached img can complete before hydration attaches onLoad */}
+      <img
+        src={thumbSrc(src)}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => done(src)}
+        onError={() => done(src)}
+        ref={(el) => {
+          if (el?.complete) done(src);
+        }}
+      />
+      {loading(src) && (
+        <div className="pending-spin">
+          <div className="spinner" />
+        </div>
+      )}
+    </>
+  );
   const pick = (append: boolean) => (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
@@ -42,66 +78,230 @@ export default function ProductLibrary({ groups, selected, busy, analyzing, savi
     setEditing(null);
   }
 
-  return <div className="product-library">
-    <p className="sub product-list-title">สินค้าของฉัน</p>
-    <div className="product-group-grid">
-      {/* เพิ่มสินค้าใหม่ = กล่องเส้นประขนาดเท่าการ์ดสินค้า ช่องแรกของรายการ (28 ต.ค.) · กดเลือกไฟล์ หรือลากรูปมาวาง */}
-      <label className={'product-group-card product-add' + (over ? ' over' : '') + (busy ? ' busy' : '')}
-        onDragOver={(e) => { e.preventDefault(); if (!busy) setOver(true); }} onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          e.preventDefault(); setOver(false);
-          const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/') || /\.hei[cf]$/i.test(f.name));
-          if (files.length && !busy) void onUpload(files, false);
-        }}>
-        <span className="product-add-plus" aria-hidden="true">+</span>
-        <b>เพิ่มสินค้าใหม่</b>
-        <small>เลือกหลายรูปได้ถ้าเป็นสินค้าชิ้นเดียวกัน หรือลากรูปมาวาง</small>
-        <input type="file" aria-label="เพิ่มสินค้าใหม่" accept={ACCEPT} multiple disabled={busy} onChange={pick(false)} />
-      </label>
-      {analyzing.map((src) => <PendingCard key={src} src={src} />)}
-      {saving.map(({ url }) => <PendingCard key={url} src={url} label="กำลังเก็บรูป..." />)}
-      {[...groups].reverse().map((g) => {
-        const card = <button type="button" key={g.id} aria-pressed={selected?.id === g.id} disabled={busy}
-        onClick={() => { onSelect(g.id); setEditing(null); }} className={'product-group-card' + (selected?.id === g.id ? ' active' : '') + (loading(g.main?.src) ? ' loading' : '')}>
-        {g.main?.src ? img(g.main.src, g.name) : <span className="product-empty">ยังไม่มีรูป</span>}
-        <b>{g.name}</b><small>{isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}{g.photos.length} รูป</small>
-      </button>;
-        // own uploads get × like the model page's Card; samples aren't in storage · no × while busy (generating / saving)
-        // wrapper stays while busy so the card isn't remounted (thumbnail reload, lost focus)
-        return isSampleGroup(g) ? card : <div className="deletable" key={g.id}>{card}{!busy && <DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} />}</div>;
-      })}
-    </div>
-
-    {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องสี): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
-    {selected && <section className="current-product" aria-labelledby="product-detail-title">
-      <p className="sub" id="product-detail-title">รายละเอียดสินค้า</p>
-      {editing === null ? <div className="current-product-name">
-        <b>{selected.name}</b>
-        {!sample && <button type="button" className="btn btn-tertiary" disabled={busy} onClick={() => setEditing(selected.name)}>✎ เปลี่ยนชื่อ</button>}
-      </div> : <form className="current-product-name editing" onSubmit={(e) => { e.preventDefault(); void saveName(); }}>
-        <input className="text-input" autoFocus value={editing} maxLength={80} aria-label="ชื่อสินค้า"
-          onChange={(e) => setEditing(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditing(null); }} />
-        <span><button type="submit" className="btn btn-secondary" disabled={busy || !editing.trim()}>บันทึก</button>
-          <button type="button" className="btn btn-tertiary" onClick={() => setEditing(null)}>ยกเลิก</button></span>
-      </form>}
-      <p className="muted-text">{selected.photos.length} รูป</p>
-      <div className="current-product-photos">{selected.photos.map((p, i) => <figure key={p.src} className={loading(p.src) ? 'loading' : undefined}>
-        {img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
-        {p.src === selected.main?.src && <span className="current-product-main">รูปหลัก</span>}
-        {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
-        {!sample && selected.photos.length > 1 && <button type="button" className="current-product-remove" disabled={busy} aria-label={`นำรูปที่ ${i + 1} ออก`}
-          onClick={() => void onRemovePhoto(selected, p.src!).then(() => setRemoved({ group: selected.id, src: p.src! }), () => {})}>×</button>}
-      </figure>)}
-        {!sample && <label className={'current-product-add' + (busy ? ' busy' : '')} title="เพิ่มรูปมุมอื่นของสินค้านี้">
-          <span aria-hidden="true">+</span>
-          <input type="file" aria-label="เพิ่มรูปมุมอื่นของสินค้านี้" accept={ACCEPT} multiple disabled={busy} onChange={pick(true)} />
-        </label>}
+  return (
+    <div className="product-library">
+      <p className="sub product-list-title">สินค้าของฉัน</p>
+      <div className="product-group-grid">
+        {/* เพิ่มสินค้าใหม่ = กล่องเส้นประขนาดเท่าการ์ดสินค้า ช่องแรกของรายการ (28 ต.ค.) · กดเลือกไฟล์ หรือลากรูปมาวาง */}
+        <label
+          className={'product-group-card product-add' + (over ? ' over' : '') + (busy ? ' busy' : '')}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!busy) setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOver(false);
+            const files = Array.from(e.dataTransfer.files).filter(
+              (f) => f.type.startsWith('image/') || /\.hei[cf]$/i.test(f.name),
+            );
+            if (files.length && !busy) void onUpload(files, false);
+          }}
+        >
+          <span className="product-add-plus" aria-hidden="true">
+            +
+          </span>
+          <b>เพิ่มสินค้าใหม่</b>
+          <small>เลือกหลายรูปได้ถ้าเป็นสินค้าชิ้นเดียวกัน หรือลากรูปมาวาง</small>
+          <input type="file" aria-label="เพิ่มสินค้าใหม่" accept={ACCEPT} multiple disabled={busy} onChange={pick(false)} />
+        </label>
+        {analyzing.map((src) => (
+          <PendingCard key={src} src={src} />
+        ))}
+        {saving.map(({ url }) => (
+          <PendingCard key={url} src={url} label="กำลังเก็บรูป..." />
+        ))}
+        {[...groups].reverse().map((g) => {
+          const card = (
+            <button
+              type="button"
+              key={g.id}
+              aria-pressed={selected?.id === g.id}
+              disabled={busy}
+              onClick={() => {
+                onSelect(g.id);
+                setEditing(null);
+              }}
+              className={
+                'product-group-card' +
+                (selected?.id === g.id ? ' active' : '') +
+                (loading(g.main?.src) ? ' loading' : '')
+              }
+            >
+              {g.main?.src ? img(g.main.src, g.name) : <span className="product-empty">ยังไม่มีรูป</span>}
+              <b>{g.name}</b>
+              <small>
+                {isSampleGroup(g) ? 'ตัวอย่าง · ' : ''}
+                {g.photos.length} รูป
+              </small>
+            </button>
+          );
+          // own uploads get × like the model page's Card; samples aren't in storage · no × while busy (generating / saving)
+          // wrapper always there (magnifier; while busy so the card isn't remounted: thumbnail reload, lost focus)
+          return (
+            <div className="deletable" key={g.id}>
+              {card}
+              {g.main?.src && <PreviewButton src={g.main.src} alt={g.name} />}
+              {!isSampleGroup(g) && !busy && <DeleteButton title="ลบสินค้านี้ (ย้ายไปถังขยะ)" onClick={() => onDelete(g)} />}
+            </div>
+          );
+        })}
       </div>
-      {removed?.group === selected.id && <p className="muted-text">นำรูปออกแล้ว · <button type="button" className="btn btn-tertiary" disabled={busy}
-        onClick={() => void onRestorePhoto(selected, removed.src).then(() => setRemoved(null), () => {})}>เอากลับ</button></p>}
-      <p className="muted-text">{sample
-        ? 'สินค้าตัวอย่าง ลองสร้างรูปได้เลย — สินค้าของคุณเองเพิ่มได้ที่ช่อง "เพิ่มสินค้าใหม่" ด้านบน'
-        : 'กด + เพิ่มรูปด้านหลัง ด้านข้าง หรือรายละเอียด (โลโก้ ซิป) ช่วยให้ AI ทำสินค้าได้ตรงกว่า'}</p>
-    </section>}
-  </div>;
+
+      {/* รายละเอียดสินค้า (เดิม "สินค้าที่ใช้" ในกล่องสี): ส่วนเรียบๆ คั่นด้วยเส้น · ชื่อ + เปลี่ยนชื่อ · รูปทุกมุม + กล่องเส้นประเพิ่มมุม (28 ต.ค.) */}
+      {selected && (
+        <section className="current-product" aria-labelledby="product-detail-title">
+          <p className="sub" id="product-detail-title">
+            รายละเอียดสินค้า
+          </p>
+          {editing === null ? (
+            <div className="current-product-name">
+              <b>{selected.name}</b>
+              {!sample && (
+                <button
+                  type="button"
+                  className="btn btn-tertiary"
+                  disabled={busy}
+                  onClick={() => setEditing(selected.name)}
+                >
+                  ✎ เปลี่ยนชื่อ
+                </button>
+              )}
+            </div>
+          ) : (
+            <form
+              className="current-product-name editing"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveName();
+              }}
+            >
+              <input
+                className="text-input"
+                autoFocus
+                value={editing}
+                maxLength={80}
+                aria-label="ชื่อสินค้า"
+                onChange={(e) => setEditing(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setEditing(null);
+                }}
+              />
+              <span>
+                <button type="submit" className="btn btn-secondary" disabled={busy || !editing.trim()}>
+                  บันทึก
+                </button>
+                <button type="button" className="btn btn-tertiary" onClick={() => setEditing(null)}>
+                  ยกเลิก
+                </button>
+              </span>
+            </form>
+          )}
+          <p className="muted-text">{selected.photos.length} รูป</p>
+          <div className="current-product-photos">
+            {selected.photos.map((p, i) => {
+              const main = p.src === selected.main?.src;
+              // รูปหลัก = Image 1 ที่ AI ยึดทรงสินค้า (16 พ.ย. MAISON 2.11: รูปแรกที่อัปโหลดเป็นรูปแขวนเอียง AI ลอกก้นโค้ง + สายสองเส้น)
+              // กดรูปอื่นเพื่อตั้งเป็นรูปหลัก · สินค้าตัวอย่างไม่ได้อยู่ในคลัง ตั้งไม่ได้
+              const pickable = !sample && !main && selected.photos.length > 1;
+              return (
+                <figure
+                  key={p.src}
+                  className={
+                    [loading(p.src) && 'loading', main && selected.photos.length > 1 && 'is-main']
+                      .filter(Boolean)
+                      .join(' ') || undefined
+                  }
+                >
+                  {pickable ? (
+                    <button
+                      type="button"
+                      className="current-product-pick"
+                      disabled={busy}
+                      aria-label={`ตั้งรูปที่ ${i + 1} เป็นรูปหลัก`}
+                      title="ตั้งเป็นรูปหลัก"
+                      onClick={() => void onSetMain(selected, p.src!).catch(() => {})}
+                    >
+                      {img(p.src!, `${selected.name} รูปที่ ${i + 1}`)}
+                      <span className="current-product-main hint" aria-hidden="true">
+                        ตั้งเป็นหลัก
+                      </span>
+                    </button>
+                  ) : (
+                    img(p.src!, `${selected.name} รูปที่ ${i + 1}`)
+                  )}
+                  {main && <span className="current-product-main">รูปหลัก</span>}
+                  <PreviewButton src={p.src!} alt={`${selected.name} รูปที่ ${i + 1}`} />
+                  {/* นำออกได้เมื่อมีมากกว่า 1 รูป (สินค้าไม่ว่าง) · เก็บไฟล์ไว้ กดเอากลับได้ */}
+                  {!sample && selected.photos.length > 1 && (
+                    <button
+                      type="button"
+                      className="current-product-remove"
+                      disabled={busy}
+                      aria-label={`นำรูปที่ ${i + 1} ออก`}
+                      onClick={() =>
+                        void onRemovePhoto(selected, p.src!).then(
+                          () => setRemoved({ group: selected.id, src: p.src! }),
+                          () => {},
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  )}
+                </figure>
+              );
+            })}
+            {!sample && (
+              <label className={'current-product-add' + (busy ? ' busy' : '')} title="เพิ่มรูปมุมอื่นของสินค้านี้">
+                <span aria-hidden="true">+</span>
+                <input
+                  type="file"
+                  aria-label="เพิ่มรูปมุมอื่นของสินค้านี้"
+                  accept={ACCEPT}
+                  multiple
+                  disabled={busy}
+                  onChange={pick(true)}
+                />
+              </label>
+            )}
+          </div>
+          {removed?.group === selected.id && (
+            <p className="muted-text">
+              นำรูปออกแล้ว ·{' '}
+              <button
+                type="button"
+                className="btn btn-tertiary"
+                disabled={busy}
+                onClick={() =>
+                  void onRestorePhoto(selected, removed.src).then(
+                    () => setRemoved(null),
+                    () => {},
+                  )
+                }
+              >
+                เอากลับ
+              </button>
+            </p>
+          )}
+          {/* รูปหลัก: AI เลือกให้ตอนมี 2 รูปขึ้นไป (บอกเหตุผล) · ผู้ใช้กดเปลี่ยนได้ แล้ว AI จะไม่เปลี่ยนทับ */}
+          {!sample && selected.photos.length > 1 && (
+            <p className="muted-text">
+              {pickingMain
+                ? 'AI กำลังเลือกรูปหลัก...'
+                : selected.mainBy === 'ai' && selected.mainNote
+                  ? `รูปหลัก = รูปที่ AI ยึดทรงสินค้า · AI เลือกให้: ${selected.mainNote} · กดรูปอื่นเพื่อเปลี่ยน`
+                  : 'รูปหลัก = รูปที่ AI ยึดทรงสินค้า ควรเป็นรูปหน้าตรง พื้นเรียบ มีสินค้าชิ้นเดียว ไม่แขวนหรือถือ · กดรูปอื่นเพื่อเปลี่ยน'}
+            </p>
+          )}
+          <p className="muted-text">
+            {sample
+              ? 'สินค้าตัวอย่าง ลองสร้างรูปได้เลย — สินค้าของคุณเองเพิ่มได้ที่ช่อง "เพิ่มสินค้าใหม่" ด้านบน'
+              : 'กด + เพิ่มรูปด้านหลัง ด้านข้าง หรือรายละเอียด (โลโก้ ซิป) ช่วยให้ AI ทำสินค้าได้ตรงกว่า'}
+          </p>
+        </section>
+      )}
+    </div>
+  );
 }
