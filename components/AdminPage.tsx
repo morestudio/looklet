@@ -1,14 +1,15 @@
 'use client';
 // AdminPage.tsx — หน้า /admin (superadmin): การใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี (โค้ดและอีเมล) — ข้อมูลจาก app/api/admin
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/browser';
-import { SignOutButton } from './AuthForm';
+import { api, loadMe } from '@/lib/browser';
+import { AccountMenu } from './AuthForm';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
 type Tally = { ok: number; error: number; cost: number; tokens: number; measured: number; measuredTokens: number; model: number; product: number; last: string | null };
 type InviteRow = Tally & { userId: string; code: string | null; label: string; tokenQuota: number; disabled: boolean; created: string };
+type PendingRow = { userId: string; label: string; email: string; phone: string; line: string; created: string };
 type Data = {
-  total: Tally; invites: InviteRow[]; team: (Tally & { email: string })[];
+  total: Tally; pending: PendingRow[]; invites: InviteRow[]; team: (Tally & { email: string })[];
   recent: { created: string; who: string; page: string; action: string; status: string; cost: number; tokens: number | null }[];
 };
 const DEFAULT_TOKEN_QUOTA = 300_000; // = DEFAULT_TOKEN_QUOTA ใน lib/usage.ts (ไฟล์นั้นใช้ฝั่ง server เท่านั้น)
@@ -20,6 +21,33 @@ async function fetchAdmin(): Promise<{ data?: Data; error?: string }> {
   const res = await fetch('/api/admin').catch(() => null);
   const out = await res?.json().catch(() => ({}));
   return res?.ok ? { data: out } : { error: out?.error ?? `โหลดข้อมูลไม่สำเร็จ (HTTP ${res?.status ?? 'ไม่มีเน็ต'})` };
+}
+
+// sign-ups from /signup (app/api/signup): approve with a token quota, or remove (deletes the user and their details)
+function PendingSignups({ rows, busy, run }: { rows: PendingRow[]; busy: boolean; run: (body: Record<string, unknown>) => Promise<void> }) {
+  const [quota, setQuota] = useState<Record<string, number>>({});
+  return <section className="admin-card admin-pending">
+    <h2>รออนุมัติ ({rows.length})</h2>
+    <p className="muted-text">สมัครเองที่หน้าสมัครใช้งาน ยังเข้าเว็บไม่ได้จนกว่าจะอนุมัติ ไม่แน่ใจให้โทรหรือทักไปถามก่อน · ลบทิ้ง = ลบบัญชีและข้อมูลติดต่อทั้งหมด</p>
+    <div className="admin-table-wrap"><table className="admin-table">
+      <thead><tr><th>ชื่อร้าน</th><th>อีเมล</th><th>เบอร์โทร</th><th>LINE</th><th>สมัครเมื่อ</th><th>โควตา (โทเคน)</th><th></th></tr></thead>
+      <tbody>{rows.map((r) => <tr key={r.userId}>
+        <td>{r.label}</td>
+        <td>{r.email}</td>
+        <td><a href={`tel:${r.phone.replace(/[^\d+]/g, '')}`}>{r.phone}</a></td>
+        <td>{r.line || '—'}</td>
+        <td>{when(r.created)}</td>
+        <td><input className="text-input" type="number" min={0} max={100000000} step={10000} aria-label={`โควตาของ ${r.label}`} disabled={busy}
+          value={quota[r.userId] ?? DEFAULT_TOKEN_QUOTA} onChange={(e) => setQuota((q) => ({ ...q, [r.userId]: Number(e.target.value) }))} /></td>
+        <td className="admin-pending-actions">
+          <button className="btn btn-primary" disabled={busy}
+            onClick={() => void run({ action: 'approve', userId: r.userId, tokenQuota: quota[r.userId] ?? DEFAULT_TOKEN_QUOTA })}>อนุมัติ</button>
+          <button className="btn btn-tertiary" disabled={busy}
+            onClick={() => { if (confirm(`ลบคำขอของ ${r.label} (${r.email})? บัญชีและข้อมูลติดต่อจะถูกลบทั้งหมด`)) void run({ action: 'remove', userId: r.userId }); }}>ลบทิ้ง</button>
+        </td>
+      </tr>)}</tbody>
+    </table></div>
+  </section>;
 }
 
 export default function AdminPage() {
@@ -45,6 +73,7 @@ export default function AdminPage() {
       const out = await api<{ codes?: string[] }>('/api/admin', body);
       done?.(out);
       await load();
+      void loadMe(true); // AccountMenu's waiting count
     } catch (err) { setStatus((err as Error).message); }
     finally { setBusy(false); }
   }
@@ -56,11 +85,12 @@ export default function AdminPage() {
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{status}</div>
-      <div className="top-actions"><GalleryLink /><SignOutButton /></div>
+      <div className="top-actions"><GalleryLink /><AccountMenu /></div>
     </header>
     <main className="admin-main">
       <AdminTabs current="overview" />
       {!data ? <p className="muted-text">{status || 'กำลังโหลด...'}</p> : <>
+        {data.pending.length > 0 && <PendingSignups rows={data.pending} busy={busy} run={run} />}
         <section className="admin-totals">
           <div><span>รูปที่สร้างสำเร็จ</span><b>{data.total.ok.toLocaleString('th-TH')}</b><small>นางแบบ {data.total.model} · สินค้า {data.total.product}</small></div>
           {/* เฉลี่ยต่อรูป = ไว้ตั้งโควตา: อยากให้ได้ N รูป ให้โทเคนประมาณ N × ค่าเฉลี่ย */}
@@ -75,7 +105,7 @@ export default function AdminPage() {
             <h2>บัญชี</h2>
             {active.some((i) => i.code) && <button className="btn btn-secondary" onClick={() => copy(active.filter((i) => i.code).map((i) => `${i.label || 'ลูกค้า'}: ${i.code}`).join('\n'), 'โค้ดที่เปิดใช้ทั้งหมด')}>คัดลอกทุกโค้ด</button>}
           </div>
-          <p className="muted-text">ทุกบัญชีเห็นเฉพาะรูปของตัวเอง เข้าได้ 2 แบบ: พิมพ์โค้ดที่หน้าเข้าใช้งาน (1 โค้ด = 1 บัญชี) หรืออีเมล + รหัสผ่าน (เพิ่มด้วย scripts/add-user.mjs ขึ้นในตารางนี้หลังเข้าใช้ครั้งแรก) · ปิดบัญชีแล้วสร้างรูปไม่ได้ทันที · โควตานับโทเคนของรูปที่สร้างสำเร็จ (300,000 ≈ รูปสินค้า 50–60 รูป หรือรูปนางแบบ ~30 รูป)</p>
+          <p className="muted-text">ทุกบัญชีเห็นเฉพาะรูปของตัวเอง เข้าได้ 2 แบบ: พิมพ์โค้ดที่หน้าเข้าใช้งาน (1 โค้ด = 1 บัญชี) หรืออีเมล + รหัสผ่าน (สมัครเองที่หน้าสมัครใช้งานแล้วรออนุมัติด้านบน หรือเพิ่มด้วย scripts/add-user.mjs) · ปิดบัญชีแล้วสร้างรูปไม่ได้ทันที · โควตานับโทเคนของรูปที่สร้างสำเร็จ (300,000 ≈ รูปสินค้า 50–60 รูป หรือรูปนางแบบ ~30 รูป)</p>
           <div className="admin-table-wrap"><table className="admin-table">
             <thead><tr><th>เข้าด้วย</th><th>ชื่อ</th><th>โทเคน ใช้ไป / โควตา</th><th>นางแบบ · สินค้า</th><th>พัง</th><th>ค่า AI</th><th>ใช้ล่าสุด</th><th>สถานะ</th></tr></thead>
             <tbody>{data.invites.map((i) => <tr key={i.userId} className={(i.disabled ? 'off' : '') + (i.code && fresh.includes(i.code) ? ' fresh' : '')}>

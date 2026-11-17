@@ -2,7 +2,7 @@
 // AuditPage.tsx — หน้า /admin/audit (superadmin): ทุกครั้งที่สร้างรูป ใหม่สุดก่อน กดรูปเพื่อดูพรอมต์ รูปที่ส่งให้ AI และค่าที่เลือก — ข้อมูลจาก app/api/admin/audit
 // พรอมต์เริ่มเก็บ 2 พ.ย. (usage.log) · รูปก่อนหน้านั้นจับคู่จากเวลาที่สร้าง ไม่มีพรอมต์
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import { IconCopy } from './icons';
 import { thumbSrc } from '@/lib/browser';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
@@ -123,7 +123,7 @@ export default function AuditPage() {
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
       <div className="status" role="status">{message}</div>
-      <div className="top-actions"><GalleryLink /><SignOutButton /></div>
+      <div className="top-actions"><GalleryLink /><AccountMenu /></div>
     </header>
     <main className="admin-main">
       <AdminTabs current="audit" />

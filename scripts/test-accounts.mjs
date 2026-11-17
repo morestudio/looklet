@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
+import { appLoader } from './lib/load-app.mjs';
 const require = createRequire(import.meta.url);
 
 // ---------- Supabase จำลอง: ตาราง images / accounts / usage + auth admin ----------
@@ -59,6 +60,7 @@ const serviceClient = () => ({
   auth: { admin: {
     getUserById: async (id) => ({ data: { user: users.get(id) ?? null } }),
     createUser: async ({ email, password, app_metadata }) => {
+      if ([...users.values()].some((u) => u.email === email)) return { data: { user: null }, error: { code: 'email_exists', message: 'exists' } };
       const user = { id: `user-${users.size + 1}`, email, password, app_metadata };
       users.set(user.id, user);
       return { data: { user }, error: null };
@@ -79,7 +81,7 @@ const files = new Map();
 const supabaseMock = {
   supabaseEnabled: true, serviceClient,
   sbSave: async (key, area, kind, data, _mime, meta) => { files.set(key, data); db.images.push({ path: key, area, kind, meta, created: new Date().toISOString() }); },
-  sbList: async (area, kind) => db.images.filter((r) => r.area === area && (r.kind ?? null) === kind),
+  sbList: async (area, kind, owner) => db.images.filter((r) => r.area === area && (r.kind ?? null) === kind && (r.meta?.owner ?? null) === owner),
   sbRead: async (key, allowed) => { const r = db.images.find((x) => x.path === key); return r && allowed(r.meta) ? files.get(key) ?? Buffer.from('x') : null; },
   sbMeta: async (key) => db.images.find((x) => x.path === key)?.meta ?? null,
   sbUpdateMeta: async (key, meta, allowed) => { const r = db.images.find((x) => x.path === key); if (!r || !allowed(r.meta)) return false; r.meta = { ...r.meta, ...meta }; return true; },
@@ -89,12 +91,13 @@ const supabaseMock = {
   sbReadThumb: async (key, _w, allowed) => { const r = db.images.find((x) => x.path === key); return r && allowed(r.meta) ? Buffer.from('thumb') : null; },
 };
 let caller; // บัญชีที่ "เข้าสู่ระบบ" อยู่ใน request ถัดไป (undefined = ยังไม่เข้า)
+let sessionSub = null; // the browser session's user id (also for accounts that aren't members yet, e.g. a pending sign-up)
 const mocks = {
   'server-only': {},
   'lib/storage-supabase.ts': supabaseMock,
   'lib/supabase/server.ts': {
     signedInAccount: async () => caller, isSignedInMember: async () => caller !== undefined,
-    createClient: async () => ({ auth: { signInWithPassword: async (creds) => {
+    createClient: async () => ({ auth: { getClaims: async () => ({ data: { claims: sessionSub ? { sub: sessionSub } : null } }), signInWithPassword: async (creds) => {
       signIns.push(creds);
       const user = [...users.values()].find((u) => u.email === creds.email);
       return { error: user && user.password === creds.password ? null : { message: 'invalid' } };
@@ -131,12 +134,23 @@ const meRoute = load('app/api/me/route.ts');
 const inviteLogin = load('app/api/invite-login/route.ts');
 const admin = load('app/api/admin/route.ts');
 const audit = load('app/api/admin/audit/route.ts');
+const signup = load('app/api/signup/route.ts');
 const request = (body) => new Request('http://test/api', { method: 'POST', body: JSON.stringify(body) });
 
 const alice = { id: 'alice', email: 'a@x', role: 'customer' };
 const bob = { id: 'bob', email: 'b@x', role: 'customer' };
-const team = { id: 'team', email: 'team@x', role: 'team' };
+const team = { id: 'team', email: 'team@x', role: 'customer' }; // a customer signing in with email
 const boss = { id: 'boss', email: 'boss@x', role: 'superadmin' };
+
+// ---------- role (lib/auth.ts, 16 Nov): superadmin or customer, whichever way the account signs in ----------
+{
+  const { roleOf } = appLoader()('lib/auth.ts');
+  const c = (app_metadata) => ({ app_metadata });
+  assert.equal(roleOf(c({ looklet: true, role: 'superadmin' })), 'superadmin');
+  assert.equal(roleOf(c({ looklet: true })), 'customer'); // email account: no stored role
+  assert.equal(roleOf(c({ looklet: true, role: 'customer' })), 'customer'); // older code accounts
+  assert.equal(roleOf(c({ looklet: true, role: 'team' })), 'customer'); // no team any more
+}
 
 // ---------- โค้ดเชิญ ----------
 for (let n = 0; n < 50; n++) assert.match(newInviteCode(), /^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/);
@@ -235,9 +249,10 @@ db.accounts.find((a) => a.user_id === 'team').token_quota = 1000;
 await withAccount(team, () => recordUsage({ page: 'model', action: 'generate', model: 'openai:gpt-image-2.5-sunburst', quality: 'high', status: 'ok', tokens: 1200 }));
 assert.equal((await withAccount(team, () => quotaBlock())).status, 429);
 db.accounts.find((a) => a.user_id === 'team').token_quota = 300000;
-// code account without a row stays disabled (no row made for it)
-assert.equal((await withAccount(bob, () => quotaBlock())).status, 403);
-assert(!db.accounts.some((a) => a.user_id === 'bob'));
+// any account without a row gets one on first use (a code account's row comes from /admin; one deleted by hand comes back with code null)
+assert.equal(await withAccount(bob, () => quotaBlock()), null);
+assert.deepEqual(db.accounts.filter((a) => a.user_id === 'bob').map((a) => a.code), [null]);
+db.accounts = db.accounts.filter((a) => a.user_id !== 'bob');
 assert.equal(await withAccount(boss, () => quotaBlock()), null); // superadmin: no quota, no row
 assert(!db.accounts.some((a) => a.user_id === 'boss'));
 db.usage = db.usage.filter((u) => u.user_id !== 'team');
@@ -269,10 +284,15 @@ assert.equal(await withAccount(team, () => uploadBlock()), null);
 // ---------- /api/me: every limited account gets its token bar ----------
 caller = team;
 let mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
-assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['team', 'team@x', 300000, 0]);
+assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['customer', 'team@x', 300000, 0]);
+assert.deepEqual([mine.login, mine.email], ['email', 'team@x']); // account menu: change password shown
+caller = alice; // code account: no change password, its internal email is never sent
+mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
+assert.deepEqual([mine.login, mine.email, mine.label], ['code', undefined, 'ร้าน A']);
 caller = boss;
 mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
 assert.equal(mine.tokenQuota, undefined);
+assert.deepEqual([mine.login, mine.email], ['email', 'boss@x']);
 
 // ---------- admin: เฉพาะ superadmin ออกโค้ด / แก้ / ปิด ----------
 caller = alice;
@@ -286,7 +306,7 @@ const [code1, code2] = (await res.json()).codes;
 assert.equal(db.accounts.filter((i) => [code1, code2].includes(i.code) && i.token_quota === 300000).length, 2);
 const user1 = users.get(db.accounts.find((i) => i.code === code1).user_id);
 const user2 = users.get(db.accounts.find((i) => i.code === code2).user_id);
-assert.deepEqual(user1.app_metadata, { looklet: true, role: 'customer' });
+assert.deepEqual(user1.app_metadata, { looklet: true }); // role is not stored for customers; accounts.code marks a code account
 res = await admin.GET(new Request('http://test/api/admin'), {});
 const summary = await res.json();
 const aliceRow = summary.invites.find((i) => i.code === 'AAAA-BBBB');
@@ -317,7 +337,7 @@ assert.equal(await login(code1.toLowerCase().replace('-', ' ')), 200);
 assert.equal(signIns.at(-1).email, user1.email);
 caller = boss;
 assert.equal((await admin.POST(request({ action: 'update', userId: user1.id, disabled: true }))).status, 200);
-assert.deepEqual(user1.app_metadata, { looklet: false, role: 'customer' }); // ปิดแล้วถอดสิทธิ์ + แบน
+assert.deepEqual(user1.app_metadata, { looklet: false }); // ปิดแล้วถอดสิทธิ์ + แบน
 assert.equal(user1.ban_duration, '876000h');
 caller = undefined;
 assert.equal(await login(code1), 401);
@@ -373,4 +393,70 @@ assert.equal(list.rows.length, 4);
 assert(list.rows.every((x) => !x.hasLog));
 noAuditColumns = false;
 
-console.log('Accounts passed: invite codes, code login, per-account image privacy for email and code accounts (legacy team library hidden), owner cannot be forged, email-account rows on first use, upload cap, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');
+// ---------- sign-up at /signup (17 Nov): waits for a superadmin, approve or remove ----------
+{
+  caller = undefined; // not signed in
+  const form = { email: 'New@Shop.com ', password: 'Password123!', shop: ' ร้านใหม่ ', phone: '081-234-5678', line: '@newshop' };
+  const before = users.size;
+  assert.equal((await signup.POST(request({ ...form, website: 'http://spam' }))).status, 200); // honeypot: looks fine, makes nothing
+  assert.equal(users.size, before);
+  for (const bad of [{ email: 'nope' }, { password: 'short' }, { shop: '  ' }, { phone: '12ab' }, { phone: '1234' }]) {
+    assert.equal((await signup.POST(request({ ...form, ...bad }))).status, 400, JSON.stringify(bad));
+  }
+  assert.equal(users.size, before);
+  assert.equal((await signup.POST(request(form))).status, 200);
+  const applicant = [...users.values()].find((u) => u.email === 'new@shop.com');
+  assert(applicant && !applicant.app_metadata?.looklet); // no member flag: the proxy keeps it out
+  const row = db.accounts.find((a) => a.user_id === applicant.id);
+  assert.deepEqual([row.pending, row.code, row.label, row.phone, row.line, row.token_quota], [true, null, 'ร้านใหม่', '081-234-5678', '@newshop', 300000]);
+  assert.equal((await signup.POST(request(form))).status, 409); // same email again
+  // login form asks whether a non-member session is waiting
+  sessionSub = applicant.id;
+  assert.deepEqual(await (await signup.GET()).json(), { pending: true });
+  sessionSub = 'alice';
+  assert.deepEqual(await (await signup.GET()).json(), { pending: false });
+  sessionSub = null;
+  assert.deepEqual(await (await signup.GET()).json(), { pending: false });
+  // even if it got past the proxy, a pending account can't generate or upload
+  const pendingAccount = { id: applicant.id, email: applicant.email, role: 'customer' };
+  assert.equal((await withAccount(pendingAccount, () => quotaBlock())).status, 403);
+  assert.equal((await withAccount(pendingAccount, () => uploadBlock())).status, 403);
+
+  // admin: listed apart (with email and contact), superadmin only
+  caller = alice;
+  assert.equal((await admin.POST(request({ action: 'approve', userId: applicant.id }))).status, 403);
+  caller = boss;
+  let view = await (await admin.GET(new Request('http://test/api/admin'), {})).json();
+  assert.deepEqual(view.pending.map((p) => [p.label, p.email, p.phone, p.line]), [['ร้านใหม่', 'new@shop.com', '081-234-5678', '@newshop']]);
+  assert(!view.invites.some((i) => i.userId === applicant.id));
+  assert.equal((await (await meRoute.GET(new Request('http://test/api/me'), {})).json()).pending, 1); // number on the แอดมิน tab
+  assert.equal((await admin.POST(request({ action: 'approve', userId: applicant.id, tokenQuota: -1 }))).status, 400);
+  assert.equal((await admin.POST(request({ action: 'approve', userId: applicant.id, tokenQuota: 50000 }))).status, 200);
+  assert.equal(applicant.app_metadata.looklet, true);
+  assert.deepEqual([row.pending, row.token_quota], [false, 50000]);
+  assert.equal((await withAccount(pendingAccount, () => quotaBlock())), null); // approved: can generate
+  assert.equal((await admin.POST(request({ action: 'approve', userId: applicant.id }))).status, 404); // not pending any more
+  assert.equal((await admin.POST(request({ action: 'remove', userId: applicant.id }))).status, 404); // never removes a live account
+  assert(users.has(applicant.id));
+  view = await (await admin.GET(new Request('http://test/api/admin'), {})).json();
+  assert.deepEqual([view.pending.length, view.invites.some((i) => i.userId === applicant.id)], [0, true]);
+  assert.equal((await (await meRoute.GET(new Request('http://test/api/me'), {})).json()).pending, 0);
+
+  // remove: user and details gone, the email can sign up again
+  caller = undefined;
+  assert.equal((await signup.POST(request({ ...form, email: 'spam@x.com' }))).status, 200);
+  const spam = [...users.values()].find((u) => u.email === 'spam@x.com');
+  caller = boss;
+  assert.equal((await admin.POST(request({ action: 'remove', userId: spam.id }))).status, 200);
+  assert(!users.has(spam.id) && !db.accounts.some((a) => a.user_id === spam.id));
+  caller = undefined;
+  assert.equal((await signup.POST(request({ ...form, email: 'spam@x.com' }))).status, 200);
+
+  // flood cap: MAX_PENDING waiting requests closes sign-up
+  for (let n = db.accounts.filter((a) => a.pending).length; n < signup.MAX_PENDING; n++) db.accounts.push({ user_id: `flood-${n}`, pending: true });
+  assert.equal((await signup.POST(request({ ...form, email: 'late@x.com' }))).status, 503);
+  assert(![...users.values()].some((u) => u.email === 'late@x.com'));
+  db.accounts = db.accounts.filter((a) => !String(a.user_id).startsWith('flood-'));
+}
+
+console.log('Accounts passed: invite codes, sign-up with approval (honeypot, validation, pending blocked, approve/remove, flood cap), code login, per-account image privacy for email and code accounts (legacy team library hidden), owner cannot be forged, email-account rows on first use, upload cap, forced model, token quota (failures free, unknown tokens estimated), disable, superadmin-only admin, and the audit page (prompts stored with usage, old rows matched by time, filters, paging, works before the DB migration).');

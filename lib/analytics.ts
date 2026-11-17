@@ -7,7 +7,7 @@ const GA_HOST = 'lolostyleshot.vercel.app'; // production only: localhost and Ve
 export const GA_DEBUG = process.env.NEXT_PUBLIC_GA_DEBUG === '1'; // local testing: load anywhere, events show in GA DebugView
 
 export type AnalyticsEvent =
-  | 'login' | 'step_done' | 'step_view' | 'upload'
+  | 'login' | 'sign_up' | 'step_done' | 'step_view' | 'upload'
   | 'generate_start' | 'generate_success' | 'generate_error' | 'quota_blocked'
   | 'image_kept' | 'gallery_remove' | 'local_edit' | 'creative_ideas';
 export type Params = Record<string, string | number | boolean>;

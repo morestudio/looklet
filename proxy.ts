@@ -4,6 +4,14 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { authEnabled, isMember, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/auth';
+import { serviceClient } from '@/lib/storage-supabase';
+
+// code accounts can't change their password: it is derived from the code. accounts.code says how an account signs in
+// (null = email); asked only on /account, read failure = blocked
+async function codeAccount(userId: string) {
+  const { data, error } = await serviceClient().from('accounts').select('code').eq('user_id', userId).maybeSingle();
+  return !!error || data?.code != null;
+}
 
 export async function proxy(request: NextRequest) {
   if (!authEnabled) return NextResponse.next();
@@ -34,12 +42,14 @@ export async function proxy(request: NextRequest) {
     }
     return res;
   };
-  if (pathname === '/login') return member ? carry(NextResponse.redirect(new URL('/', request.url))) : response;
-  if (pathname === '/api/invite-login') return response; // เข้าด้วยโค้ดเชิญ: คนที่ยังไม่เข้าสู่ระบบต้องเรียกได้
+  if (pathname === '/login' || pathname === '/signup') return member ? carry(NextResponse.redirect(new URL('/', request.url))) : response;
+  // เข้าด้วยโค้ดเชิญ / สมัครใช้งาน: คนที่ยังไม่เข้าสู่ระบบต้องเรียกได้
+  if (pathname === '/api/invite-login' || pathname === '/api/signup') return response;
   if (member) {
     const role = roleOf(data?.claims);
-    // หน้า admin เฉพาะ superadmin (API เช็กซ้ำ) · ลูกค้าเข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
-    if (((pathname === '/admin' || pathname.startsWith('/admin/')) && role !== 'superadmin') || (pathname === '/account' && role === 'customer')) {
+    // หน้า admin เฉพาะ superadmin (API เช็กซ้ำ) · บัญชีที่เข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
+    if (((pathname === '/admin' || pathname.startsWith('/admin/')) && role !== 'superadmin')
+      || (pathname === '/account' && await codeAccount(String(data!.claims!.sub)))) {
       return carry(NextResponse.redirect(new URL('/', request.url)));
     }
     return response;

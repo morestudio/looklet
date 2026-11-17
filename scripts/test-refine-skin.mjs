@@ -31,7 +31,7 @@ function app({ member = true, key = true, missing = false, providerFails = false
       localTime: () => '2026-10-22 12:00:00', sentences: (p) => [p], writeGenerateLog: async (l) => logs.push(l),
     },
     // ทีมงาน (ไม่มีโควตา) · undefined = ยังไม่เข้าสู่ระบบ
-    './supabase/server': { isSignedInMember: async () => member, signedInAccount: async () => (member ? { id: 'team', email: 'team@x', role: 'team' } : undefined) },
+    './supabase/server': { isSignedInMember: async () => member, signedInAccount: async () => (member ? { id: 'team', email: 'team@x', role: 'customer', login: 'email' } : undefined) },
     'node:async_hooks': { AsyncLocalStorage },
     '@/lib/usage': { quotaBlock: async () => null, recordUsage: async (entry) => { usages.push(entry); } },
     // แปลง PNG -> JPEG: ทดสอบแค่ว่าเรียกด้วย quality 97 แล้วเก็บผลที่ได้

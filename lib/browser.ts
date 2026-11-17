@@ -11,6 +11,32 @@ export const friendlyError = (message: string) => SAFETY_BLOCK.test(message)
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export const USAGE_EVENT = 'looklet:usage';
+
+// signed-in account (/api/me): ONE request per page load, shared by every useMe() and Analytics; fetched again once after
+// each image request (USAGE_EVENT). Plain fetch, not api(): api() sends a 401 to /login, which would loop on /login itself.
+// Timeout: a hung /api/me must not hold up the header or GA. A failed load is not kept, so the next caller retries.
+export type Me = {
+  role: 'superadmin' | 'customer'; aid?: string; login?: 'code' | 'email'; email?: string; label?: string; tokens?: number; tokenQuota?: number;
+  pending?: number; // superadmin: sign-ups waiting for approval
+};
+let meRequest: Promise<Me | null> | null = null;
+const meListeners = new Set<(me: Me | null) => void>();
+export function loadMe(fresh = false): Promise<Me | null> {
+  if (meRequest && !fresh) return meRequest;
+  const request: Promise<Me | null> = fetch('/api/me', { signal: AbortSignal.timeout(5000) })
+    .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+    .catch(() => null);
+  meRequest = request;
+  void request.then((me) => {
+    if (meRequest !== request) return; // a newer request replaced it
+    if (!me) meRequest = null;
+    meListeners.forEach((l) => l(me));
+  });
+  return request;
+}
+// subscribe to later loads (the refetch after a generation); returns unsubscribe
+export const onMe = (listener: (me: Me | null) => void) => { meListeners.add(listener); return () => { meListeners.delete(listener); }; };
+if (typeof window !== 'undefined') window.addEventListener(USAGE_EVENT, () => void loadMe(true));
 const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];
 
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
@@ -101,12 +127,14 @@ export async function uploadImage(file: File, maxBytes = 1_500_000, maxSide = 20
 // /api/upload for both studio pages (TryOn, Packshot): the stored src, or, when saving fails on the network / server side (5xx),
 // a temporary blob copy (gone on refresh) + a warning so the pick isn't lost
 // throws on any 4xx (upload cap 409, disabled account 403, bad file 400/413): retrying can't help, so no temporary copy that would look saved; the caller shows the message
-export async function storeUpload(body: Record<string, unknown>, file: File): Promise<{ src: string; warning?: string }> {
+// temporary: false -> throws on every failure (product photos: the first one's src becomes the product id, a blob: id would break the rest)
+export async function storeUpload(body: Record<string, unknown>, file: File, { temporary = true } = {}): Promise<{ src: string; warning?: string }> {
   try {
     return { src: (await api('/api/upload', { ...body, ...(await uploadImage(file)) })).src };
   } catch (err) {
     const status = (err as { status?: number }).status ?? 0;
     if (status >= 400 && status < 500) throw err;
+    if (!temporary) throw new Error(`บันทึกรูปไม่สำเร็จ (${(err as Error).message}) ลองเพิ่มใหม่อีกครั้ง`);
     return { src: URL.createObjectURL(file), warning: `เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง` };
   }
 }

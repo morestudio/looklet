@@ -15,7 +15,7 @@ import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
 import { errorReason, itemSource, stopwatch, track, trackKept } from '@/lib/analytics';
 import { PRODUCT_SAMPLES, isSampleGroup, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import {
   IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
@@ -427,7 +427,8 @@ export default function Packshot() {
     setSaving((s) => [...s, { key, url: preview }]);
     let stored: Awaited<ReturnType<typeof storeUpload>>;
     try {
-      stored = await storeUpload({ kind: KIND[key], name, type, ...groupMeta }, file);
+      // product photos are never kept as temporary copies (onProductFiles uses the first one's src as the product id)
+      stored = await storeUpload({ kind: KIND[key], name, type, ...groupMeta }, file, { temporary: key !== 'product' });
     } finally {
       setSaving((s) => s.filter((x) => x.url !== preview));
       URL.revokeObjectURL(preview);
@@ -1142,7 +1143,7 @@ export default function Packshot() {
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
           <GalleryLink />
           <TokenUsage />
-          <SignOutButton />
+          <AccountMenu />
         </div>
       </header>
 

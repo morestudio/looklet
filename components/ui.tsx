@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react';
 import { trackStepDone, type StudioPage } from '@/lib/analytics';
 import { authEnabled } from '@/lib/auth';
-import { thumbSrc, USAGE_EVENT } from '@/lib/browser';
+import { loadMe, onMe, thumbSrc, type Me } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
 import { IconBookmark } from './icons';
 
@@ -180,29 +180,27 @@ export function useChosenSteps<K extends string>(current: K, page: StudioPage) {
   return { chosen, mark: markAs(current), markAs, setChosen }; // setChosen: restore the set when a saved setup is loaded (TryOn recipe)
 }
 
-// บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นแท็บแอดมิน · ลูกค้าเห็นแถบโทเคน (TokenUsage มุมขวาบน)
-type Me = { role: 'superadmin' | 'customer' | 'team'; label?: string; tokens?: number; tokenQuota?: number };
+// บัญชีที่เข้าอยู่ (/api/me): superadmin เห็นเมนูแอดมิน (AccountMenu) · บัญชีที่มีโควตาเห็นแถบโทเคน (TokenUsage มุมขวาบน)
+// one shared request per page (loadMe in lib/browser.ts), not one per component
 export function useMe() {
   const [me, setMe] = useState<Me | null>(null);
   useEffect(() => {
     if (!authEnabled) return;
-    const load = () => void fetch('/api/me').then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
-    load();
-    window.addEventListener(USAGE_EVENT, load);
-    return () => window.removeEventListener(USAGE_EVENT, load);
+    const off = onMe(setMe);
+    void loadMe().then(setMe);
+    return off;
   }, []);
   return me;
 }
 
 // 'gallery' -> no active tab
+// แอดมิน lives in AccountMenu (components/AuthForm.tsx) since 17 Nov
 export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' | 'gallery' }) {
-  const me = useMe();
-  const tab = (id: 'model' | 'product' | 'admin', href: string, label: string) => (
+  const tab = (id: 'model' | 'product', href: string, label: ReactNode) => (
     <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
   );
   return <nav className="page-switch" aria-label="เลือกหน้า">
     {tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}
-    {me?.role === 'superadmin' && tab('admin', '/admin', 'แอดมิน')}
   </nav>;
 }
 

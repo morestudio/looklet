@@ -4,6 +4,7 @@
 import Script from 'next/script';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { GA_ID, gaEnabled, markConfigured, takeLogin, track } from '@/lib/analytics';
+import { loadMe } from '@/lib/browser';
 
 const never = () => () => {}; // host and env don't change while the page is open
 export default function Analytics() {
@@ -21,12 +22,9 @@ export default function Analytics() {
       window.gtag('js', new Date());
     }
     let cancelled = false;
-    // plain fetch, not api(): api() sends a 401 to /login, which would loop on the login page itself
-    // timeout: a hung /api/me would never configure, and the queued events would never leave
-    fetch('/api/me', { signal: AbortSignal.timeout(5000) })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((me: { role?: string; aid?: string } | null) => {
+    // shared /api/me request (loadMe: plain fetch with a timeout, so a hung request can't keep the queued events from leaving)
+    loadMe()
+      .then((me) => {
         if (cancelled) return;
         // the property's tag configures itself when gtag.js loads (gtm.init) and ignores gtag('config') params
         // (ignoreDupeGtagConfigCalls), so user_id and role go through 'set'; queued before the script loads, every

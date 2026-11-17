@@ -9,6 +9,8 @@ create table if not exists public.images (
   created timestamptz not null default now()
 );
 create index if not exists images_area_kind_created on public.images (area, kind, created desc);
+-- 16 Nov: lists (sbList) and the upload cap (sbCountUploads) filter by owner
+create index if not exists images_owner_area_kind_created on public.images ((meta->>'owner'), area, kind, created desc);
 -- 10 พ.ย.: จัดโฟลเดอร์ใน bucket ตามบัญชี (team/... = คลังร่วมของทีม, customers/<id บัญชี>/... = ลูกค้า) — ลิงก์รูปและ path ไม่เปลี่ยน
 -- object = ที่อยู่ไฟล์จริง (objectKey ใน lib/storage-supabase.ts) · null = ไฟล์ยังอยู่ที่ path เดิม (scripts/storage-rearrange.mjs ย้ายให้)
 alter table public.images add column if not exists object text;
@@ -67,6 +69,13 @@ create index if not exists usage_user_created on public.usage (user_id, created 
 -- โควตาเป็นโทเคน (28 ต.ค.): accounts.quota (จำนวนรูป) ไม่ใช้แล้ว · ค่าเริ่มต้นตรงกับ DEFAULT_TOKEN_QUOTA ใน lib/usage.ts
 alter table public.accounts add column if not exists token_quota int not null default 300000 check (token_quota >= 0);
 alter table public.accounts alter column token_quota set default 300000; -- เพิ่มจาก 200,000 (28 ต.ค.) · แอปส่งค่าเองทุกครั้งที่สร้างโค้ด
+
+-- 17 Nov: sign-up at /signup waits for a superadmin: pending = true and no looklet flag yet (proxy keeps it out).
+-- phone / line = how to reach the applicant (personal data: superadmin only, never sent to analytics).
+-- approve = looklet flag + pending false; remove = delete the auth user and this row
+alter table public.accounts add column if not exists pending boolean not null default false;
+alter table public.accounts add column if not exists phone text;
+alter table public.accounts add column if not exists line text;
 
 -- 16 Nov: every existing email (team) account gets its row now, so /admin can see it and raise its quota before the deploy
 -- (its earlier token use counts); members only, not code accounts or superadmin; accounts added later get a row on first use

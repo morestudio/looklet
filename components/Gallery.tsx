@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { IconBookmark, IconEdit, IconHeart, IconInfo } from './icons';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import ImageViewer from './ImageViewer';
+import { authEnabled } from '@/lib/auth';
 import { api, thumbSrc } from '@/lib/browser';
 import type { StoredResultBase, StylePlan } from '@/lib/result-types';
 import { DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
@@ -41,7 +42,8 @@ export default function Gallery() {
   const pendingFav = useRef(new Set<string>());
   const me = useMe();
   const router = useRouter();
-  const showRaw = me === null || me.role !== 'customer'; // raw meta for team / superadmin; null = no auth (local tool)
+  // raw meta (prompts) for the superadmin only, or the local tool without login; never while /api/me is still loading
+  const showRaw = !authEnabled || me?.role === 'superadmin';
 
   useEffect(() => {
     fetch('/api/library?only=results')
@@ -116,7 +118,7 @@ export default function Gallery() {
       <div className="top-actions">
         <GalleryLink active />
         <TokenUsage />
-        <SignOutButton />
+        <AccountMenu />
       </div>
     </header>
     <div className={'workspace gallery-workspace' + (info ? ' editing' : '')}>
