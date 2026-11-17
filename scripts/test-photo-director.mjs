@@ -169,7 +169,7 @@ test('generation route wires director constraints, final crop, stored reviews an
   let validPlan = true;
   let reviews = [failed(), review()];
   const app = appLoader({ env: { OPENAI_API_KEY: 'proposal-test-only' }, overrides: {
-    'lib/route.ts': { post: (fn) => fn, json: (status, body) => ({ status, body }) },
+    'lib/route.ts': { post: (fn) => fn, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) },
     'lib/ai.ts': {
       availableModels: () => [{ id: 'openai:gpt-image-2.5-sunburst' }],
       describeLighting: async () => 'Soft window light',

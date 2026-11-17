@@ -11,7 +11,7 @@ import {
 } from '@/lib/packshot';
 import { readCreativeConcept } from '@/lib/creative';
 import { HANDSHOT_SET, buildCreativePackshotPrompt, buildHandshotPrompt, buildPackshotPrompt, buildPackshotSetPrompt } from '@/lib/packshot-prompts';
-import { json, post } from '@/lib/route';
+import { errorResponse, json, post } from '@/lib/route';
 import { storableRecipe } from '@/lib/recipe';
 import { saveImage, type SetTag } from '@/lib/storage';
 import { quotaBlock, recordUsage } from '@/lib/usage';
@@ -30,35 +30,35 @@ const jpeg = (data: string): Img => ({ data, mime: 'image/jpeg' });
 const part = <T extends { id: string }>(list: T[], id: unknown, fallback: string) => list.find((x) => x.id === id) ?? list.find((x) => x.id === fallback)!;
 
 export const POST = post(async (req) => {
-  if (!availableModels().some((m) => m.id === req.model)) return json(400, { error: 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env' });
+  if (!availableModels().some((m) => m.id === req.model)) return errorResponse(400, 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env');
   const product = image(req.product);
-  if (!product) return json(400, { error: 'ไม่มีรูปสินค้า' });
+  if (!product) return errorResponse(400, 'ไม่มีรูปสินค้า');
   const type = productType(req.product_type);
   const shotType = req.shot_type == null ? 'styled' : SHOT_TYPES.find((s) => s.id === req.shot_type)?.id;
-  if (!shotType) return json(400, { error: 'ไม่มีประเภทภาพนี้' });
+  if (!shotType) return errorResponse(400, 'ไม่มีประเภทภาพนี้');
   const creative = shotType === 'creative' ? readCreativeConcept(req.creative_concept) : null;
-  if (shotType === 'creative' && (!creative || req.set_ref)) return json(400, { error: 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป' });
+  if (shotType === 'creative' && (!creative || req.set_ref)) return errorResponse(400, 'เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
   // Handshot: สร้างทีละรูป (ไม่มีชุดภาพหลายมุม) · ท่าที่ไม่เข้ากับสินค้า -> ท่าแรกที่ใช้ได้ (resolveHandPose ตัวเดียวกับหน้าเว็บ)
   const handshot = shotType === 'handshot';
-  if (handshot && req.set_ref) return json(400, { error: 'Handshot สร้างทีละรูป ไม่มีชุดภาพหลายมุม' });
+  if (handshot && req.set_ref) return errorResponse(400, 'Handshot สร้างทีละรูป ไม่มีชุดภาพหลายมุม');
   const handPose = handshot ? resolveHandPose(type.id, req.hand_pose) : null;
   const preset = productPreset(shotType === 'styled' ? req.preset : 'clean');
   const detail = DETAIL_TARGETS.find((d) => d.id === req.detail_target) ?? DETAIL_TARGETS[0];
-  if (shotType === 'detail' && detail.id === 'feature' && !text(req.feature)?.trim()) return json(400, { error: 'ระบุฟีเจอร์ที่ต้องการถ่าย' });
+  if (shotType === 'detail' && detail.id === 'feature' && !text(req.feature)?.trim()) return errorResponse(400, 'ระบุฟีเจอร์ที่ต้องการถ่าย');
   const scale = SCALE_REFERENCES.find((r) => r.id === req.scale_reference) ?? SCALE_REFERENCES[0];
   const dims = req.dimensions ?? {};
   const referenceSize = req.reference_size ?? {};
   const validSize = (v: unknown) => (typeof v === 'string' || typeof v === 'number') && Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 10000;
   if (shotType === 'scale' && (!['width', 'height', 'depth'].every((k) => validSize(dims[k]))
     || (scale.id === 'laptop' && !['width', 'depth'].every((k) => validSize(referenceSize[k]))))) {
-    return json(400, { error: 'กรอกขนาดจริงเป็นเซนติเมตรให้ครบ และมากกว่า 0' });
+    return errorResponse(400, 'กรอกขนาดจริงเป็นเซนติเมตรให้ครบ และมากกว่า 0');
   }
   const supports: string[] = Array.isArray(req.support_images) ? req.support_images.slice(0, 5).map(image).filter((i: string | null): i is string => Boolean(i)) : [];
   const aspect = isProductAspect(req.aspect) ? String(req.aspect) : '4:5';
   // ชุดภาพสินค้า (รูปที่ 2 เป็นต้นไป): set_ref = รูปแรกของชุด, set_shot = id ใน PRODUCT_SET_SHOTS — ไม่ส่งช็อตต้นแบบ/รูปฉาก ใช้จากรูปแรก
   const setRef = image(req.set_ref);
   const setShot = setRef ? PRODUCT_SET_SHOTS.find((s) => s.id === req.set_shot) : undefined;
-  if (setRef && !setShot) return json(400, { error: 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้' });
+  if (setRef && !setShot) return errorResponse(400, 'ชุดภาพ: ไม่มีมุมกล้องของรูปนี้');
   const recipe = storableRecipe(req.recipe); // every step's choices (lib/recipe.ts), stored with the image
   const setTag: SetTag | null = req.set && typeof req.set.id === 'string' && /^[\w-]{1,40}$/.test(req.set.id) && Number.isInteger(req.set.index)
     ? { id: req.set.id, index: req.set.index } : null;
@@ -66,7 +66,7 @@ export const POST = post(async (req) => {
 
   // ตั้งมุมเอง (Clean / Custom): ต้องมีตัวเลขมุมที่ใช้ได้ ตรวจก่อนเรียก AI · ประเภทอื่น / มุมที่ 2 ของชุดภาพ ไม่ใช้
   const wantsTurn = req.angle === CUSTOM_ANGLE && customAngleShot(shotType) && !setRef;
-  if (wantsTurn && !readTurn(req.turn)) return json(400, { error: 'มุมที่ตั้งเองไม่ถูกต้อง ลองหมุนใหม่อีกครั้ง' });
+  if (wantsTurn && !readTurn(req.turn)) return errorResponse(400, 'มุมที่ตั้งเองไม่ถูกต้อง ลองหมุนใหม่อีกครั้ง');
 
   const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI (รวมตัววางแผนพร็อพ)
   if (blocked) return blocked;

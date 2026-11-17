@@ -31,9 +31,11 @@ import { FILM_DEFAULT, NO_FILM, type Film, type FilmLook } from '@/lib/film';
 import { DEFAULT_ASPECT, PRESET_POSE, START, idOf, readRecipe, type PickKey as Key, type Recipe, type StepKey } from '@/lib/tryon-recipe';
 import { SKIN_MODEL } from '@/lib/skin';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
+  api, canOpenImage, canvasJpeg, finishedCanvas, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
   saveImageFile, storeUpload, thumbSrc, toWebImage,
 } from '@/lib/browser';
+import { failText, friendlyError } from '@/lib/errors';
+import { toast } from '@/lib/toast';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
   POSE_AUTO, POSE_MODES, POSE_PRESETS, POSES, PRESET_PARTS, PRESETS, PROPS, SCENES, SET_SHOTS, SKIN_TONES, defaultQuality, isGpt25, qualitiesFor,
@@ -177,7 +179,6 @@ export default function TryOn() {
   const [base, setBase] = useState<Recipe | null>(null); // recipe of the past image the current draft started from (set aside with the draft)
   const [confirmReset, setConfirmReset] = useState(false); // "ล้างตัวเลือก?" dialog before startOver
   const [original, setOriginal] = useState(false); // กดค้าง "ดูก่อนแต่ง"
-  const [status, setStatus] = useState('');
   const [retouchStatus, setRetouchStatus] = useState(''); // ข้อความในกล่องแต่งรูป
   const [busy, setBusy] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false); // generate() running: spinner on the "รูปใหม่" tile
@@ -292,7 +293,7 @@ export default function TryOn() {
           setAiModel(id);
           update({ quality: defaultQuality(id) });
         }
-        else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
+        else toast.error('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
 
@@ -318,11 +319,10 @@ export default function TryOn() {
   // ของเสริม: กดแล้วสลับเลือก/ไม่เลือก, null = ไม่ใส่สักชิ้น
   function toggleAccessory(id: string | null) {
     if (id !== null && !pick.accessory.includes(id) && pick.accessory.length >= accLimit) {
-      return setStatus(accLimit < MAX_ACCESSORIES
+      return toast.warn(accLimit < MAX_ACCESSORIES
         ? `เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาของเสริมหรือเสื้อผ้าบางชิ้นออกก่อน`
         : `ของเสริมเลือกได้ไม่เกิน ${MAX_ACCESSORIES} ชิ้นต่อรูป — กดชิ้นที่เลือกอยู่เพื่อเอาออกก่อน`);
     }
-    setStatus('');
     update(({ pick: p }) => ({ pick: {
       ...p,
       accessory: id === null ? [] : p.accessory.includes(id) ? p.accessory.filter((x) => x !== id) : [...p.accessory, id],
@@ -333,9 +333,8 @@ export default function TryOn() {
   function wear(slot: WearSlot, id: string | null) {
     const after = { outfit: pick.outfit, top: pick.top, bottom: pick.bottom, shoes: pick.shoes, ...wearPatch(slot, id) };
     if (id && [after.outfit, after.top, after.bottom, after.shoes].filter(Boolean).length + pick.accessory.length > MAX_WEAR) {
-      return setStatus(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาของเสริมออกก่อน`);
+      return toast.warn(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาของเสริมออกก่อน`);
     }
-    setStatus('');
     update((r) => ({ pick: { ...r.pick, ...wearPatch(slot, id) } }));
   }
 
@@ -351,7 +350,7 @@ export default function TryOn() {
       URL.revokeObjectURL(preview);
     }
     const { src, warning } = stored;
-    if (warning) setStatus(warning);
+    if (warning) toast.error(warning);
     else track('upload', { page: 'model', kind: KIND[key] });
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, uploaded: true }] }));
     // ของเสริม: ไม่ใช้ toggleAccessory เพราะระหว่างรอ AI ผู้ใช้อาจเลือก/เอาออกชิ้นอื่นไปแล้ว ต้องนับจากค่าล่าสุด
@@ -368,23 +367,24 @@ export default function TryOn() {
   async function onFile(key: Key, picked: File, slot?: WearSlot) {
     let file = picked;
     if (isHeic(picked)) {
-      setStatus('กำลังแปลงรูป HEIC เป็น JPG...');
+      const converted = toast.busy('กำลังแปลงรูป HEIC เป็น JPG...');
       try {
         file = await toWebImage(picked);
-        setStatus('');
       } catch (err) {
         console.error('แปลงรูป HEIC ไม่สำเร็จ', err);
-        return setStatus('เปิดรูป HEIC นี้ไม่ได้ — ลองส่งออกเป็น JPG จากแอปรูปภาพก่อน แล้วอัปโหลดใหม่');
+        return toast.error('เปิดรูป HEIC นี้ไม่ได้ — ลองส่งออกเป็น JPG จากแอปรูปภาพก่อน แล้วอัปโหลดใหม่');
+      } finally {
+        converted();
       }
     }
-    if (!(await canOpenImage(file))) return setStatus('เปิดรูปนี้ไม่ได้ (ชนิดไฟล์ไม่รองรับ) — ลองใช้รูป JPG หรือ PNG');
+    if (!(await canOpenImage(file))) return toast.error('เปิดรูปนี้ไม่ได้ (ชนิดไฟล์ไม่รองรับ) — ลองใช้รูป JPG หรือ PNG');
     const name = file.name.replace(/\.[^.]+$/, '');
     try {
       if (slot === 'shoes') return await addUpload('accessory', file, name, 'shoes');
       if (key === 'outfit') return await addUpload('outfit', file, name, slot === 'top' || slot === 'bottom' ? slot : undefined);
       if (key !== 'accessory') return await addUpload(key, file, name);
       await addAccessory(file);
-    } catch (err) { setStatus((err as Error).message); } // refused upload (cap, disabled, bad file)
+    } catch (err) { toast.error(friendlyError(err)); } // refused upload (cap, disabled, bad file)
   }
 
   // ของเสริม: ให้ AI ดูว่าเป็นอะไร + ตั้งชื่อ แล้วเพิ่มให้เลย ไม่ต้องกดยืนยัน
@@ -397,7 +397,7 @@ export default function TryOn() {
     if (!guess) return setDialog({ mode: 'add', file, url });
     URL.revokeObjectURL(url);
     await addUpload('accessory', file, guess.name, guess.type);
-    if (guess.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
+    if (guess.type === 'shoes') toast.info('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
   }
 
   async function onDialogDone(info: AccessoryInfo | null) {
@@ -407,15 +407,15 @@ export default function TryOn() {
     if (d.mode === 'add') {
       URL.revokeObjectURL(d.url);
       if (!info) return;
-      try { await addUpload('accessory', d.file, info.name, info.type); } catch (err) { return setStatus((err as Error).message); } // refused upload (cap, disabled, bad file)
-      if (info.type === 'shoes') setStatus('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
+      try { await addUpload('accessory', d.file, info.name, info.type); } catch (err) { return toast.error(friendlyError(err)); } // refused upload (cap, disabled, bad file)
+      if (info.type === 'shoes') toast.info('รูปนี้เป็นรองเท้า — อยู่ในขั้นเสื้อผ้า แท็บรองเท้า และเลือกให้แล้ว');
       return;
     }
     if (!info) return;
     try {
       if (!d.item.src!.startsWith('blob:')) await api('/api/update', { src: d.item.src, ...info });
     } catch (err) {
-      return setStatus('แก้ไม่สำเร็จ: ' + (err as Error).message);
+      return toast.error(failText('แก้', err));
     }
     setLists((l) => ({ ...l, accessory: l.accessory.map((a) => (a === d.item ? { ...a, ...info } : a)) }));
     // แก้เป็นรองเท้า -> ย้ายไปช่องรองเท้าในขั้นเสื้อผ้า (ไม่เป็นของเสริมที่เลือกอยู่แล้ว)
@@ -426,7 +426,7 @@ export default function TryOn() {
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
+      return toast.error(failText('ลบ', err));
     }
     const id = idOf(item);
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
@@ -439,7 +439,7 @@ export default function TryOn() {
     });
   }
 
-  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus, 'model');
+  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, 'model');
 
   // ใส่หน้าจริงจากรูปนางแบบแทนหน้าที่ AI วาดใหม่ แล้วเซฟเป็นรูปใหม่ (รูปจาก AI ยังอยู่ไว้เทียบ)
   // ทำไม่ได้ (หาหน้าไม่เจอ / หน้าหันคนละมุม) -> บอกเหตุผล แล้วใช้รูปจาก AI ตามเดิม
@@ -448,7 +448,7 @@ export default function TryOn() {
       const t = await loadTools(setRetouchStatus);
       const res = await t.pasteRealFace(modelSrc, aiSrc);
       if (!res.image) {
-        setStatus(`ใส่หน้าจริงไม่ได้: ${res.error} — ใช้หน้าจาก AI แทน`);
+        toast.error(`ใส่หน้าจริงไม่ได้: ${res.error} — ใช้หน้าจาก AI แทน`);
         return null;
       }
       const cv = document.createElement('canvas');
@@ -460,19 +460,18 @@ export default function TryOn() {
       return { src, caption: realCaption };
     } catch (err) {
       console.error('ใส่หน้าจริงไม่สำเร็จ', err);
-      setStatus(`ใส่หน้าจริงไม่สำเร็จ: ${(err as Error).message} — ใช้หน้าจาก AI แทน`);
+      toast.error(`${failText('ใส่หน้าจริง', err)} — ใช้หน้าจาก AI แทน`);
       return null;
     }
   }
 
   // set = ชุดภาพ 4 มุม (SET_SHOTS): รูปหลักสร้างตามที่เลือก แล้วส่งรูปหลักเป็นต้นแบบให้อีก 3 มุมพร้อมกัน
   async function generate(set = false) {
-    if (!wornCount && !accs.length && !pose && !posePreset && !scene) return setStatus('เลือกเสื้อผ้า ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
-    if (wornCount + accs.length > MAX_WEAR) return setStatus(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาบางชิ้นออกก่อน`);
+    if (!wornCount && !accs.length && !pose && !posePreset && !scene) return toast.warn('เลือกเสื้อผ้า ของเสริม ท่าโพสต์ หรือฉาก อย่างน้อย 1 อย่างก่อน');
+    if (wornCount + accs.length > MAX_WEAR) return toast.warn(`เสื้อผ้าและของเสริมรวมกันใส่ได้ไม่เกิน ${MAX_WEAR} ชิ้นต่อรูป — เอาบางชิ้นออกก่อน`);
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
     const platform = PLATFORM_ASPECTS.find((a) => a.id === aspect) ?? PLATFORM_ASPECTS.find((a) => a.id === DEFAULT_ASPECT)!;
-    setStatus('');
     const modeName = POSE_MODES.find((m) => m.id === poseMode)!.name;
     const caption = [
       model.name,
@@ -588,7 +587,7 @@ export default function TryOn() {
       const showMade = (count = 1) => {
         if (!sync.finished(sentKey)) {
           setCurrent((c) => (c === null ? c : c + count)); // list grew at the front: keep the same image on the stage
-          setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
+          toast.ok('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
           return;
         }
         setCurrent(0);
@@ -604,7 +603,7 @@ export default function TryOn() {
           references: [model, outfit, scene].filter((r): r is Item => Boolean(r?.src)).map((r) => ({ src: r.src!, name: r.name })),
           choose: (ids) => { setShotChoice(null); resolve(ids); },
         }));
-        if (!selected.length) { setStatus('ยกเลิกแล้ว ยังไม่ได้สร้างรูป'); return; }
+        if (!selected.length) { toast.info('ยกเลิกแล้ว ยังไม่ได้สร้างรูป'); return; }
         const batch = await generateSelectedShots(selected, async (id, index) => {
           const title = proposal.plan.candidates.find((c) => c.id === id)!.title;
           setBusy(`AI กำลังสร้างและตรวจรูป ${index + 1}/${selected.length} · ${title}`);
@@ -623,26 +622,24 @@ export default function TryOn() {
         const needsReview = batch.results.filter((r) => r.posePlan.review?.status !== 'passed').length;
         // ไอเดียที่ไม่สำเร็จไม่หยุดไอเดียอื่น (lib/shot-batch.ts) -> บอกชื่อไอเดียที่พังพร้อมเหตุผล
         const titleOf = (id: string) => proposal.plan.candidates.find((c) => c.id === id)?.title ?? id;
-        const failedText = batch.errors.map((e) => `${titleOf(e.id)}: ${friendlyError(e.message)}`).join(' · ');
-        setStatus(batch.errors.length
-          ? `สร้างได้ ${batch.results.length}/${selected.length} รูป${batch.results.length ? ' (เก็บไว้ในคลังแล้ว)' : ''} · ไม่สำเร็จ ${failedText}`
-          : `สร้างครบ ${batch.results.length} รูป${needsReview ? ` · ${needsReview} รูปควรตรวจภาพก่อนใช้` : ' · ผ่านการตรวจด้วย AI'}`);
+        // the quota note once for the whole line, and only when the server answered every failure (lib/errors.ts)
+        const failedText = batch.errors.map((e) => `${titleOf(e.id)}: ${friendlyError(e)}`).join(' · ');
+        const free = batch.errors.every((e) => e.status) ? ' · รูปที่ไม่สำเร็จไม่เสียโควตา' : '';
+        if (batch.errors.length) toast.error(`สร้างได้ ${batch.results.length}/${selected.length} รูป${batch.results.length ? ' (เก็บไว้ในคลังแล้ว)' : ''} · ไม่สำเร็จ ${failedText}${free}`);
+        else toast.ok(`สร้างครบ ${batch.results.length} รูป${needsReview ? ` · ${needsReview} รูปควรตรวจภาพก่อนใช้` : ' · ผ่านการตรวจด้วย AI'}`);
         if (batch.results.length) frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
       const out = await api<{ src: string; posePlan: PosePlan | null }>('/api/generate', { ...body, caption: set ? setCaption(0) : caption, set: setTag(0) });
       track('generate_success', { ...ga, duration_s: elapsed() });
       const made: Result[] = [{ src: out.src, caption: set ? setCaption(0) : caption, set: setTag(0), finish: body.finish, posePlan: out.posePlan ?? undefined, recipe }]; // server เซฟไว้ใน results/ แล้ว
-      if (out.posePlan) setStatus(out.posePlan.review
-        ? `${out.posePlan.name} · ${out.posePlan.review.summaryThai}${out.posePlan.repairError ? ' · ' + out.posePlan.repairError : ''}`
-        : `ท่าที่ AI คิดให้ (${out.posePlan.name}): ${out.posePlan.th}`);
       // ใส่หน้าจริง (เมื่อเปิด REAL_FACE): ถ้า AI หันหน้าคนละมุม realFace จะข้ามไปใช้หน้าจาก AI เอง
       // ยกเว้นมีของบนหน้า (แว่น/หมวก): แปะหน้าจริงทับแล้วของจะหายไป
       const onFace = [...new Set(accs.map(accessoryType).filter((t) => t.face).map((t) => t.name))].join('/');
       if (!REAL_FACE || set) {
         // ปิดอยู่ / ชุดภาพ (หลายมุม หน้าหันต่างกัน) -> ใช้รูปจาก AI ตามเดิม
       } else if (onFace) {
-        setStatus(`ใส่${onFace}อยู่บนหน้า เลยใช้หน้าจาก AI (ถ้าใส่หน้าจริง ${onFace}จะหายไป)`);
+        toast.info(`ใส่${onFace}อยู่บนหน้า เลยใช้หน้าจาก AI (ถ้าใส่หน้าจริง ${onFace}จะหายไป)`);
       } else {
         setBusy('กำลังใส่หน้าจริงจากรูปนางแบบ...');
         const real = await realFace(model.src!, out.src, caption);
@@ -671,12 +668,12 @@ export default function TryOn() {
         }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
         const failed = rest.filter((x) => x.status === 'rejected');
         if (failed.length) {
-          setStatus(`ชุดภาพได้ ${SET_SHOTS.length - failed.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${friendlyError((failed[0].reason as Error).message)}`);
+          toast.error(`ชุดภาพได้ ${SET_SHOTS.length - failed.length}/${SET_SHOTS.length} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${friendlyError(failed[0].reason, true)}`);
         }
       }
     } catch (err) {
       track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
-      setStatus('สร้างรูปไม่สำเร็จ: ' + friendlyError((err as Error).message));
+      toast.error(failText('สร้างรูป', err, true));
     } finally {
       setBusy(null);
       setPendingSet(null);
@@ -689,7 +686,6 @@ export default function TryOn() {
     if (!shown || busy !== null || !aiModels?.some((m) => m.id === SKIN_MODEL)) return;
     const source = shown;
     setBusy('AI กำลังปรับผิวให้สมจริง...');
-    setStatus('');
     try {
       const img = await loadImg(source.src);
       const refined = await api<Result>('/api/refine-skin', {
@@ -704,9 +700,9 @@ export default function TryOn() {
       setOriginal(false);
       setRetouchStatus('');
       setEditing(true); // see the refined skin next to the original
-      setStatus('ปรับผิวแล้ว เก็บรูปต้นฉบับและรูปใหม่ไว้ในคลังให้เทียบกัน');
+      toast.ok('ปรับผิวแล้ว เก็บรูปต้นฉบับและรูปใหม่ไว้ในคลังให้เทียบกัน');
     } catch (err) {
-      setStatus('ปรับผิวไม่สำเร็จ: ' + (err as Error).message);
+      toast.error(failText('ปรับผิว', err, true));
     } finally {
       setBusy(null);
     }
@@ -724,7 +720,7 @@ export default function TryOn() {
       setAmounts(NO_RETOUCH); setTone(null); setFinish('auto');
       setZoomed(false); setOriginal(false); setRetouchStatus('');
       setLocalEdit(null);
-      setStatus('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลัง');
+      toast.ok('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลัง');
     } catch (err) {
       track('local_edit', { page: 'model', painted: Boolean(request.mask), result: 'error', reason: errorReason(err) });
       throw err;
@@ -752,7 +748,7 @@ export default function TryOn() {
       const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
-      setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
+      toast.error(failText('เปิดรูป', err));
     }
   }
 
@@ -766,7 +762,7 @@ export default function TryOn() {
       if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
-      setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
+      toast.error(failText('ดาวน์โหลด', err));
     }
   }
 
@@ -820,7 +816,7 @@ export default function TryOn() {
   // "ล้าง" in the paper doll label = the "รูปใหม่" tile on a freshly opened page: page-open picks, no past-image base, same step
   const startOver = () => {
     sync.reset(sync.pageStart ?? recipe);
-    setBase(null); setOutfitTab('top'); setStatus('');
+    setBase(null); setOutfitTab('top');
     newTileRef.current?.focus(); // the ล้าง button unmounts (nothing left to reset); keep keyboard focus on the page
   };
   const canReset = base !== null || (sync.pageStart !== null && liveKey !== recipeKey(sync.pageStart)); // past-image draft or picks changed since page open
@@ -1265,9 +1261,6 @@ export default function TryOn() {
       <header className="topbar">
         <div className="brand">Lolo <span className="beta">Beta</span></div>
         <PageSwitch current="model" />
-        <div className="status" role="status" title={status}>
-          {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
-        </div>
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นสไตล์ถ่ายภาพ) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
           <GalleryLink />

@@ -25,8 +25,9 @@ function load(file) {
     if (id === './storage-supabase') return { supabaseEnabled: false };
     if (id === './images') return load('lib/images.ts'); // storage.ts ทำรูปย่อตอนเก็บ (เก็บในเครื่องไม่ใช้)
     if (id === './account') return load('lib/account.ts'); // ไม่มีบัญชี (null) = ทีม: เก็บลงเครื่องไม่กรอง
-    if (id === '@/lib/route') return { post: (fn) => fn, json };
+    if (id === '@/lib/route') return { post: (fn) => fn, json, errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }) };
     if (id === '@/lib/ai') return aiMock;
+    if (id === './api-error' || id === './fail-reason') return load('lib/' + id.slice(2) + '.ts'); // lib/usage.ts answers quota errors with errorResponse
     if (id.startsWith('@/lib/')) return load(id.slice(2) + '.ts');
     if (id === './aspects') return load('lib/aspects.ts'); // packshot.ts ใช้รายการสัดส่วนร่วมกับหน้านางแบบ
     if (id === './turntable') return load('lib/turntable.ts'); // packshot.ts ใช้คำบรรยายมุมของตั้งมุมเอง

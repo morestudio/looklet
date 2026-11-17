@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { loadImg } from '@/lib/browser';
+import { failText, friendlyError } from '@/lib/errors';
 import { MAX_EDIT_PIXELS, supportsMaskedEdit, type LocalEditMode } from '@/lib/local-edit';
 import { DEFAULT_AI_MODEL } from '@/lib/catalog';
 import { IconBrush, IconEraser } from './icons';
@@ -60,7 +61,7 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
       for (const canvas of [base.current, selection.current]) { canvas.width = image.naturalWidth; canvas.height = image.naturalHeight; }
       base.current.getContext('2d')!.drawImage(image, 0, 0);
       setReady(true);
-    }).catch((err) => { if (!cancelled) setError('โหลดรูปไม่สำเร็จ: ' + err.message); });
+    }).catch((err) => { if (!cancelled) setError(failText('โหลดรูป', err)); });
     return () => { cancelled = true; };
   }, [src]);
 
@@ -128,7 +129,7 @@ export default function LocalEditDialog({ src, models, initialModel, onClose, on
         mask = out.toDataURL('image/png').split(',')[1];
       }
       await onEdit({ mask, instruction: instruction.trim(), model, feather: 6, mode: MODE });
-    } catch (err) { setError((err as Error).message); }
+    } catch (err) { setError(friendlyError(err, true)); } // shown inside the dialog: a modal covers the page's toasts
     finally { submitting.current = false; setBusy(false); }
   }
 

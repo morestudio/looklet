@@ -1,6 +1,6 @@
 import { isSuperadmin, me } from '@/lib/account';
 import { inviteEmail, invitePassword, newInviteCode } from '@/lib/invites';
-import { get, json, post } from '@/lib/route';
+import { errorResponse, get, json, post } from '@/lib/route';
 import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 import { DEFAULT_TOKEN_QUOTA, tokensOf, type AccountRow } from '@/lib/usage';
 
@@ -25,7 +25,7 @@ function add(t: Tally, r: UsageRow) {
 const validTokenQuota = (n: number) => Number.isInteger(n) && n >= 0 && n <= 100_000_000;
 const TOKEN_QUOTA_ERROR = 'โควตาโทเคนต้องเป็นจำนวนเต็ม 0–100,000,000';
 
-const denied = () => (isSuperadmin(me()) ? (supabaseEnabled ? null : json(400, { error: 'หน้า admin ต้องใช้ Supabase' })) : json(403, { error: 'เฉพาะ superadmin' }));
+const denied = () => (isSuperadmin(me()) ? (supabaseEnabled ? null : errorResponse(400, 'หน้า admin ต้องใช้ Supabase')) : errorResponse(403, 'เฉพาะ superadmin'));
 
 export const GET = get(async () => {
   const no = denied();
@@ -75,19 +75,19 @@ export const POST = post(async (req) => {
   if (req.action === 'create') {
     const count = Number(req.count);
     const tokenQuota = req.tokenQuota == null ? DEFAULT_TOKEN_QUOTA : Number(req.tokenQuota);
-    if (!Number.isInteger(count) || count < 1 || count > 20) return json(400, { error: 'สร้างได้ครั้งละ 1–20 โค้ด' });
-    if (!validTokenQuota(tokenQuota)) return json(400, { error: TOKEN_QUOTA_ERROR });
+    if (!Number.isInteger(count) || count < 1 || count > 20) return errorResponse(400, 'สร้างได้ครั้งละ 1–20 โค้ด');
+    if (!validTokenQuota(tokenQuota)) return errorResponse(400, TOKEN_QUOTA_ERROR);
     const codes: string[] = [];
     for (let n = 0; n < count; n++) {
       const code = newInviteCode();
       const created = await sb.auth.admin.createUser({
         email: inviteEmail(), password: invitePassword(code), email_confirm: true, app_metadata: { looklet: true },
       });
-      if (created.error || !created.data.user) return json(500, { error: 'สร้างบัญชีไม่สำเร็จ: ' + created.error?.message, codes });
+      if (created.error || !created.data.user) return errorResponse(500, 'สร้างบัญชีไม่สำเร็จ: ' + created.error?.message, { extra: { codes } });
       const row = await sb.from('accounts').insert({ code, user_id: created.data.user.id, token_quota: tokenQuota, label: typeof req.label === 'string' ? req.label.trim().slice(0, 80) : '' });
       if (row.error) {
         await sb.auth.admin.deleteUser(created.data.user.id); // ไม่มีแถวโค้ด = บัญชีนี้ใช้ไม่ได้ ลบทิ้งไม่ให้ค้าง
-        return json(500, { error: 'บันทึกโค้ดไม่สำเร็จ: ' + row.error.message, codes });
+        return errorResponse(500, 'บันทึกโค้ดไม่สำเร็จ: ' + row.error.message, { extra: { codes } });
       }
       codes.push(code);
     }
@@ -95,12 +95,12 @@ export const POST = post(async (req) => {
   }
   if (req.action === 'update') {
     const { data: invite } = await sb.from('accounts').select('*').eq('user_id', String(req.userId)).maybeSingle();
-    if (!invite) return json(404, { error: 'ไม่พบบัญชีนี้' });
+    if (!invite) return errorResponse(404, 'ไม่พบบัญชีนี้');
     const patch: Partial<AccountRow> = {};
     if (typeof req.label === 'string') patch.label = req.label.trim().slice(0, 80);
     if (req.tokenQuota != null) {
       const tokenQuota = Number(req.tokenQuota);
-      if (!validTokenQuota(tokenQuota)) return json(400, { error: TOKEN_QUOTA_ERROR });
+      if (!validTokenQuota(tokenQuota)) return errorResponse(400, TOKEN_QUOTA_ERROR);
       patch.token_quota = tokenQuota;
     }
     if (typeof req.disabled === 'boolean' && req.disabled !== invite.disabled) {
@@ -110,32 +110,32 @@ export const POST = post(async (req) => {
       const { error } = await sb.auth.admin.updateUserById(invite.user_id, {
         app_metadata: { looklet: !req.disabled }, ban_duration: req.disabled ? '876000h' : 'none',
       });
-      if (error) return json(500, { error: 'เปลี่ยนสถานะบัญชีไม่สำเร็จ: ' + error.message });
+      if (error) return errorResponse(500, 'เปลี่ยนสถานะบัญชีไม่สำเร็จ: ' + error.message);
     }
     const { error } = await sb.from('accounts').update(patch).eq('user_id', invite.user_id);
-    if (error) return json(500, { error: 'แก้บัญชีไม่สำเร็จ: ' + error.message });
+    if (error) return errorResponse(500, 'แก้บัญชีไม่สำเร็จ: ' + error.message);
     return json(200, { ok: true });
   }
   // sign-ups (/signup): only pending rows, so these two can never touch a live account
   if (req.action === 'approve' || req.action === 'remove') {
     const { data: row } = await sb.from('accounts').select('*').eq('user_id', String(req.userId)).maybeSingle();
-    if (!row?.pending) return json(404, { error: 'ไม่พบคำขอนี้ (อาจอนุมัติหรือลบไปแล้ว)' });
+    if (!row?.pending) return errorResponse(404, 'ไม่พบคำขอนี้ (อาจอนุมัติหรือลบไปแล้ว)');
     if (req.action === 'approve') {
       const tokenQuota = req.tokenQuota == null ? DEFAULT_TOKEN_QUOTA : Number(req.tokenQuota);
-      if (!validTokenQuota(tokenQuota)) return json(400, { error: TOKEN_QUOTA_ERROR });
+      if (!validTokenQuota(tokenQuota)) return errorResponse(400, TOKEN_QUOTA_ERROR);
       // member flag first: if the row update then fails the row stays pending (quotaBlock still blocks) and approve can be retried
       const { error } = await sb.auth.admin.updateUserById(row.user_id, { app_metadata: { looklet: true } });
-      if (error) return json(500, { error: 'อนุมัติไม่สำเร็จ: ' + error.message });
+      if (error) return errorResponse(500, 'อนุมัติไม่สำเร็จ: ' + error.message);
       const { error: rowError } = await sb.from('accounts').update({ pending: false, token_quota: tokenQuota }).eq('user_id', row.user_id);
-      if (rowError) return json(500, { error: 'อนุมัติไม่สำเร็จ: ' + rowError.message });
+      if (rowError) return errorResponse(500, 'อนุมัติไม่สำเร็จ: ' + rowError.message);
       return json(200, { ok: true });
     }
     // remove: the person's data goes too (PDPA: nothing kept about someone we don't serve)
     const { error } = await sb.auth.admin.deleteUser(row.user_id);
-    if (error && error.status !== 404) return json(500, { error: 'ลบไม่สำเร็จ: ' + error.message });
+    if (error && error.status !== 404) return errorResponse(500, 'ลบไม่สำเร็จ: ' + error.message);
     const { error: rowError } = await sb.from('accounts').delete().eq('user_id', row.user_id);
-    if (rowError) return json(500, { error: 'ลบไม่สำเร็จ: ' + rowError.message });
+    if (rowError) return errorResponse(500, 'ลบไม่สำเร็จ: ' + rowError.message);
     return json(200, { ok: true });
   }
-  return json(400, { error: 'ไม่มีคำสั่งนี้' });
+  return errorResponse(400, 'ไม่มีคำสั่งนี้');
 });

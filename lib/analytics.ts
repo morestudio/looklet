@@ -65,13 +65,10 @@ export function takeLogin(): string | null {
 export const itemSource = (src: string | undefined | null) =>
   !src ? 'none' : src.startsWith('/images/') ? 'sample' : 'upload';
 
-// the AI provider refused the image (friendlyError in lib/browser.ts words it for the user)
-export const SAFETY_BLOCK = /safety system|safety_violations|moderation_blocked/i;
-
-// short reason ids for generate_error: api() (lib/browser.ts) attaches the HTTP status to its errors
+// short reason ids for generate_error: api() (lib/browser.ts) attaches the HTTP status and the server's reason to its errors
 export function errorReason(err: unknown): string {
-  const { message = '', status } = (err ?? {}) as { message?: string; status?: number };
-  if (SAFETY_BLOCK.test(message)) return 'safety';
+  const { status, reason } = (err ?? {}) as { status?: number; reason?: string }; // reason: lib/fail-reason.ts, from the server
+  if (reason === 'safety') return 'safety';
   if (status === 403 || status === 429) return 'quota';
   if (status === 413) return 'too_large';
   if (status === 504) return 'timeout';

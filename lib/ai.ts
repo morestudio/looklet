@@ -26,14 +26,19 @@ export type Img = { data: string; mime: string }; // data = base64
 // รูปที่ AI สร้าง + โทเคนที่คิดจริงของการเรียกครั้งนั้น (0 = AI ไม่บอก) -> โควตาลูกค้า (lib/usage.ts)
 export type Generated = Img & { tokens: number };
 
-// ข้อความ error ที่ส่งกลับไปให้หน้าเว็บแสดงได้ตรงๆ
-export class ApiError extends Error {}
+// AI call failed. providerStatus = the provider's HTTP status (lib/route.ts turns it into a FailReason); absent for our own wording
+export class ApiError extends Error {
+  constructor(message: string, readonly providerStatus?: number) { super(message); }
+}
 
 async function post(url: string, init: RequestInit, who: string, timeout = 300_000) {
-  const res = await fetch(url, { ...init, method: 'POST', signal: AbortSignal.timeout(timeout) });
+  // no answer (timeout, network): reported like the provider's own outage (504 / 503 -> ai_busy in lib/fail-reason.ts)
+  const res = await fetch(url, { ...init, method: 'POST', signal: AbortSignal.timeout(timeout) }).catch((e: Error) => {
+    throw new ApiError(`${who} ไม่ตอบ: ${e.name}: ${e.message}`, e.name === 'TimeoutError' ? 504 : 503);
+  });
   if (!res.ok) {
     const msg = await res.json().then((d) => d?.error?.message ?? '', () => '');
-    throw new ApiError(`${who} ตอบกลับ ${res.status}: ${msg}`);
+    throw new ApiError(`${who} ตอบกลับ ${res.status}: ${msg}`, res.status);
   }
   return res.json();
 }

@@ -1,7 +1,7 @@
 import { availableModels, generateImage } from '@/lib/ai';
 import { localTime, sentences, writeGenerateLog, type GenerateLog } from '@/lib/genlog';
 import { editCanvas, fromEditCanvas, toEditCanvas } from '@/lib/local-edit-images';
-import { json, post } from '@/lib/route';
+import { errorResponse, json, post } from '@/lib/route';
 import { SKIN_MODEL, SKIN_PROMPT, SKIN_SIZES } from '@/lib/skin';
 import sharp from 'sharp';
 import { storableRecipe } from '@/lib/recipe';
@@ -13,17 +13,17 @@ export const maxDuration = 300;
 // รับเฉพาะรูปผลลัพธ์ในคลัง ไม่รับ URL ภายนอกหรือรูปอัปโหลด — อ่านต้นฉบับเต็มขนาดบน server
 export const POST = post(async (req) => {
   if (!req || typeof req.src !== 'string' || !/^\/api\/files\/results\/[\w-]+\.(?:png|jpe?g|webp)$/.test(req.src)) {
-    return json(400, { error: 'เลือกรูปที่สร้างไว้ในคลังก่อนปรับผิว' });
+    return errorResponse(400, 'เลือกรูปที่สร้างไว้ในคลังก่อนปรับผิว');
   }
   const size = Object.hasOwn(SKIN_SIZES, req.size) ? SKIN_SIZES[req.size] : null;
-  if (!size) return json(400, { error: 'ขนาดรูปไม่ถูกต้อง' });
+  if (!size) return errorResponse(400, 'ขนาดรูปไม่ถูกต้อง');
   if (!availableModels().some((m) => m.id === SKIN_MODEL)) {
-    return json(400, { error: 'ปรับผิวไม่ได้: ยังไม่ได้ตั้งค่า OpenAI API key' });
+    return errorResponse(400, 'ปรับผิวไม่ได้: ยังไม่ได้ตั้งค่า OpenAI API key');
   }
   const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI
   if (blocked) return blocked;
   const image = await readImage(req.src.slice('/api/files/'.length).split('/'));
-  if (!image) return json(404, { error: 'ไม่พบรูปต้นฉบับ อาจถูกลบไปแล้ว' });
+  if (!image) return errorResponse(404, 'ไม่พบรูปต้นฉบับ อาจถูกลบไปแล้ว');
   const caption = `${typeof req.caption === 'string' ? req.caption.slice(0, 260) : 'รูปที่สร้างไว้'} · ผิวสมจริง`;
   const recipe = storableRecipe(req.recipe); // source image's recipe, sent by the page
   const meta = { caption, finish: 'off' as const, refinedFrom: req.src, ...(recipe ? { recipe } : {}) };

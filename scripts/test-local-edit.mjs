@@ -24,7 +24,7 @@ function load(file) {
   }).outputText;
   new Function('require', 'module', 'exports', 'process', 'fetch', code)((id) => {
     if (id === 'server-only') return {};
-    if (id === '@/lib/route') return { post: (fn) => fn, get: (fn) => fn, json: (status, body) => ({ status, body }), signedIn: async () => null };
+    if (id === '@/lib/route') return { post: (fn) => fn, get: (fn) => fn, json: (status, body) => ({ status, body }), errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }), signedIn: async () => null };
     if (id === '@/lib/usage') return { quotaBlock: async () => null, recordUsage: async (entry) => usages.push(entry) };
     if (id === '@/lib/storage') return { THUMB_WIDTHS: [400, 512], readThumb: async () => null, readImage: async () => imageRead, listImages: async () => sourceMeta ? [sourceMeta] : [],
       saveImage: async (where, data, mime, meta) => { saved.push({ where, data, mime, meta }); return '/api/files/results/new.png'; },
