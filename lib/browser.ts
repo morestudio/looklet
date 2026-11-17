@@ -101,12 +101,14 @@ export async function uploadImage(file: File, maxBytes = 1_500_000, maxSide = 20
 // /api/upload for both studio pages (TryOn, Packshot): the stored src, or, when saving fails on the network / server side (5xx),
 // a temporary blob copy (gone on refresh) + a warning so the pick isn't lost
 // throws on any 4xx (upload cap 409, disabled account 403, bad file 400/413): retrying can't help, so no temporary copy that would look saved; the caller shows the message
-export async function storeUpload(body: Record<string, unknown>, file: File): Promise<{ src: string; warning?: string }> {
+// temporary: false -> throws on every failure (product photos: the first one's src becomes the product id, a blob: id would break the rest)
+export async function storeUpload(body: Record<string, unknown>, file: File, { temporary = true } = {}): Promise<{ src: string; warning?: string }> {
   try {
     return { src: (await api('/api/upload', { ...body, ...(await uploadImage(file)) })).src };
   } catch (err) {
     const status = (err as { status?: number }).status ?? 0;
     if (status >= 400 && status < 500) throw err;
+    if (!temporary) throw new Error(`บันทึกรูปไม่สำเร็จ (${(err as Error).message}) ลองเพิ่มใหม่อีกครั้ง`);
     return { src: URL.createObjectURL(file), warning: `เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง` };
   }
 }

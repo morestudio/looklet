@@ -427,7 +427,8 @@ export default function Packshot() {
     setSaving((s) => [...s, { key, url: preview }]);
     let stored: Awaited<ReturnType<typeof storeUpload>>;
     try {
-      stored = await storeUpload({ kind: KIND[key], name, type, ...groupMeta }, file);
+      // product photos are never kept as temporary copies (onProductFiles uses the first one's src as the product id)
+      stored = await storeUpload({ kind: KIND[key], name, type, ...groupMeta }, file, { temporary: key !== 'product' });
     } finally {
       setSaving((s) => s.filter((x) => x.url !== preview));
       URL.revokeObjectURL(preview);
