@@ -46,6 +46,7 @@ import {
   PendingCard,
   rangeFill,
   GalleryToggle,
+  PreviewButton,
   RemoveImageDialog,
   SaveImageDialog,
   Section,
@@ -1427,21 +1428,23 @@ export default function TryOn() {
               const item = worn[slot];
               const goTab: WearSlot = slot !== 'shoes' && outfit ? 'set' : slot;
               return (
-                <button
-                  key={slot}
-                  type="button"
-                  className={'wear-slot' + (outfitTab === goTab ? ' active' : '')}
-                  onClick={() => {
-                    setOutfitTab(goTab);
-                    setQuery('');
-                  }}
-                >
-                  <span className={'wear-thumb' + (item ? '' : ' empty')}>
-                    {item && <img src={thumbSrc(item.src)} alt="" />}
-                  </span>
-                  <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
-                  <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
-                </button>
+                <div key={slot} className="wear-slot-wrap">
+                  <button
+                    type="button"
+                    className={'wear-slot' + (outfitTab === goTab ? ' active' : '')}
+                    onClick={() => {
+                      setOutfitTab(goTab);
+                      setQuery('');
+                    }}
+                  >
+                    <span className={'wear-thumb' + (item ? '' : ' empty')}>
+                      {item && <img src={thumbSrc(item.src)} alt="" />}
+                    </span>
+                    <b>{WEAR_TABS.find((t) => t.id === slot)!.name}</b>
+                    <small>{item ? (item === outfit && slot !== 'shoes' ? 'ทั้งชุด' : item.name) : 'เดิม'}</small>
+                  </button>
+                  {item?.src && <PreviewButton src={item.src} alt={item.name} />}
+                </div>
               );
             })}
           </div>

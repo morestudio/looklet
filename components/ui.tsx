@@ -2,11 +2,13 @@
 // ui.tsx — ชิ้นส่วนหน้าเว็บที่ใช้ซ้ำ: การ์ดรูป, ปุ่มกลุ่ม (chips), หัวข้อในแผง
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { trackStepDone, type StudioPage } from '@/lib/analytics';
 import { authEnabled } from '@/lib/auth';
 import { loadMe, onMe, thumbSrc, type Me } from '@/lib/browser';
 import type { Item } from '@/lib/catalog';
-import { IconBookmark } from './icons';
+import { IconBookmark, IconZoom } from './icons';
+import ImageViewer from './ImageViewer';
 
 // แถบเลื่อน (input range): Chrome/Safari ระบายส่วนที่เลือกเป็นสีหมึกไม่ได้เอง ต้องบอกเปอร์เซ็นต์ผ่าน --fill (globals.css)
 export function rangeFill(value: number, min: number, max: number): CSSProperties {
@@ -67,13 +69,40 @@ export function Card({
       <span>{item.name}</span>
     </button>
   );
-  if (!onDelete && !footer) return card;
+  if (!onDelete && !footer && !item.src) return card;
   return (
     <div className="deletable">
       {card}
+      {item.src && <PreviewButton src={item.src} alt={item.name} />}
       {onDelete && <DeleteButton onClick={onDelete} />}
       {footer}
     </div>
+  );
+}
+
+// magnifier on a picker photo -> full-size ImageViewer, without changing the selection
+// parent needs position: relative; the chip shows only while the pointer is on the top-right corner (always on touch)
+export function PreviewButton({ src, alt }: { src: string; alt: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="preview-btn"
+        title="ดูรูปใหญ่"
+        aria-label={`ดูรูปใหญ่: ${alt}`}
+        onClick={(e) => {
+          e.stopPropagation(); // the card under it selects on click
+          setOpen(true);
+        }}
+      >
+        <span>
+          <IconZoom />
+        </span>
+      </button>
+      {/* portal: keeps the <dialog> out of buttons and card grids */}
+      {open && createPortal(<ImageViewer src={src} alt={alt} onClose={() => setOpen(false)} />, document.body)}
+    </>
   );
 }
 
@@ -312,7 +341,12 @@ export function useChosenSteps<K extends string>(current: K, page: StudioPage) {
   // markAs(key): a second panel showing another step at the same time (TryOn's right panel)
   const markAs = (key: K) => (e: SyntheticEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.sticky-bar, summary, .search') || !target.closest('button, input, textarea, select, .card'))
+    // React events bubble through portals (PreviewButton's viewer): only count the panel's own DOM
+    if (!(e.currentTarget as HTMLElement).contains(target)) return;
+    if (
+      target.closest('.sticky-bar, summary, .search, .preview-btn') ||
+      !target.closest('button, input, textarea, select, .card')
+    )
       return;
     trackStepDone(page, key);
     setChosen((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
