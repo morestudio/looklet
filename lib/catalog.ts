@@ -296,7 +296,8 @@ export const PRESET_PARTS = [
 // GPT Image 2.5 (Sunburst/Flare) ทำรูปใหญ่ได้: ค่าเริ่มต้น 1664×2496 หน้า/ผิวละเอียดขึ้นชัด (ผู้ใช้ทดสอบ 22 ต.ค. output/skin-2500-test)
 // แปลงจากขนาดมาตรฐาน (openaiSize ฝั่งหน้าเว็บ) ตามแนวรูป · สี่เหลี่ยมจัตุรัสยังไม่ได้ทดสอบ · รุ่นอื่น (gpt-image-1) รับแค่ขนาดมาตรฐาน
 export const GPT25_SIZES: Record<string, string> = { '1024x1536': '1664x2496', '1536x1024': '2496x1664', '1024x1024': '2048x2048' };
-export const isGpt25 = (modelId: string) => modelId.startsWith('openai:gpt-image-2.5');
+// GPT Image 2.6 (หน้าสินค้า ตั้งแต่ 17 พ.ย.) ใช้ขนาดใหญ่ชุดเดียวกัน: ทดสอบ 16 พ.ย. ที่ 2048×2048 และ 1664×2496 ได้ทั้งคู่ โทเคนเท่า 2.5 ทุกตัว
+export const isGpt25 = (modelId: string) => /^openai:gpt-image-2\.[56]/.test(modelId);
 
 // ---------- โมเดล AI + คุณภาพ (ใช้ทั้งหน้านางแบบและหน้าสินค้า) ----------
 // คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน
@@ -310,6 +311,10 @@ export const QUALITIES_25 = [
 ];
 // โมเดลเริ่มต้น: ทดสอบ 19–20 ต.ค. GPT Image 2.5 Sunburst high ได้รูปสมจริงที่สุดในราคา ~฿2/รูป
 export const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
+// หน้าสินค้า (app/api/packshot) ใช้ GPT Image 2.6 Sunburst — ผู้ใช้เลือก 17 พ.ย. หลังทดสอบ 16 พ.ย. (คำสั่ง + รูปลูกค้าเดิมของ production 4 เคส เปลี่ยนแค่โมเดล):
+// VERA ครีม 2.6 ดีกว่า (สายเดียว ไม่แต่งตัวหนังสือ), VERA ดำ 2.5 ดีกว่า, ถุงหูรูด/ถุงอาหารสุนัข พอๆ กัน · โทเคน (ราคา) เท่ากัน ช้ากว่า ~15 วินาที
+// หน้านางแบบ แก้เฉพาะจุด และปรับผิว ยังใช้ DEFAULT_AI_MODEL (2.5)
+export const PRODUCT_AI_MODEL = 'openai:gpt-image-2.6-sunburst';
 export const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
 export const qualitiesFor = (modelId: string) => (isGpt25(modelId) ? QUALITIES_25 : QUALITIES);
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ

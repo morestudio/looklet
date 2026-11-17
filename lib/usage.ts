@@ -8,6 +8,7 @@ import { sbCountUploads, serviceClient, supabaseEnabled } from './storage-supaba
 // ค่า AI โดยประมาณต่อรูป (บาท): GPT Image 2.5 คุณภาพสูง ~฿2 ต่อรูป (ทดสอบจริง 27 ต.ค.) ต่ำกว่านั้นถูกลงตามสัดส่วน
 const COST_THB: Record<string, Record<string, number>> = {
   'openai:gpt-image-2.5-sunburst': { high: 2, medium: 1, low: 0.5 },
+  'openai:gpt-image-2.6-sunburst': { high: 2, medium: 1, low: 0.5 }, // ราคาต่อโทเคนเท่า 2.5 (โทเคน high เท่ากันในการทดสอบ 16 พ.ย.)
 };
 export const estimateCost = (model: string, quality: string, calls = 1) => (COST_THB[model]?.[quality] ?? 2) * calls;
 

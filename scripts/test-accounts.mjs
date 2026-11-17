@@ -202,6 +202,11 @@ caller = alice;
 assert.equal((await handler(request({ model: 'gemini:gemini-3-pro-image' }))).status, 200);
 assert.equal(seen.model, load('lib/catalog.ts').DEFAULT_AI_MODEL);
 assert.equal(seen.who.id, 'alice');
+// route ที่กำหนดโมเดลเอง (หน้าสินค้า = PRODUCT_AI_MODEL) ได้โมเดลนั้น ไม่ว่าหน้าเว็บส่งอะไรมา
+const productHandler = post(async (body) => { seen = { model: body.model }; return Response.json({ ok: true }); }, { model: load('lib/catalog.ts').PRODUCT_AI_MODEL });
+assert.equal((await productHandler(request({ model: 'openai:gpt-image-2.5-sunburst' }))).status, 200);
+assert.equal(seen.model, 'openai:gpt-image-2.6-sunburst');
+assert(load('lib/catalog.ts').isGpt25(seen.model)); // ขนาดใหญ่ชุดเดียวกับ 2.5
 
 // ---------- โควตา (โทเคน) ----------
 const { usedTokens, ESTIMATED_TOKENS } = load('lib/usage.ts');
