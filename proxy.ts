@@ -64,5 +64,5 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // ทุกอย่างยกเว้นไฟล์ของ Next เอง (รูปตัวอย่างใน public/ และรูปใน /api/files ก็ต้องเข้าสู่ระบบ)
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|apple-icon.png).*)'],
 };
