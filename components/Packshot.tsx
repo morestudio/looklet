@@ -43,6 +43,7 @@ import Turntable, { turnSrc } from './Turntable';
 import { defaultTurn, turnFill } from '@/lib/turntable';
 import {
   AddCard,
+  Brand,
   Card,
   ChipGroup,
   ConfirmDialog,
@@ -2062,9 +2063,7 @@ export default function Packshot() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          Lolo <span className="beta">Beta</span>
-        </div>
+        <Brand />
         <PageSwitch current="product" />
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}

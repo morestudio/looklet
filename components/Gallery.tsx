@@ -12,7 +12,7 @@ import { api, thumbSrc } from '@/lib/browser';
 import { failText } from '@/lib/errors';
 import { toast } from '@/lib/toast';
 import type { StoredResultBase, StylePlan } from '@/lib/result-types';
-import { DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
+import { Brand, DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
 
 type Result = StoredResultBase<{ pick?: Record<string, unknown> }> & {
   created: number;
@@ -154,9 +154,7 @@ export default function Gallery() {
   return (
     <div className="app gallery-page">
       <header className="topbar">
-        <div className="brand">
-          Lolo <span className="beta">Beta</span>
-        </div>
+        <Brand />
         <PageSwitch current="gallery" />
         <div className="top-actions">
           <GalleryLink active />

@@ -37,6 +37,7 @@ import {
 } from './icons';
 import {
   AddCard,
+  Brand,
   Card,
   ChipGroup,
   ConfirmDialog,
@@ -2116,9 +2117,7 @@ export default function TryOn() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          Lolo <span className="beta">Beta</span>
-        </div>
+        <Brand />
         <PageSwitch current="model" />
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นสไตล์ถ่ายภาพ) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}

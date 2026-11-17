@@ -5,7 +5,7 @@ import { errorMessageOf } from '@/lib/api-error';
 import { api, loadMe } from '@/lib/browser';
 import { toast } from '@/lib/toast';
 import { AccountMenu } from './AuthForm';
-import { AdminTabs, GalleryLink, PageSwitch } from './ui';
+import { AdminTabs, Brand, GalleryLink, PageSwitch } from './ui';
 
 type Tally = {
   ok: number;
@@ -201,9 +201,7 @@ export default function AdminPage() {
   return (
     <div className="admin-page">
       <header className="topbar">
-        <div className="brand">
-          Lolo <span className="beta">Beta</span>
-        </div>
+        <Brand />
         <PageSwitch current="admin" />
         <div className="top-actions">
           <GalleryLink />
