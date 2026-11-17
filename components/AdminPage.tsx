@@ -73,7 +73,7 @@ export default function AdminPage() {
       const out = await api<{ codes?: string[] }>('/api/admin', body);
       done?.(out);
       await load();
-      void loadMe(true); // the แอดมิน tab's waiting count
+      void loadMe(true); // AccountMenu's waiting count
     } catch (err) { setStatus((err as Error).message); }
     finally { setBusy(false); }
   }

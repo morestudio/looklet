@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { noteLogin, track } from '@/lib/analytics';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
-import { IconAccount, IconEye, IconEyeOff, IconKey, IconSignOut } from './icons';
+import { IconAccount, IconEye, IconEyeOff, IconKey, IconShield, IconSignOut } from './icons';
 import { useMe } from './ui';
 
 // หลังเข้าสู่ระบบ/เปลี่ยนรหัส: โหลดหน้าใหม่ทั้งหน้า ให้ proxy.ts เห็น cookie ใหม่
@@ -187,8 +187,9 @@ export async function signOut() {
   go('/login');
 }
 
-// top-right account menu on every page: name, change password (email accounts only: a code account's password is
-// derived from its code) and sign out. Phones show only the icon (.account-name hidden in globals.css)
+// top-right account menu on every page: name, แอดมิน (superadmin, with the number of sign-ups waiting, also shown on the
+// button), change password (email accounts only: a code account's password is derived from its code) and sign out.
+// Phones show only the icon (.account-name hidden in globals.css)
 export function AccountMenu() {
   const me = useMe();
   const [open, setOpen] = useState(false);
@@ -208,9 +209,13 @@ export function AccountMenu() {
     <button className="btn btn-tertiary account-button" aria-haspopup="menu" aria-expanded={open} title={name}
       onClick={() => setOpen((o) => !o)}>
       <IconAccount /><span className="account-name">{name}</span>
+      {!!me?.pending && <span className="tab-count" aria-label={`รออนุมัติ ${me.pending} คำขอ`}>{me.pending}</span>}
     </button>
     {open && <div className="account-pop" role="menu" aria-label="บัญชี">
       <div className="account-who"><b>{name}</b>{sub && <span>{sub}</span>}</div>
+      {me?.role === 'superadmin' && <button role="menuitem" onClick={() => go('/admin')}>
+        <IconShield />แอดมิน{!!me.pending && <span className="tab-count" title={`รออนุมัติ ${me.pending} คำขอ`}>{me.pending}</span>}
+      </button>}
       {me?.login === 'email' && <button role="menuitem" onClick={() => go('/account')}><IconKey />เปลี่ยนรหัสผ่าน</button>}
       <button role="menuitem" onClick={() => void signOut()}><IconSignOut />ออกจากระบบ</button>
     </div>}

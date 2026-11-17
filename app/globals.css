@@ -499,7 +499,7 @@ input.field { height: var(--control-height-field); padding: 0 var(--space-12); b
 .auth-fine { margin: 0; color: var(--mute); font-size: var(--text-xs); }
 .auth-card .optional { color: var(--mute); font-weight: 400; }
 .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
-/* waiting sign-ups on the แอดมิน tab (PageSwitch) and their section at the top of /admin */
+/* waiting sign-ups: count on the account button and its แอดมิน item (AccountMenu), section at the top of /admin */
 .tab-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: var(--space-6); padding: 0 5px; border-radius: var(--r-full); background: var(--accent); color: var(--on-dark); font-size: var(--text-2xs); font-weight: 600; }
 .admin-pending .text-input { width: 110px; }
 .admin-pending a { color: var(--ink); }
