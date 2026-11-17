@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { track, trackKept, type StudioPage } from '@/lib/analytics';
 import { api } from '@/lib/browser';
+import { friendlyError } from '@/lib/errors';
+import { toast } from '@/lib/toast';
 
 type Placed = { src: string; inGallery?: boolean; editedFrom?: string };
 
@@ -10,7 +12,6 @@ export function useHistoryPlaces<R extends Placed>(
   results: R[],
   setResults: Dispatch<SetStateAction<R[]>>,
   setCurrent: Dispatch<SetStateAction<number | null>>,
-  setStatus: (status: string) => void,
   page: StudioPage, // GA: image_kept (via gallery) / gallery_remove
 ) {
   const [removingSrc, setRemovingSrc] = useState<string | null>(null);
@@ -28,12 +29,11 @@ export function useHistoryPlaces<R extends Placed>(
     pending.current.set(src, request.catch(() => undefined));
     try {
       await request;
-      setStatus('');
       if (inGallery) track('gallery_remove', { page });
       else trackKept(page, latest.current.find((r) => r.src === src) ?? { src }, 'gallery');
     } catch (err) {
       mark(inGallery);
-      setStatus((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
+      toast.error((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + friendlyError(err));
     } finally {
       pending.current.delete(src);
     }
@@ -46,7 +46,7 @@ export function useHistoryPlaces<R extends Placed>(
     try {
       await api('/api/delete', { src, from: 'history', permanent });
     } catch (err) {
-      return setStatus((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกไม่สำเร็จ: ') + (err as Error).message);
+      return toast.error((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกไม่สำเร็จ: ') + friendlyError(err));
     }
     const i = latest.current.findIndex((r) => r.src === src);
     if (i < 0) return;

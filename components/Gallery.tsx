@@ -9,6 +9,8 @@ import { AccountMenu } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { authEnabled } from '@/lib/auth';
 import { api, thumbSrc } from '@/lib/browser';
+import { friendlyError } from '@/lib/errors';
+import { toast } from '@/lib/toast';
 import type { StoredResultBase, StylePlan } from '@/lib/result-types';
 import { DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
 
@@ -32,7 +34,6 @@ const inputsOf = (r: Result) => Object.entries({ ...r.recipe?.pick, ...(r.produc
 
 export default function Gallery() {
   const [results, setResults] = useState<Result[] | null>(null); // null = loading
-  const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [favOnly, setFavOnly] = useState(false); // on top of the page filter
   const [open, setOpen] = useState<Result | null>(null);
@@ -49,7 +50,7 @@ export default function Gallery() {
     fetch('/api/library?only=results')
       .then((r) => (r.ok ? (r.json() as Promise<{ results: Result[] }>) : Promise.reject(new Error(String(r.status)))))
       .then((lib) => setResults(lib.results.filter((r) => r.inGallery).sort((a, b) => (b.addedToGalleryAt ?? 0) - (a.addedToGalleryAt ?? 0))))
-      .catch(() => { setResults([]); setError('โหลดรูปไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง'); });
+      .catch(() => { setResults([]); toast.error('โหลดรูปไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง'); });
   }, []);
   useEffect(() => {
     if (!infoSrc) return;
@@ -71,10 +72,9 @@ export default function Gallery() {
     set(!r.favorite);
     try {
       await api('/api/update', { src: r.src, favorite: !r.favorite });
-      setError('');
     } catch (err) {
       set(Boolean(r.favorite));
-      setError('บันทึกรูปที่ชอบไม่สำเร็จ: ' + (err as Error).message);
+      toast.error('บันทึกรูปที่ชอบไม่สำเร็จ: ' + friendlyError(err));
     } finally {
       pendingFav.current.delete(r.src);
     }
@@ -92,9 +92,8 @@ export default function Gallery() {
     try {
       await api('/api/delete', { src: r.src, from: 'gallery', permanent });
     } catch (err) {
-      return setError((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ') + (err as Error).message);
+      return toast.error((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ') + friendlyError(err));
     }
-    setError('');
     setResults((list) => list && list.filter((x) => x.src !== r.src));
   }
 
@@ -104,7 +103,7 @@ export default function Gallery() {
       try {
         await api('/api/update', { src: r.src, inHistory: true });
       } catch (err) {
-        return setError('เปิดรูปนี้ไม่สำเร็จ: ' + (err as Error).message);
+        return toast.error('เปิดรูปนี้ไม่สำเร็จ: ' + friendlyError(err));
       }
     }
     router.push((pageOf(r) === 'product' ? '/product' : '/') + '?image=' + encodeURIComponent(r.src));
@@ -114,7 +113,6 @@ export default function Gallery() {
     <header className="topbar">
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="gallery" />
-      <div className="status" role="status">{error}</div>
       <div className="top-actions">
         <GalleryLink active />
         <TokenUsage />

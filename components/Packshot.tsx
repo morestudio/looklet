@@ -28,8 +28,10 @@ import { CLOTH, INK, LABEL, PAPER, SHADE, STUDIO, WALL } from './drawing-colors'
 import { NO_FILM } from '@/lib/film';
 import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, shotTypeDefaults, stepUsed, type PickKey as Key, type Recipe, type StepKey } from '@/lib/packshot-recipe';
 import {
-  api, canOpenImage, canvasJpeg, finishedCanvas, friendlyError, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, storeUpload, thumbSrc, toWebImage,
+  api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, storeUpload, thumbSrc, toWebImage,
 } from '@/lib/browser';
+import { friendlyError } from '@/lib/errors';
+import { toast } from '@/lib/toast';
 import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
   DETAIL_TARGETS, SCALE_REFERENCES, SHOT_TYPES, PRODUCT_SET_SHOTS, shotSets, shotFramings, resolveProductBackground, shotAngles, resolveProductAngle, automaticProductAngle, type ShotType,
@@ -283,7 +285,6 @@ export default function Packshot() {
   const [aiModel, setAiModel] = useState('');
   const [results, setResults] = useState<Result[]>([]);
   const [current, setCurrent] = useState<number | null>(null); // null = รูปสินค้าที่เลือก (ยังไม่ได้สร้าง)
-  const [status, setStatus] = useState('');
   const [canvasStatus, setCanvasStatus] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false); // generate() running: spinner tile in History (Go list item 10)
@@ -392,7 +393,7 @@ export default function Packshot() {
           setAiModel(id);
           update({ quality: defaultQuality(id) });
         }
-        else setStatus('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
+        else toast.error('สร้างรูปไม่ได้: ต้องมี API key ในไฟล์ .env (แก้แล้วรีสตาร์ท npm run dev)');
       });
   }, []);
 
@@ -434,7 +435,7 @@ export default function Packshot() {
       URL.revokeObjectURL(preview);
     }
     const { src, warning } = stored;
-    if (warning) setStatus(warning);
+    if (warning) toast.error(warning);
     else track('upload', { page: 'product', kind: KIND[key], extra_photo: Boolean(targetGroupId) });
     setLists((l) => ({ ...l, [key]: [...l[key], { name, src, type, ...groupMeta, productView: 'unspecified', uploaded: true }] }));
     if (!targetGroupId) select(key, src);
@@ -457,7 +458,7 @@ export default function Packshot() {
       const out = await api<{ src: string; patch: Record<string, string> }>('/api/product-groups', body);
       setLists((l) => ({ ...l, product: l.product.map((p) => (p.src === out.src ? { ...p, ...out.patch } : p)) }));
     } catch (err) {
-      setStatus('แก้สินค้าไม่สำเร็จ: ' + (err as Error).message);
+      toast.error('แก้สินค้าไม่สำเร็จ: ' + friendlyError(err));
       throw err;
     } finally { setGroupBusy(false); }
   }
@@ -500,7 +501,6 @@ export default function Packshot() {
     if (append && !existing) return;
     productUploadRef.current = true;
     setGroupBusy(true);
-    setStatus('');
     let groupId = existing?.id;
     let name = existing?.name;
     let type = existing?.type;
@@ -527,13 +527,13 @@ export default function Packshot() {
           if (!groupId) groupId = src;
         } catch (err) {
           failed++;
-          lastError = (err as Error).message;
+          lastError = friendlyError(err);
           // upload cap (409) / disabled account (403): the rest would be refused too
           const status = (err as { status?: number }).status;
           if (status === 409 || status === 403) { failed += files.length - 1 - i; break; }
         }
       }
-      if (failed) setStatus(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);
+      if (failed) toast.error(`เพิ่มรูปได้ ${files.length - failed}/${files.length} รูป — ${lastError}`);
       // สินค้ามี 2 รูปขึ้นไป: AI เลือกรูปหลัก (ยังอยู่ใน groupBusy กันสร้างรูปด้วยรูปแรกที่อัปโหลด) · ไม่ทับที่ผู้ใช้เลือกเอง
       if (groupId && (existing?.photos.length ?? 0) + files.length - failed >= 2 && existing?.mainBy !== 'user') await autoMain(groupId);
     } finally {
@@ -548,14 +548,14 @@ export default function Packshot() {
       const file = isHeic(picked) ? await toWebImage(picked) : picked;
       if (!(await canOpenImage(file))) throw new Error('เปิดรูปนี้ไม่ได้ ลองใช้ JPG หรือ PNG');
       await addUpload(key, file, picked.name.replace(/\.[^.]+$/, ''));
-    } catch (err) { setStatus((err as Error).message); }
+    } catch (err) { toast.error(friendlyError(err)); }
   }
 
   async function deleteUpload(key: Key, item: Item) {
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
-      return setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
+      return toast.error('ลบไม่สำเร็จ: ' + friendlyError(err));
     }
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
     update((r) => (r.pick[key] === idOf(item) ? { pick: { ...r.pick, [key]: null } } : {}));
@@ -564,7 +564,7 @@ export default function Packshot() {
   // own product = every photo in it (incl. removed ones), same flow as deleteUpload
   const productFiles = (g: ProductGroup) => lists.product.filter((p) => (p.productGroup || p.src) === g.id);
   async function deleteProduct(g: ProductGroup) {
-    if (groupBusy || busy !== null) return setStatus('ลบสินค้าไม่ได้ตอนนี้ — รอให้สร้างรูปหรือเก็บรูปเสร็จก่อน');
+    if (groupBusy || busy !== null) return toast.warn('ลบสินค้าไม่ได้ตอนนี้ — รอให้สร้างรูปหรือเก็บรูปเสร็จก่อน');
     // root last: it holds the group's name/type, so a partial failure keeps a smaller product instead of orphans
     const files = productFiles(g).sort((a, b) => Number(a.src === g.id) - Number(b.src === g.id));
     const deleted = new Set<string>();
@@ -575,7 +575,7 @@ export default function Packshot() {
         deleted.add(p.src!);
       }
     } catch (err) {
-      setStatus('ลบไม่สำเร็จ: ' + (err as Error).message);
+      toast.error('ลบไม่สำเร็จ: ' + friendlyError(err));
     } finally { setGroupBusy(false); }
     const left = lists.product.filter((p) => !deleted.has(p.src!));
     setLists((l) => ({ ...l, product: l.product.filter((p) => !deleted.has(p.src!)) }));
@@ -583,13 +583,12 @@ export default function Packshot() {
     if (pick.product === g.id && deleted.has(g.id)) select('product', productGroups(left).at(-1)?.id ?? null);
   }
 
-  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, setStatus, 'product');
+  const { toggleGallery, askRemove, removeDialog } = useHistoryPlaces(results, setResults, setCurrent, 'product');
 
   async function planCreative() {
     if (!canPlan || planningRef.current || !product || !selectedGroup) return;
     planningRef.current = true;
     setPlanning(true);
-    setStatus('');
     const scope = creativeScope;
     try {
       const [main, extraPhotos, inspirationImage] = await Promise.all([
@@ -608,7 +607,7 @@ export default function Packshot() {
       track('creative_ideas', { result: 'success', retry: concepts.length > 0, has_idea: Boolean(creativeIdea.trim()), has_inspiration: Boolean(inspiration) });
     } catch (err) {
       track('creative_ideas', { result: 'error', reason: errorReason(err) }); // not generate_error: no image was asked for
-      setStatus('คิดไอเดียไม่สำเร็จ: ' + (err as Error).message);
+      toast.error('คิดไอเดียไม่สำเร็จ: ' + friendlyError(err));
     }
     finally { planningRef.current = false; setPlanning(false); }
   }
@@ -619,19 +618,18 @@ export default function Packshot() {
     const set = isMulti;
     if (!product) {
       setStep(0);
-      return setStatus('เลือกหรืออัปโหลดรูปสินค้าก่อน');
+      return toast.warn('เลือกหรืออัปโหลดรูปสินค้าก่อน');
     }
     if (!creativeReady) {
       setStep(STEPS.findIndex((s) => s.key === 'creative'));
-      return setStatus('เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
+      return toast.warn('เลือก 1 ไอเดียในขั้นไอเดียภาพก่อนสร้างรูป');
     }
     if (!scaleReady || !detailReady) {
       setStep(1);
-      return setStatus(!scaleReady ? 'กรอกขนาดสินค้าจริงเป็นเซนติเมตรให้ครบก่อน' : 'ระบุฟีเจอร์ที่ต้องการถ่ายก่อน');
+      return toast.warn(!scaleReady ? 'กรอกขนาดสินค้าจริงเป็นเซนติเมตรให้ครบก่อน' : 'ระบุฟีเจอร์ที่ต้องการถ่ายก่อน');
     }
     const choice = aiModels?.find((m) => m.id === aiModel);
     if (!choice) return;
-    setStatus('');
     const shotsAfter = selectedShots.slice(1);
     const caption = shotType === 'handshot' ? [product.name, shotTypeDef.name, handPose.name, HAND_MODES.find((m) => m.id === handPose.mode)!.name]
       .join(' · ') : [
@@ -688,7 +686,7 @@ export default function Packshot() {
       const showMade = () => {
         if (!sync.finished(sentKey)) {
           setCurrent((c) => (c === null ? c : c + 1)); // list grew at the front: keep the same image on the stage
-          setStatus('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
+          toast.ok('สร้างรูปเสร็จแล้ว อยู่ในแถวรูปที่สร้างแล้ว');
           return;
         }
         setCurrent(0);
@@ -699,7 +697,6 @@ export default function Packshot() {
       const out = await api<{ src: string; stylePlan: StylePlan | null }>('/api/packshot', { ...body, caption: firstCaption, set: tag(0) });
       track('generate_success', { ...ga, duration_s: elapsed() });
       setResults((r) => [{ src: out.src, caption: firstCaption, set: tag(0), stylePlan: out.stylePlan ?? undefined, recipe }, ...r]);
-      if (out.stylePlan) setStatus(`${shotType === 'creative' ? 'ไอเดีย' : 'พร็อพที่ AI คิดให้'} (${out.stylePlan.name}): ${out.stylePlan.th}`);
       showMade();
       frameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       if (shootId) {
@@ -717,12 +714,12 @@ export default function Packshot() {
         }).finally(() => setPendingSet((p) => p && { ...p, left: p.left - 1 }))));
         const failed = rest.filter((x) => x.status === 'rejected');
         if (failed.length) {
-          setStatus(`ชุดภาพได้ ${shotCount - failed.length}/${shotCount} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${(failed[0].reason as Error).message}`);
+          toast.error(`ชุดภาพได้ ${shotCount - failed.length}/${shotCount} รูป — สร้างไม่สำเร็จ ${failed.length} รูป: ${friendlyError(failed[0].reason, true)}`);
         }
       }
     } catch (err) {
       track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
-      setStatus('สร้างรูปไม่สำเร็จ: ' + friendlyError((err as Error).message)); // same Thai wording for an AI safety refusal as the model page
+      toast.error('สร้างรูปไม่สำเร็จ: ' + friendlyError(err, true));
     } finally {
       setBusy(null);
       setPendingSet(null);
@@ -740,7 +737,7 @@ export default function Packshot() {
       setResults((r) => [result, ...r]);
       setCurrent(0);
       setLocalEdit(null);
-      setStatus('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลังสินค้า');
+      toast.ok('แก้เฉพาะจุดแล้ว เก็บรูปใหม่และต้นฉบับไว้ในคลังสินค้า');
     } catch (err) {
       track('local_edit', { page: 'product', painted: Boolean(request.mask), result: 'error', reason: errorReason(err) });
       throw err;
@@ -767,7 +764,7 @@ export default function Packshot() {
       const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
-      setStatus('เปิดรูปไม่สำเร็จ: ' + (err as Error).message);
+      toast.error('เปิดรูปไม่สำเร็จ: ' + friendlyError(err));
     }
   }
 
@@ -781,7 +778,7 @@ export default function Packshot() {
       if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
-      setStatus('ดาวน์โหลดไม่สำเร็จ: ' + (err as Error).message);
+      toast.error('ดาวน์โหลดไม่สำเร็จ: ' + friendlyError(err));
     }
   }
 
@@ -821,7 +818,6 @@ export default function Packshot() {
   const startOver = () => {
     if (!resetTo) return;
     sync.reset(resetTo);
-    setStatus('');
     newTileRef.current?.focus(); // the ล้าง button unmounts (nothing left to reset); keep keyboard focus on the page
   };
   const missingNames = (shownRecipe?.missing ?? []).map((k) => STEPS.find((s) => s.key === k)?.label).filter(Boolean);
@@ -1136,9 +1132,6 @@ export default function Packshot() {
       <header className="topbar">
         <div className="brand">Lolo <span className="beta">Beta</span></div>
         <PageSwitch current="product" />
-        <div className="status" role="status" title={status}>
-          {status && <>{status}<button className="status-x" aria-label="ปิดข้อความ" onClick={() => setStatus('')}>×</button></>}
-        </div>
         <div className="top-actions">
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
           <GalleryLink />
@@ -1204,6 +1197,11 @@ export default function Packshot() {
               onClick={() => setCurrent(results.findIndex((r) => r.src === shown.editedFrom))}>ดูต้นฉบับ</button>}
             <div className="caption" title={shown?.caption}>{shown ? shown.caption : product ? `รูปสินค้า: ${product.name} (ยังไม่ได้สร้าง)` : ''}</div>
           </div>
+          {/* what the AI planned for this image (props, or the creative idea): stored with it, so past images show it too */}
+          {shown?.stylePlan && <p className="plan-note">
+            {/* no stored recipe (older images): the shot type is unknown, so a neutral label */}
+            <b>{shown.recipe?.shotType === 'creative' ? 'ไอเดีย' : shown.recipe ? 'พร็อพที่ AI คิดให้' : 'AI คิดให้'} ({shown.stylePlan.name})</b> · {shown.stylePlan.th}
+          </p>}
           <div className="history-head">รูปที่สร้างแล้ว <span>{results.length}</span></div>
           <div className="history">
             {/* "รูปใหม่" = the setup in progress (product photo on the stage); first tile, always there, as on the model page */}

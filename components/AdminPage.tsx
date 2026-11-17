@@ -2,6 +2,7 @@
 // AdminPage.tsx — หน้า /admin (superadmin): การใช้งานต่อบัญชี + ออกโค้ดเชิญ + แก้ชื่อ/โควตา/ปิดบัญชี (โค้ดและอีเมล) — ข้อมูลจาก app/api/admin
 import { useEffect, useState } from 'react';
 import { api, loadMe } from '@/lib/browser';
+import { toast } from '@/lib/toast';
 import { AccountMenu } from './AuthForm';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
@@ -52,44 +53,46 @@ function PendingSignups({ rows, busy, run }: { rows: PendingRow[]; busy: boolean
 
 export default function AdminPage() {
   const [data, setData] = useState<Data | null>(null);
-  const [status, setStatus] = useState('');
+  const [loadError, setLoadError] = useState(''); // first load failed: shown in place of the tables
   const [busy, setBusy] = useState(false);
   const [count, setCount] = useState(10);
   const [tokenQuota, setTokenQuota] = useState(DEFAULT_TOKEN_QUOTA);
   const [fresh, setFresh] = useState<string[]>([]); // โค้ดที่เพิ่งสร้าง (ไฮไลต์)
 
-  const show = (r: { data?: Data; error?: string }) => (r.data ? setData(r.data) : setStatus(r.error ?? ''));
-  const load = () => fetchAdmin().then(show);
+  // superadmin page: errors are shown as the server wrote them (no friendlyError)
+  // reload after an action: on failure the tables stay and a toast says why
+  const load = () => fetchAdmin().then((r) => (r.data ? setData(r.data) : toast.error(r.error ?? 'โหลดข้อมูลไม่สำเร็จ')));
   useEffect(() => {
     let gone = false;
-    fetchAdmin().then((r) => { if (!gone) show(r); });
+    fetchAdmin().then((r) => {
+      if (gone) return;
+      if (r.data) setData(r.data); else setLoadError(r.error ?? 'โหลดข้อมูลไม่สำเร็จ');
+    });
     return () => { gone = true; };
   }, []);
 
   async function run(body: Record<string, unknown>, done?: (out: { codes?: string[] }) => void) {
     setBusy(true);
-    setStatus('');
     try {
       const out = await api<{ codes?: string[] }>('/api/admin', body);
       done?.(out);
       await load();
       void loadMe(true); // AccountMenu's waiting count
-    } catch (err) { setStatus((err as Error).message); }
+    } catch (err) { toast.error((err as Error).message); }
     finally { setBusy(false); }
   }
-  const copy = (text: string, what: string) => void navigator.clipboard.writeText(text).then(() => setStatus(`คัดลอก${what}แล้ว`), () => setStatus('คัดลอกไม่สำเร็จ'));
+  const copy = (text: string, what: string) => { void navigator.clipboard.writeText(text).then(() => toast.ok(`คัดลอก${what}แล้ว`), () => toast.error('คัดลอกไม่สำเร็จ')); };
   const active = data?.invites.filter((i) => !i.disabled) ?? [];
 
   return <div className="admin-page">
     <header className="topbar">
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
-      <div className="status" role="status">{status}</div>
       <div className="top-actions"><GalleryLink /><AccountMenu /></div>
     </header>
     <main className="admin-main">
       <AdminTabs current="overview" />
-      {!data ? <p className="muted-text">{status || 'กำลังโหลด...'}</p> : <>
+      {!data ? <p className="muted-text">{loadError || 'กำลังโหลด...'}</p> : <>
         {data.pending.length > 0 && <PendingSignups rows={data.pending} busy={busy} run={run} />}
         <section className="admin-totals">
           <div><span>รูปที่สร้างสำเร็จ</span><b>{data.total.ok.toLocaleString('th-TH')}</b><small>นางแบบ {data.total.model} · สินค้า {data.total.product}</small></div>

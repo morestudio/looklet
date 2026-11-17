@@ -5,6 +5,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { AccountMenu } from './AuthForm';
 import { IconCopy } from './icons';
 import { thumbSrc } from '@/lib/browser';
+import { toast } from '@/lib/toast';
 import { AdminTabs, GalleryLink, PageSwitch } from './ui';
 
 type Row = {
@@ -87,7 +88,7 @@ export default function AuditPage() {
   const [filters, setFilters] = useState<Filters>({ who: '', page: '', status: '' });
   const [data, setData] = useState<{ key: string; rows: Row[]; next: number | null } | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
-  const [message, setMessage] = useState('');
+  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null); // a failed load, shown in place of the list for that filter only
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<Row | null>(null);
   const key = auditUrl(filters);
@@ -99,8 +100,7 @@ export default function AuditPage() {
       if (gone) return;
       setData({ key, rows: out.rows, next: out.next });
       if (out.people) setPeople(out.people);
-      setMessage('');
-    }, (err: Error) => { if (!gone) setMessage(err.message); });
+    }, (err: Error) => { if (!gone) setFailed({ key, message: err.message }); });
     return () => { gone = true; };
   }, [key]);
 
@@ -110,7 +110,7 @@ export default function AuditPage() {
     try {
       const out = await getJson<{ rows: Row[]; next: number | null }>(auditUrl(filters, data.next));
       setData((d) => (d && d.key === key ? { key, rows: [...d.rows, ...out.rows], next: out.next } : d));
-    } catch (err) { setMessage((err as Error).message); }
+    } catch (err) { toast.error((err as Error).message); } // superadmin page: the server's own wording
     finally { setBusy(false); }
   }
   const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
@@ -122,7 +122,6 @@ export default function AuditPage() {
     <header className="topbar">
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <PageSwitch current="admin" />
-      <div className="status" role="status">{message}</div>
       <div className="top-actions"><GalleryLink /><AccountMenu /></div>
     </header>
     <main className="admin-main">
@@ -138,7 +137,7 @@ export default function AuditPage() {
           <div className="chips">{chip('page', '', 'ทุกหน้า')}{chip('page', 'model', 'นางแบบ')}{chip('page', 'product', 'สินค้า')}</div>
           <div className="chips">{chip('status', '', 'ทุกผล')}{chip('status', 'ok', 'สำเร็จ')}{chip('status', 'error', 'พัง')}</div>
         </div>
-        {loading ? <p className="muted-text">{message || 'กำลังโหลด...'}</p> : !data.rows.length ? <p className="muted-text">ไม่มีรูปตามที่กรอง</p> : <>
+        {loading ? <p className="muted-text">{failed?.key === key ? failed.message : 'กำลังโหลด...'}</p> : !data.rows.length ? <p className="muted-text">ไม่มีรูปตามที่กรอง</p> : <>
           <div className="audit-grid">{data.rows.map((r) => <button key={r.id} className="audit-card" onClick={() => setOpen(r)}>
             {r.src ? <div className="audit-thumb"><img src={thumb(r.src)} alt={r.caption ?? ''} loading="lazy" /></div>
               : <div className="audit-thumb failed">{r.status === 'error' ? `พัง${r.error ? ': ' + r.error.slice(0, 120) : ''}` : 'ไม่พบรูป'}</div>}

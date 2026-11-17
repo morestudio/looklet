@@ -1,13 +1,8 @@
 // browser.ts — ตัวช่วยที่ใช้ได้เฉพาะใน browser (รูป, canvas, เรียก API ของเรา)
 import type { AccessoryInfo } from './catalog';
-import { SAFETY_BLOCK, track } from './analytics';
+import { track } from './analytics';
+import { friendlyError } from './errors';
 import { applyFilm, filmOn, type Film } from './film';
-
-// OpenAI ปฏิเสธภาพด้วยระบบความปลอดภัย (2 พ.ย.: ท่าคุกเข่าบนเตียง + ชุดนอนขาสั้น ถูกมองว่า sexual) -> บอกเป็นภาษาไทยแทนข้อความอังกฤษยาวๆ
-// รูปที่พังไม่นับโควตา (lib/usage.ts) · ข้อความเดิมยังอยู่ใน log / หน้าตรวจงาน
-export const friendlyError = (message: string) => SAFETY_BLOCK.test(message)
-  ? 'AI ปฏิเสธภาพนี้ (ระบบความปลอดภัยของ AI มองว่าอาจไม่เหมาะสม เช่น ท่าบนเตียงกับชุดสั้น) ลองเลือกไอเดียหรือท่าอื่น ไม่เสียโควตา'
-  : message;
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export const USAGE_EVENT = 'looklet:usage';
@@ -134,8 +129,8 @@ export async function storeUpload(body: Record<string, unknown>, file: File, { t
   } catch (err) {
     const status = (err as { status?: number }).status ?? 0;
     if (status >= 400 && status < 500) throw err;
-    if (!temporary) throw new Error(`บันทึกรูปไม่สำเร็จ (${(err as Error).message}) ลองเพิ่มใหม่อีกครั้ง`);
-    return { src: URL.createObjectURL(file), warning: `เก็บรูปไม่สำเร็จ (${(err as Error).message}) รูปนี้จะหายเมื่อ refresh — ลองเพิ่มใหม่อีกครั้ง` };
+    if (!temporary) throw new Error(`บันทึกรูปไม่สำเร็จ: ${friendlyError(err)}`);
+    return { src: URL.createObjectURL(file), warning: `เก็บรูปไม่สำเร็จ: ${friendlyError(err)} (รูปนี้ใช้ได้ชั่วคราว จะหายเมื่อรีเฟรชหน้า)` };
   }
 }
 
