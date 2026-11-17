@@ -17,6 +17,7 @@ export const USAGE_EVENT = 'looklet:usage';
 // Timeout: a hung /api/me must not hold up the header or GA. A failed load is not kept, so the next caller retries.
 export type Me = {
   role: 'superadmin' | 'customer'; aid?: string; login?: 'code' | 'email'; email?: string; label?: string; tokens?: number; tokenQuota?: number;
+  pending?: number; // superadmin: sign-ups waiting for approval
 };
 let meRequest: Promise<Me | null> | null = null;
 const meListeners = new Set<(me: Me | null) => void>();

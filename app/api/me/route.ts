@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { get, json } from '@/lib/route';
 import { isLimited, me } from '@/lib/account';
-import { supabaseEnabled } from '@/lib/storage-supabase';
+import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 import { accountOf, usedTokens } from '@/lib/usage';
 
 // GA user_id (components/Analytics.tsx): keyed hash (HMAC) of the account id, never the id, email or invite code
@@ -17,7 +17,10 @@ export const GET = get(async () => {
   const aid = analyticsId(account?.id);
   // account menu: login (code accounts get no change-password item) and the email, never a code account's internal email
   if (!isLimited(account) || !supabaseEnabled) {
-    return json(200, { role: account?.role ?? 'customer', aid, ...(account && { login: 'email', email: account.email }) });
+    // superadmin: how many sign-ups wait (number on the แอดมิน tab)
+    const pending = account?.role === 'superadmin' && supabaseEnabled
+      ? (await serviceClient().from('accounts').select('user_id', { count: 'exact', head: true }).eq('pending', true)).count ?? 0 : undefined;
+    return json(200, { role: account?.role ?? 'customer', aid, ...(account && { login: 'email', email: account.email }), ...(pending != null && { pending }) });
   }
   // every limited account (email or code) gets its token bar; first call makes an email account's row
   const row = await accountOf(account!);

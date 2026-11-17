@@ -196,12 +196,12 @@ export function useMe() {
 // 'gallery' -> no active tab
 export function PageSwitch({ current }: { current: 'model' | 'product' | 'admin' | 'gallery' }) {
   const me = useMe();
-  const tab = (id: 'model' | 'product' | 'admin', href: string, label: string) => (
+  const tab = (id: 'model' | 'product' | 'admin', href: string, label: ReactNode) => (
     <Link href={href} className={current === id ? 'active' : undefined} aria-current={current === id ? 'page' : undefined}>{label}</Link>
   );
   return <nav className="page-switch" aria-label="เลือกหน้า">
     {tab('model', '/', 'นางแบบ')}{tab('product', '/product', 'สินค้า')}
-    {me?.role === 'superadmin' && tab('admin', '/admin', 'แอดมิน')}
+    {me?.role === 'superadmin' && tab('admin', '/admin', <>แอดมิน{!!me.pending && <span className="tab-count" title={`รออนุมัติ ${me.pending} คำขอ`}>{me.pending}</span>}</>)}
   </nav>;
 }
 

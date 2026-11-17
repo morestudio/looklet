@@ -22,7 +22,11 @@ export const tokensOf = (r: { status: string; tokens?: number | null }) => (r.st
 
 // one row per account (was `invites`, 16 Nov): code = invite code, null = email + password login
 // quota = old image-count column, unused · token_quota = the real quota
-export type AccountRow = { user_id: string; code: string | null; label: string; quota: number; token_quota: number; disabled: boolean; created: string };
+// pending = signed up at /signup, waiting for a superadmin (app/api/signup); phone / line only on those rows
+export type AccountRow = {
+  user_id: string; code: string | null; label: string; quota: number; token_quota: number; disabled: boolean; created: string;
+  pending?: boolean; phone?: string | null; line?: string | null;
+};
 
 // email accounts: rows for existing ones come from the backfill in schema.sql; one added later gets its row on first use
 // (same defaults as a new invite code). Code accounts get theirs from /admin with the code; a code account whose row
@@ -62,7 +66,7 @@ export async function quotaBlock(pendingTokens = 0): Promise<Response | null> {
   const account = me();
   if (!isLimited(account) || !supabaseEnabled) return null;
   const row = await accountOf(account!);
-  if (!row || row.disabled) return DISABLED();
+  if (!row || row.disabled || row.pending) return DISABLED(); // pending: not approved yet (proxy blocks it too)
   const used = await usedTokens(account!.id);
   if (used + Math.max(0, pendingTokens) >= row.token_quota) {
     return Response.json({ error: `ใช้โทเคนครบ ${row.token_quota.toLocaleString('th-TH')} แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา` }, { status: 429 });
@@ -77,7 +81,7 @@ export async function uploadBlock(): Promise<Response | null> {
   const account = me();
   if (!isLimited(account) || !supabaseEnabled) return null;
   const [row, uploads] = await Promise.all([accountOf(account!), sbCountUploads(account!.id)]);
-  if (!row || row.disabled) return DISABLED();
+  if (!row || row.disabled || row.pending) return DISABLED(); // pending: not approved yet (proxy blocks it too)
   if (uploads >= MAX_UPLOADS) {
     return Response.json({ error: `อัปโหลดครบ ${MAX_UPLOADS} รูปแล้ว ลบรูปที่ไม่ใช้ก่อนเพิ่มใหม่` }, { status: 409 });
   }

@@ -1,9 +1,10 @@
 'use client';
-// AuthForm.tsx — หน้าเข้าสู่ระบบ (โค้ดเชิญ / อีเมล + รหัสผ่าน) และหน้าเปลี่ยนรหัสผ่าน ใช้กรอบเดียวกัน
-// ไม่มีสมัครเอง: โค้ดเชิญที่ superadmin ออกให้ (/admin) หรืออีเมลที่ admin เพิ่มให้ (scripts/add-user.mjs) — two equal tabs since 16 Nov (same kind of account, only the sign-in differs)
+// AuthForm.tsx — หน้าเข้าสู่ระบบ (โค้ดเชิญ / อีเมล + รหัสผ่าน), หน้าสมัครใช้งาน และหน้าเปลี่ยนรหัสผ่าน ใช้กรอบเดียวกัน
+// accounts: invite codes from /admin, emails added with scripts/add-user.mjs, or sign-ups at /signup (17 Nov) that a
+// superadmin approves at /admin — two equal login tabs since 16 Nov (same kind of account, only the sign-in differs)
 // บัญชีที่ไม่มีสิทธิ์ (isMember) เข้าไม่ได้แม้รหัสถูก
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { noteLogin } from '@/lib/analytics';
+import { noteLogin, track } from '@/lib/analytics';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
 import { IconAccount, IconEye, IconEyeOff, IconKey, IconSignOut } from './icons';
@@ -45,9 +46,11 @@ export function LoginForm() {
     }
     const { data } = await supabase.auth.getClaims();
     if (!isMember(data?.claims)) {
+      // ask before signing out: the check reads this session (app/api/signup GET)
+      const status = await fetch('/api/signup').then((r) => r.json() as Promise<{ pending?: boolean }>).catch(() => null);
       await supabase.auth.signOut({ scope: 'local' });
       setBusy(false);
-      return setError('บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน ติดต่อผู้ดูแล');
+      return setError(status?.pending ? 'บัญชีนี้รอผู้ดูแลอนุมัติ อนุมัติแล้วจะเข้าใช้งานได้ทันที' : 'บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน ติดต่อผู้ดูแล');
     }
     noteLogin('password');
     go('/welcome');
@@ -77,8 +80,56 @@ export function LoginForm() {
         </form>
       )}
       {error && <p className="auth-error" role="alert">{error}</p>}
+      <p className="auth-switch">ยังไม่มีบัญชี? <a href="/signup">สมัครใช้งาน</a></p>
     </div>
   );
+}
+
+// sign-up (app/api/signup): the account waits for a superadmin, no email is sent. "website" is a honeypot (hidden from people)
+export function SignupForm() {
+  const [f, setF] = useState({ email: '', password: '', confirm: '', shop: '', phone: '', line: '', website: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (f.password.length < 10) return setError('รหัสผ่านต้องยาวอย่างน้อย 10 ตัว');
+    if (f.password !== f.confirm) return setError('รหัสผ่านสองช่องไม่ตรงกัน');
+    setBusy(true);
+    setError('');
+    const body = { email: f.email, password: f.password, shop: f.shop, phone: f.phone, line: f.line, website: f.website };
+    const res = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .catch(() => null);
+    setBusy(false);
+    if (res?.ok) { track('sign_up', { method: 'password' }); return setDone(true); }
+    setError(((await res?.json().catch(() => null)) as { error?: string } | null)?.error ?? 'สมัครไม่สำเร็จ ลองอีกครั้ง');
+  }
+
+  if (done) return <div className="auth-card">
+    <div className="brand">Lolo <span className="beta">Beta</span></div>
+    <h1>ส่งคำขอแล้ว</h1>
+    <p className="auth-text">ผู้ดูแลจะตรวจสอบและอาจติดต่อกลับทางเบอร์ที่ให้ไว้ เมื่ออนุมัติแล้ว เข้าใช้งานด้วยอีเมลและรหัสผ่านที่สมัครไว้ได้ทันที</p>
+    <a className="btn btn-primary" href="/login">ไปหน้าเข้าใช้งาน</a>
+  </div>;
+
+  return <form className="auth-card" onSubmit={(e) => void submit(e)}>
+    <div className="brand">Lolo <span className="beta">Beta</span></div>
+    <h1>สมัครใช้งาน</h1>
+    <p className="auth-text">สมัครแล้วรอผู้ดูแลอนุมัติก่อนเริ่มใช้งาน</p>
+    <label>อีเมล<input className="field" type="email" autoComplete="email" required maxLength={254} value={f.email} onChange={(e) => set('email')(e.target.value)} /></label>
+    <PasswordField label="รหัสผ่าน (อย่างน้อย 10 ตัว)" autoComplete="new-password" value={f.password} onChange={set('password')} />
+    <PasswordField label="ยืนยันรหัสผ่าน" autoComplete="new-password" value={f.confirm} onChange={set('confirm')} />
+    <label>ชื่อร้าน / แบรนด์<input className="field" autoComplete="organization" required maxLength={80} value={f.shop} onChange={(e) => set('shop')(e.target.value)} /></label>
+    <label>เบอร์โทร<input className="field" type="tel" autoComplete="tel" required maxLength={30} value={f.phone} onChange={(e) => set('phone')(e.target.value)} /></label>
+    <label><span>LINE ID <span className="optional">(ไม่บังคับ)</span></span><input className="field" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={50} value={f.line} onChange={(e) => set('line')(e.target.value)} /></label>
+    <label className="hp" aria-hidden="true">เว็บไซต์<input tabIndex={-1} autoComplete="off" value={f.website} onChange={(e) => set('website')(e.target.value)} /></label>
+    {error && <p className="auth-error" role="alert">{error}</p>}
+    <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังส่ง...' : 'สมัครใช้งาน'}</button>
+    <p className="auth-fine">เราใช้อีเมล ชื่อร้าน และเบอร์ติดต่อเพื่อพิจารณาและติดต่อเรื่องการใช้งาน Lolo เท่านั้น เห็นได้เฉพาะผู้ดูแลระบบ</p>
+    <p className="auth-switch">มีบัญชีแล้ว? <a href="/login">เข้าใช้งาน</a></p>
+  </form>;
 }
 
 // password input with a show/hide eye; the button sits outside the <label> so the input's name stays just the label

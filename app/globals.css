@@ -492,6 +492,18 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 .password-eye:hover { color: var(--ink); }
 .password-eye:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 input.field { height: var(--control-height-field); padding: 0 var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--canvas); color: var(--ink); font-size: var(--text-md); }
+/* sign-up (SignupForm): links between /login and /signup, small print, the honeypot field kept off-screen for people */
+.auth-switch { margin: 0; color: var(--mute); font-size: var(--text-sm); text-align: center; }
+.auth-switch a { color: var(--ink); font-weight: 600; }
+.auth-text { margin: 0; color: var(--ink-soft); font-size: var(--text-sm); }
+.auth-fine { margin: 0; color: var(--mute); font-size: var(--text-xs); }
+.auth-card .optional { color: var(--mute); font-weight: 400; }
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+/* waiting sign-ups on the แอดมิน tab (PageSwitch) and their section at the top of /admin */
+.tab-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: var(--space-6); padding: 0 5px; border-radius: var(--r-full); background: var(--accent); color: var(--on-dark); font-size: var(--text-2xs); font-weight: 600; }
+.admin-pending .text-input { width: 110px; }
+.admin-pending a { color: var(--ink); }
+.admin-pending-actions { display: flex; gap: var(--space-6); white-space: nowrap; }
 .auth-error, .auth-ok { margin: 0; padding: var(--space-8) var(--space-12); border-radius: var(--r-md); font-size: var(--text-sm); }
 .auth-error { background: var(--danger-soft); color: var(--danger); }
 .auth-ok { background: var(--success-soft); color: var(--success); }

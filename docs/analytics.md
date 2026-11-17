@@ -34,6 +34,7 @@
 | event | เมื่อไหร่ | params หลัก |
 |---|---|---|
 | `login` | หน้าแรกหลังเข้าสู่ระบบ | `method` (invite_code / password) |
+| `sign_up` | ส่งคำขอสมัครที่ `/signup` สำเร็จ (ยังรออนุมัติ ไม่มี user_id) | `method` (password) |
 | `step_done` | เลือกอะไรจริงใน step ครั้งแรก (ต่อการเปิดหน้า) | `page`, `step` |
 | `step_view` | กดเปลี่ยน step | `page`, `step`, `step_index` |
 | `upload` | อัปโหลดรูปสำเร็จ | `page`, `kind`, `extra_photo` |
