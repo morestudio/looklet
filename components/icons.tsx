@@ -52,6 +52,8 @@ export const IconEraser = () => (
 );
 export const IconAccount = () => <Svg size={18}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></Svg>;
 export const IconKey = () => <Svg size={18}><circle cx="8" cy="15" r="4" /><path d="m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2" /></Svg>;
+export const IconEye = () => <Svg size={20}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></Svg>;
+export const IconEyeOff = () => <Svg size={20}><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.4M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" /></Svg>;
 export const IconSignOut = () => <Svg size={18}><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3" /><path d="m16 17 5-5-5-5M21 12H9" /></Svg>;
 // filled = in favorites (fill follows the text color)
 export const IconHeart = ({ filled = false }: { filled?: boolean }) => (

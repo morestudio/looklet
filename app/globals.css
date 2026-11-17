@@ -485,6 +485,12 @@ label.field input { display: block; width: 100%; height: var(--control-height-fi
 .auth-code { font-size: var(--text-xl); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
 .auth-tabs { align-self: stretch; }
 .auth-tabs button { flex: 1; justify-content: center; border: 0; background: none; font-family: inherit; cursor: pointer; }
+/* password + eye button (PasswordField in components/AuthForm.tsx): the button overlays the input's right end */
+.password-field { position: relative; display: flex; flex-direction: column; }
+.password-field input.field { padding-right: 48px; }
+.password-eye { position: absolute; right: 1px; bottom: 1px; display: inline-flex; align-items: center; justify-content: center; width: 46px; height: calc(var(--control-height-field) - 2px); padding: 0; border: 0; border-radius: 0 var(--r-sm) var(--r-sm) 0; background: none; color: var(--mute); cursor: pointer; }
+.password-eye:hover { color: var(--ink); }
+.password-eye:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 input.field { height: var(--control-height-field); padding: 0 var(--space-12); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--canvas); color: var(--ink); font-size: var(--text-md); }
 .auth-error, .auth-ok { margin: 0; padding: var(--space-8) var(--space-12); border-radius: var(--r-md); font-size: var(--text-sm); }
 .auth-error { background: var(--danger-soft); color: var(--danger); }

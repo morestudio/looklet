@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { noteLogin } from '@/lib/analytics';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
-import { IconAccount, IconKey, IconSignOut } from './icons';
+import { IconAccount, IconEye, IconEyeOff, IconKey, IconSignOut } from './icons';
 import { useMe } from './ui';
 
 // หลังเข้าสู่ระบบ/เปลี่ยนรหัส: โหลดหน้าใหม่ทั้งหน้า ให้ proxy.ts เห็น cookie ใหม่
@@ -72,14 +72,28 @@ export function LoginForm() {
       ) : (
         <form className="auth-form" id="login-email" role="tabpanel" aria-labelledby="login-tab-email" onSubmit={(e) => void submit(e)}>
           <label>อีเมล<input className="field" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>รหัสผ่าน<input className="field" type="password" autoComplete="current-password" required value={password}
-            onChange={(e) => setPassword(e.target.value)} /></label>
+          <PasswordField label="รหัสผ่าน" autoComplete="current-password" value={password} onChange={setPassword} />
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าใช้งาน'}</button>
         </form>
       )}
       {error && <p className="auth-error" role="alert">{error}</p>}
     </div>
   );
+}
+
+// password input with a show/hide eye; the button sits outside the <label> so the input's name stays just the label
+function PasswordField({ label, autoComplete, value, onChange }: {
+  label: string; autoComplete: string; value: string; onChange: (v: string) => void;
+}) {
+  const [shown, setShown] = useState(false);
+  return <div className="password-field">
+    <label>{label}<input className="field" type={shown ? 'text' : 'password'} autoComplete={autoComplete} required value={value}
+      autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => onChange(e.target.value)} /></label>
+    <button type="button" className="password-eye" aria-label={shown ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} aria-pressed={shown}
+      title={shown ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} onMouseDown={(e) => e.preventDefault()} onClick={() => setShown((s) => !s)}>
+      {shown ? <IconEyeOff /> : <IconEye />}
+    </button>
+  </div>;
 }
 
 export function ChangePasswordForm() {
@@ -106,10 +120,8 @@ export function ChangePasswordForm() {
     <form className="auth-card" onSubmit={(e) => void submit(e)}>
       <div className="brand">Lolo <span className="beta">Beta</span></div>
       <h1>เปลี่ยนรหัสผ่าน</h1>
-      <label>รหัสผ่านใหม่<input className="field" type="password" autoComplete="new-password" required value={password}
-        onChange={(e) => setPassword(e.target.value)} /></label>
-      <label>ยืนยันรหัสผ่านใหม่<input className="field" type="password" autoComplete="new-password" required value={confirm}
-        onChange={(e) => setConfirm(e.target.value)} /></label>
+      <PasswordField label="รหัสผ่านใหม่" autoComplete="new-password" value={password} onChange={setPassword} />
+      <PasswordField label="ยืนยันรหัสผ่านใหม่" autoComplete="new-password" value={confirm} onChange={setConfirm} />
       {msg && <p className={msg.ok ? 'auth-ok' : 'auth-error'} role="alert">{msg.text}</p>}
       <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}</button>
       <button className="btn btn-tertiary" type="button" onClick={() => go('/')}>← กลับไป Lolo</button>
