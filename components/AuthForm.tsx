@@ -2,11 +2,12 @@
 // AuthForm.tsx — หน้าเข้าสู่ระบบ (โค้ดเชิญ / อีเมล + รหัสผ่าน) และหน้าเปลี่ยนรหัสผ่าน ใช้กรอบเดียวกัน
 // ไม่มีสมัครเอง: โค้ดเชิญที่ superadmin ออกให้ (/admin) หรืออีเมลที่ admin เพิ่มให้ (scripts/add-user.mjs) — two equal tabs since 16 Nov (same kind of account, only the sign-in differs)
 // บัญชีที่ไม่มีสิทธิ์ (isMember) เข้าไม่ได้แม้รหัสถูก
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { noteLogin } from '@/lib/analytics';
 import { authEnabled, isMember } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/client';
-import { IconSignOut } from './icons';
+import { IconAccount, IconKey, IconSignOut } from './icons';
+import { useMe } from './ui';
 
 // หลังเข้าสู่ระบบ/เปลี่ยนรหัส: โหลดหน้าใหม่ทั้งหน้า ให้ proxy.ts เห็น cookie ใหม่
 const go = (path: string) => window.location.assign(path);
@@ -121,10 +122,32 @@ export async function signOut() {
   go('/login');
 }
 
-// ปุ่มมุมขวาบนของทุกหน้า · จอมือถือเหลือแค่ไอคอน (.sign-out-text ซ่อนใน globals.css) ให้แถบบนพอดีจอ
-export function SignOutButton() {
+// top-right account menu on every page: name, change password (email accounts only: a code account's password is
+// derived from its code) and sign out. Phones show only the icon (.account-name hidden in globals.css)
+export function AccountMenu() {
+  const me = useMe();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
   if (!authEnabled) return null;
-  return <button className="btn btn-tertiary sign-out" aria-label="ออกจากระบบ" title="ออกจากระบบ" onClick={() => void signOut()}>
-    <IconSignOut /><span className="sign-out-text">ออกจากระบบ</span>
-  </button>;
+  const name = me?.label?.trim() || me?.email || 'บัญชีของฉัน';
+  const sub = me?.login === 'code' ? 'เข้าด้วยโค้ดเชิญ' : me?.email && me.email !== name ? me.email : '';
+  return <div className="account-menu" ref={box}>
+    <button className="btn btn-tertiary account-button" aria-haspopup="menu" aria-expanded={open} title={name}
+      onClick={() => setOpen((o) => !o)}>
+      <IconAccount /><span className="account-name">{name}</span>
+    </button>
+    {open && <div className="account-pop" role="menu" aria-label="บัญชี">
+      <div className="account-who"><b>{name}</b>{sub && <span>{sub}</span>}</div>
+      {me?.login === 'email' && <button role="menuitem" onClick={() => go('/account')}><IconKey />เปลี่ยนรหัสผ่าน</button>}
+      <button role="menuitem" onClick={() => void signOut()}><IconSignOut />ออกจากระบบ</button>
+    </div>}
+  </div>;
 }

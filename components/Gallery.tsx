@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { IconBookmark, IconEdit, IconHeart, IconInfo } from './icons';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { authEnabled } from '@/lib/auth';
 import { api, thumbSrc } from '@/lib/browser';
@@ -118,7 +118,7 @@ export default function Gallery() {
       <div className="top-actions">
         <GalleryLink active />
         <TokenUsage />
-        <SignOutButton />
+        <AccountMenu />
       </div>
     </header>
     <div className={'workspace gallery-workspace' + (info ? ' editing' : '')}>

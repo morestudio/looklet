@@ -80,17 +80,26 @@ button, select, input, textarea { font-family: inherit; }
 /* จอแคบ (มือถือ): แถบบนต้องพอดีจอ (เดิมกว้าง 517px บนจอ 390px) -> ซ่อน Beta, ช่องไฟแคบลง, ออกจากระบบเหลือไอคอน */
 @media (max-width: 560px) {
   .topbar { gap: var(--space-8); }
-  .beta, .sign-out-text { display: none; }
+  .beta, .account-name { display: none; }
   .page-switch a { padding: 0 var(--space-8); }
   .token-usage { gap: var(--space-4); padding: 0 var(--space-8); }
   .token-usage b { font-size: var(--text-xs); }
   .token-track { width: 24px; }
   .token-word { display: none; }
-  .sign-out { padding: 0 var(--space-6); }
+  .account-button { padding: 0 var(--space-6); }
 }
 .status { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-6); overflow: hidden; color: var(--ink-soft); font-size: var(--text-sm); white-space: nowrap; text-overflow: ellipsis; }
 .status-x { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-full); background: var(--surface-card); color: var(--mute); cursor: pointer; }
 .top-actions { display: flex; align-items: center; gap: var(--space-8); margin-left: auto; }
+/* account menu (AccountMenu in components/AuthForm.tsx): name button, popover with change password + sign out */
+.account-menu { position: relative; flex: none; }
+.account-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.account-pop { position: absolute; top: calc(100% + var(--space-6)); right: 0; z-index: 60; display: flex; flex-direction: column; min-width: 220px; max-width: min(300px, calc(100vw - 32px)); padding: var(--space-6); border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: var(--canvas); box-shadow: var(--shadow-float); }
+.account-who { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-8) var(--space-10) var(--space-10); margin-bottom: var(--space-4); border-bottom: 1px solid var(--hairline-soft); }
+.account-who b { overflow: hidden; color: var(--ink); font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.account-who span { overflow: hidden; color: var(--mute); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.account-pop button { display: flex; align-items: center; gap: var(--space-8); height: var(--control-height); padding: 0 var(--space-10); border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); font-family: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.account-pop button:hover, .account-pop button:focus-visible { background: var(--surface-card); }
 
 /* rail | panel | stage (+ 0px edit column). Model page adds a right wardrobe panel + rail: .workspace.has-wear */
 .workspace { --side: var(--panel-width); flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-width) var(--side) minmax(0, 1fr) 0px; grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail panel stage edit"; overflow: clip; transition: grid-template-columns .35s ease; } /* clip, not hidden: hidden is a scroll container and breaks the phone sticky rail / bar */

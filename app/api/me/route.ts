@@ -15,8 +15,15 @@ const analyticsId = (id: string | undefined) => {
 export const GET = get(async () => {
   const account = me();
   const aid = analyticsId(account?.id);
-  if (!isLimited(account) || !supabaseEnabled) return json(200, { role: account?.role ?? 'customer', aid });
+  // account menu: login (code accounts get no change-password item) and the email, never a code account's internal email
+  if (!isLimited(account) || !supabaseEnabled) {
+    return json(200, { role: account?.role ?? 'customer', aid, ...(account && { login: 'email', email: account.email }) });
+  }
   // every limited account (email or code) gets its token bar; first call makes an email account's row
   const row = await accountOf(account!);
-  return json(200, { role: account!.role, aid, label: row?.label ?? '', tokenQuota: row?.token_quota ?? 0, tokens: await usedTokens(account!.id) });
+  const login = row?.code ? 'code' : 'email';
+  return json(200, {
+    role: account!.role, aid, login, ...(login === 'email' && { email: account!.email }),
+    label: row?.label ?? '', tokenQuota: row?.token_quota ?? 0, tokens: await usedTokens(account!.id),
+  });
 });

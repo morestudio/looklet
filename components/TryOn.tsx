@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import AccessoryDialog from './AccessoryDialog';
 import ImageViewer from './ImageViewer';
 import LocalEditDialog, { type LocalEditRequest } from './LocalEditDialog';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import { PaperDoll, type DollChip, type DollSlot } from './PaperDoll';
 import { PersonView } from './PersonView';
 import { PoseView } from './PoseView';
@@ -1272,7 +1272,7 @@ export default function TryOn() {
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นสไตล์ถ่ายภาพ) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
           <GalleryLink />
           <TokenUsage />
-          <SignOutButton />
+          <AccountMenu />
         </div>
       </header>
 

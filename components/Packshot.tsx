@@ -15,7 +15,7 @@ import CreativeShot from './CreativeShot';
 import { type CreativeConcept } from '@/lib/creative';
 import { errorReason, itemSource, stopwatch, track, trackKept } from '@/lib/analytics';
 import { PRODUCT_SAMPLES, isSampleGroup, productGroups, productSources, type ProductGroup, type ProductPhoto } from '@/lib/product-groups';
-import { SignOutButton } from './AuthForm';
+import { AccountMenu } from './AuthForm';
 import {
   IconAngle, IconBag, IconCopy, IconDownload, IconFrame, IconHand, IconLeaf, IconPalette, IconReset, IconRetouch, IconScene, IconSearch, IconSettings,
 } from './icons';
@@ -1143,7 +1143,7 @@ export default function Packshot() {
           {/* สร้างรูปอยู่ท้ายเส้นทาง (ขั้นตั้งค่า) · ดาวน์โหลดอยู่ใต้รูป (28 ต.ค.) */}
           <GalleryLink />
           <TokenUsage />
-          <SignOutButton />
+          <AccountMenu />
         </div>
       </header>
 

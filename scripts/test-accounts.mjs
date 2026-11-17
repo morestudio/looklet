@@ -277,9 +277,14 @@ assert.equal(await withAccount(team, () => uploadBlock()), null);
 caller = team;
 let mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
 assert.deepEqual([mine.role, mine.label, mine.tokenQuota, mine.tokens], ['customer', 'team@x', 300000, 0]);
+assert.deepEqual([mine.login, mine.email], ['email', 'team@x']); // account menu: change password shown
+caller = alice; // code account: no change password, its internal email is never sent
+mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
+assert.deepEqual([mine.login, mine.email, mine.label], ['code', undefined, 'ร้าน A']);
 caller = boss;
 mine = await (await meRoute.GET(new Request('http://test/api/me'), {})).json();
 assert.equal(mine.tokenQuota, undefined);
+assert.deepEqual([mine.login, mine.email], ['email', 'boss@x']);
 
 // ---------- admin: เฉพาะ superadmin ออกโค้ด / แก้ / ปิด ----------
 caller = alice;
