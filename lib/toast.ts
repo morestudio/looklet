@@ -1,20 +1,18 @@
-// Toast store (browser, no React): any file calls toast.error / warn / ok / info / busy; components/Toaster.tsx draws them.
-// Rule: a message leaves by itself only when missing it costs nothing. Errors (something failed) stay until closed with ×,
-// pushed out by newer ones (TOAST_MAX) or the page changes; everything else leaves after TOAST_TTL, including warn = "do X
-// first" (looks like an error, but answers the click the user just made; pressing again shows it again).
-// No per-action keys (user's call 17 Nov): a later success doesn't clear an old error, because the screen already shows the
-// success (the image appears, the file saves); keys and retry-clearing cost ~20 call sites and caused the blink bug.
-// Not for dialogs: a modal <dialog> covers the page, so errors raised inside one are shown inside it.
+// Toast store, no React. Callers use `toast`; components/Toaster.tsx draws it through `toastStore`.
+// Errors stay until closed (×), pushed out by newer ones or the page changes; every other kind leaves after TOAST_TTL.
+// No per-action keys: a later success doesn't clear an old error (the screen shows the success). See CLAUDE.md "Toasts".
 
 export type ToastKind = 'error' | 'warn' | 'ok' | 'info' | 'busy';
-export type Toast = { id: number; kind: ToastKind; text: string; sticky: boolean; leaving?: boolean };
+export type Toast = { id: number; kind: ToastKind; text: string; leaving?: boolean };
 
-export const TOAST_TTL = 6000; // one value for every timed kind (user's call 17 Nov); long enough to read a 90-char warning
+export const TOAST_TTL = 6000;
 export const TOAST_MAX = 3;
+
+const stays = (kind: ToastKind) => kind === 'error' || kind === 'busy';
 
 let items: Toast[] = [];
 let nextId = 1;
-const left = new Map<number, number>(); // ms until a timed toast leaves; kept out of `items` so a tick doesn't re-render
+const left = new Map<number, number>(); // ms until a timed toast leaves; outside `items` so a tick doesn't re-render
 const listeners = new Set<() => void>();
 
 function set(next: Toast[]) {
@@ -23,47 +21,52 @@ function set(next: Toast[]) {
   listeners.forEach((l) => l());
 }
 
-const live = () => items.filter((t) => !t.leaving);
-
 function show(kind: ToastKind, message: string): number | undefined {
   const text = message.trim();
   if (!text) return;
-  const sticky = kind === 'error' || kind === 'busy';
-  // the same message again (a retry that failed the same way, offline clicks): keep the one box, restart its timer
-  const same = live().find((t) => t.kind === kind && t.text === text);
+  // same text again (offline retries): keep the one box. Not for busy: each busy note is closed by its own caller
+  const same = kind !== 'busy' && items.find((t) => !t.leaving && t.kind === kind && t.text === text);
   if (same) {
-    if (!sticky) left.set(same.id, TOAST_TTL);
+    if (!stays(kind)) left.set(same.id, TOAST_TTL);
     return same.id;
   }
-  const toast: Toast = { id: nextId++, kind, text, sticky };
+  const toast: Toast = { id: nextId++, kind, text };
   let next = [...items, toast];
-  // over the cap: the oldest timed one goes first (it was leaving anyway), then the oldest of all
+  // over the cap: drop the oldest timed toast first, then the oldest of all
   while (next.filter((t) => !t.leaving).length > TOAST_MAX) {
     const shown = next.filter((t) => !t.leaving && t !== toast);
-    const drop = shown.find((t) => !t.sticky) ?? shown[0];
+    const drop = shown.find((t) => !stays(t.kind)) ?? shown[0];
     next = next.filter((t) => t !== drop);
   }
-  if (!sticky) left.set(toast.id, TOAST_TTL);
+  if (!stays(kind)) left.set(toast.id, TOAST_TTL);
   set(next);
   return toast.id;
 }
 
-// fades out, then Toaster calls remove()
+// starts the fade-out; Toaster removes it when the fade ends
 function dismiss(id: number | undefined) {
   if (items.some((t) => t.id === id && !t.leaving)) set(items.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
 }
 
 export const toast = {
   error: (text: string) => void show('error', text),
+  /** "do X first": looks like an error, leaves like ok */
   warn: (text: string) => void show('warn', text),
   ok: (text: string) => void show('ok', text),
   info: (text: string) => void show('info', text),
-  // "working…": stays until the returned function closes it (call it before showing the result)
+  /** "working…": returns the function that closes it */
   busy: (text: string) => { const id = show('busy', text); return () => dismiss(id); },
+};
+
+// for components/Toaster.tsx (and the tests) only
+export const toastStore = {
+  get: () => items,
+  subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  stays: (t: Toast) => stays(t.kind),
   dismiss,
   remove: (id: number) => { if (items.some((t) => t.id === id)) set(items.filter((t) => t.id !== id)); },
   clear: () => { if (items.length) set([]); },
-  // Toaster calls this while nothing pauses the timers (pointer or focus on a toast, hidden tab, open modal dialog)
+  // advance the timers by ms; Toaster calls it only while nothing holds them
   tick(ms: number) {
     const due: number[] = [];
     for (const [id, rest] of left) {
@@ -72,6 +75,3 @@ export const toast = {
     due.forEach(dismiss);
   },
 };
-
-export const getToasts = () => items;
-export const subscribeToasts = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };

@@ -34,7 +34,7 @@ import {
   api, canOpenImage, canvasJpeg, finishedCanvas, guessAccessory, inAppBrowser, isHeic, jpegBase64, loadImg, loadTools, openaiSize,
   saveImageFile, storeUpload, thumbSrc, toWebImage,
 } from '@/lib/browser';
-import { friendlyError } from '@/lib/errors';
+import { failText, friendlyError } from '@/lib/errors';
 import { toast } from '@/lib/toast';
 import {
   ACCESSORIES, ACCESSORY_TYPES, ANGLES, DEFAULT_AI_MODEL, FACE_MOODS, FRAMINGS, GAZES, PLACEMENTS, LIGHT_SOURCES, MAX_ACCESSORIES, MODELS, OUTFITS,
@@ -415,7 +415,7 @@ export default function TryOn() {
     try {
       if (!d.item.src!.startsWith('blob:')) await api('/api/update', { src: d.item.src, ...info });
     } catch (err) {
-      return toast.error('แก้ไม่สำเร็จ: ' + friendlyError(err));
+      return toast.error(failText('แก้', err));
     }
     setLists((l) => ({ ...l, accessory: l.accessory.map((a) => (a === d.item ? { ...a, ...info } : a)) }));
     // แก้เป็นรองเท้า -> ย้ายไปช่องรองเท้าในขั้นเสื้อผ้า (ไม่เป็นของเสริมที่เลือกอยู่แล้ว)
@@ -426,7 +426,7 @@ export default function TryOn() {
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
-      return toast.error('ลบไม่สำเร็จ: ' + friendlyError(err));
+      return toast.error(failText('ลบ', err));
     }
     const id = idOf(item);
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
@@ -460,7 +460,7 @@ export default function TryOn() {
       return { src, caption: realCaption };
     } catch (err) {
       console.error('ใส่หน้าจริงไม่สำเร็จ', err);
-      toast.error(`ใส่หน้าจริงไม่สำเร็จ: ${friendlyError(err)} — ใช้หน้าจาก AI แทน`);
+      toast.error(`${failText('ใส่หน้าจริง', err)} — ใช้หน้าจาก AI แทน`);
       return null;
     }
   }
@@ -671,7 +671,7 @@ export default function TryOn() {
       }
     } catch (err) {
       track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
-      toast.error('สร้างรูปไม่สำเร็จ: ' + friendlyError(err, true));
+      toast.error(failText('สร้างรูป', err, true));
     } finally {
       setBusy(null);
       setPendingSet(null);
@@ -700,7 +700,7 @@ export default function TryOn() {
       setEditing(true); // see the refined skin next to the original
       toast.ok('ปรับผิวแล้ว เก็บรูปต้นฉบับและรูปใหม่ไว้ในคลังให้เทียบกัน');
     } catch (err) {
-      toast.error('ปรับผิวไม่สำเร็จ: ' + friendlyError(err, true));
+      toast.error(failText('ปรับผิว', err, true));
     } finally {
       setBusy(null);
     }
@@ -746,7 +746,7 @@ export default function TryOn() {
       const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
-      toast.error('เปิดรูปไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('เปิดรูป', err));
     }
   }
 
@@ -760,7 +760,7 @@ export default function TryOn() {
       if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
-      toast.error('ดาวน์โหลดไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('ดาวน์โหลด', err));
     }
   }
 

@@ -58,7 +58,7 @@ const { ga } = load({ NEXT_PUBLIC_GA_ID: 'G-TEST' }, 'lolostyleshot.vercel.app')
 const err = (message, status) => Object.assign(new Error(message), status ? { status } : {});
 assert.equal(ga.errorReason(err('x', 429)), 'quota');
 assert.equal(ga.errorReason(err('x', 403)), 'quota');
-assert.equal(ga.errorReason(err('Your request was rejected by the safety system', 502)), 'safety');
+assert.equal(ga.errorReason(Object.assign(err('Your request was rejected by the safety system', 502), { reason: 'safety' })), 'safety'); // reason from the server (lib/fail-reason.ts)
 assert.equal(ga.errorReason(err('x', 502)), 'provider');
 assert.equal(ga.errorReason(err('x', 504)), 'timeout');
 assert.equal(ga.errorReason(err('x', 413)), 'too_large');

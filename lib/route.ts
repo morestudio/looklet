@@ -3,6 +3,7 @@ import 'server-only';
 import { withAccount, type Account } from './account';
 import { ApiError } from './ai';
 import { DEFAULT_AI_MODEL } from './catalog';
+import { aiFailReason, type FailReason } from './fail-reason';
 import { isSignedInMember, signedInAccount } from './supabase/server';
 
 export const json = (status: number, obj: unknown) => Response.json(obj, { status });
@@ -10,10 +11,11 @@ export const json = (status: number, obj: unknown) => Response.json(obj, { statu
 // ทุก API: ยังไม่เข้าสู่ระบบ = 401 (proxy.ts กันไว้แล้ว เช็กซ้ำเผื่อ proxy ถูกข้าม)
 export const signedIn = async () => (await isSignedInMember() ? null : json(401, { error: 'ต้องเข้าสู่ระบบก่อน' }));
 
+// `error` keeps the raw text (logs, audit page, superadmin pages); `reason` is what the browser words for customers
 const failed = (e: unknown) => {
-  if (e instanceof ApiError) return json(502, { error: e.message }); // AI ตอบ error
+  if (e instanceof ApiError) return json(502, { error: e.message, reason: aiFailReason(e.message, e.providerStatus) });
   const err = e as Error;
-  return json(500, { error: `${err.name}: ${err.message}` });
+  return json(500, { error: `${err.name}: ${err.message}`, reason: 'server' satisfies FailReason });
 };
 
 // เช็กสิทธิ์แล้วจำว่าใครเรียก (lib/account.ts me()) ตลอด request — storage ใช้กรองรูปของแต่ละบัญชี

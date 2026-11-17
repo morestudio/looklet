@@ -45,7 +45,7 @@ export async function api<T = { src: string }>(path: string, body: unknown): Pro
   if (USAGE_ROUTES.includes(path)) window.dispatchEvent(new Event(USAGE_EVENT));
   // quotaBlock(): 403 = code disabled, 429 = tokens used up
   if (USAGE_ROUTES.includes(path) && (res.status === 403 || res.status === 429)) track('quota_blocked', { route: path.slice(5), status: res.status });
-  if (!res.ok) throw Object.assign(new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`)), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(out.error || (res.status === 413 ? 'ไฟล์ใหญ่เกินไป' : res.status === 504 ? 'เซิร์ฟเวอร์ใช้เวลานานเกินไป' : `HTTP ${res.status}`)), { status: res.status, reason: out.reason });
   return out;
 }
 

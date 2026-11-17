@@ -30,7 +30,7 @@ import { PRESET, REF_SHOT, START, creativeScopeOf, idOf, pickUsed, readRecipe, s
 import {
   api, canOpenImage, canvasJpeg, finishedCanvas, guessProduct, inAppBrowser, isHeic, jpegBase64, saveImageFile, storeUpload, thumbSrc, toWebImage,
 } from '@/lib/browser';
-import { friendlyError } from '@/lib/errors';
+import { failText, friendlyError } from '@/lib/errors';
 import { toast } from '@/lib/toast';
 import { DEFAULT_AI_MODEL, defaultQuality, isGpt25, qualitiesFor, type Item } from '@/lib/catalog';
 import {
@@ -458,7 +458,7 @@ export default function Packshot() {
       const out = await api<{ src: string; patch: Record<string, string> }>('/api/product-groups', body);
       setLists((l) => ({ ...l, product: l.product.map((p) => (p.src === out.src ? { ...p, ...out.patch } : p)) }));
     } catch (err) {
-      toast.error('แก้สินค้าไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('แก้สินค้า', err));
       throw err;
     } finally { setGroupBusy(false); }
   }
@@ -555,7 +555,7 @@ export default function Packshot() {
     try {
       if (!item.src!.startsWith('blob:')) await api('/api/delete', { src: item.src });
     } catch (err) {
-      return toast.error('ลบไม่สำเร็จ: ' + friendlyError(err));
+      return toast.error(failText('ลบ', err));
     }
     setLists((l) => ({ ...l, [key]: l[key].filter((i) => i !== item) }));
     update((r) => (r.pick[key] === idOf(item) ? { pick: { ...r.pick, [key]: null } } : {}));
@@ -575,7 +575,7 @@ export default function Packshot() {
         deleted.add(p.src!);
       }
     } catch (err) {
-      toast.error('ลบไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('ลบ', err));
     } finally { setGroupBusy(false); }
     const left = lists.product.filter((p) => !deleted.has(p.src!));
     setLists((l) => ({ ...l, product: l.product.filter((p) => !deleted.has(p.src!)) }));
@@ -607,7 +607,7 @@ export default function Packshot() {
       track('creative_ideas', { result: 'success', retry: concepts.length > 0, has_idea: Boolean(creativeIdea.trim()), has_inspiration: Boolean(inspiration) });
     } catch (err) {
       track('creative_ideas', { result: 'error', reason: errorReason(err) }); // not generate_error: no image was asked for
-      toast.error('คิดไอเดียไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('คิดไอเดีย', err));
     }
     finally { planningRef.current = false; setPlanning(false); }
   }
@@ -719,7 +719,7 @@ export default function Packshot() {
       }
     } catch (err) {
       track('generate_error', { ...ga, reason: errorReason(err), duration_s: elapsed() });
-      toast.error('สร้างรูปไม่สำเร็จ: ' + friendlyError(err, true));
+      toast.error(failText('สร้างรูป', err, true));
     } finally {
       setBusy(null);
       setPendingSet(null);
@@ -764,7 +764,7 @@ export default function Packshot() {
       const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
-      toast.error('เปิดรูปไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('เปิดรูป', err));
     }
   }
 
@@ -778,7 +778,7 @@ export default function Packshot() {
       if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
-      toast.error('ดาวน์โหลดไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('ดาวน์โหลด', err));
     }
   }
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { track, trackKept, type StudioPage } from '@/lib/analytics';
 import { api } from '@/lib/browser';
-import { friendlyError } from '@/lib/errors';
+import { failText } from '@/lib/errors';
 import { toast } from '@/lib/toast';
 
 type Placed = { src: string; inGallery?: boolean; editedFrom?: string };
@@ -33,7 +33,7 @@ export function useHistoryPlaces<R extends Placed>(
       else trackKept(page, latest.current.find((r) => r.src === src) ?? { src }, 'gallery');
     } catch (err) {
       mark(inGallery);
-      toast.error((inGallery ? 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ' : 'บันทึกลงแกลลอรี่ไม่สำเร็จ: ') + friendlyError(err));
+      toast.error(failText(inGallery ? 'เอาออกจากแกลลอรี่' : 'บันทึกลงแกลลอรี่', err));
     } finally {
       pending.current.delete(src);
     }
@@ -46,7 +46,7 @@ export function useHistoryPlaces<R extends Placed>(
     try {
       await api('/api/delete', { src, from: 'history', permanent });
     } catch (err) {
-      return toast.error((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกไม่สำเร็จ: ') + friendlyError(err));
+      return toast.error(failText(permanent ? 'ลบ' : 'เอาออก', err));
     }
     const i = latest.current.findIndex((r) => r.src === src);
     if (i < 0) return;

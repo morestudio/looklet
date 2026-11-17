@@ -14,10 +14,11 @@ function load(file, scope = {}) {
   return mod.exports;
 }
 
+// `toast` (callers) + `toastStore` (Toaster) merged so the cases read as one API
 const store = () => {
   const t = load('toast.ts');
-  const shown = () => t.getToasts().filter((x) => !x.leaving).map((x) => `${x.kind}:${x.text}`);
-  return { ...t, shown };
+  const shown = () => t.toastStore.get().filter((x) => !x.leaving).map((x) => `${x.kind}:${x.text}`);
+  return { ...t, toast: { ...t.toast, ...t.toastStore }, getToasts: t.toastStore.get, subscribeToasts: t.toastStore.subscribe, shown };
 };
 
 // errors stay, the rest leaves after TTL (and only while the timers run)
@@ -94,6 +95,12 @@ const store = () => {
   assert.deepEqual(shown(), ['error:cannot open']);
   done(); // closing twice is harmless
   assert.deepEqual(shown(), ['error:cannot open']);
+  // two conversions at once: the first to finish must not close the other's note
+  const a = toast.busy('converting…'), b = toast.busy('converting…');
+  assert.deepEqual(shown(), ['error:cannot open', 'busy:converting…', 'busy:converting…']);
+  a();
+  assert.deepEqual(shown(), ['error:cannot open', 'busy:converting…']);
+  b();
 }
 
 // offline clicks: every retry fails the same way at once; the box must stay put (same id, never fading), not blink
@@ -125,25 +132,53 @@ const store = () => {
   assert.deepEqual(shown(), [], 'page change clears everything');
 }
 
-// ---------- error wording ----------
-const { friendlyError } = load('errors.ts', { console: { warn() {} } });
-const err = (message, status) => Object.assign(new Error(message), { status });
+// ---------- server classification (lib/fail-reason.ts, used by lib/route.ts) ----------
+const { aiFailReason } = load('fail-reason.ts');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 400: Your request was rejected by the safety system', 400), 'safety');
+assert.equal(aiFailReason('moderation_blocked'), 'safety', 'safety even without a provider status');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 429: Rate limit reached', 429), 'ai_busy');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 500: The server had an error', 500), 'ai_busy');
+assert.equal(aiFailReason('Gemini ตอบกลับ 503: overloaded', 503), 'ai_busy');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 429: You exceeded your current quota (insufficient_quota)', 429), 'ai_unavailable', 'no credit is not busy');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 401: Incorrect API key', 401), 'ai_unavailable');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 403: no access to model', 403), 'ai_unavailable');
+assert.equal(aiFailReason('OpenAI ตอบกลับ 400: Invalid image', 400), 'ai_rejected');
+assert.equal(aiFailReason('Gemini ไม่ยอมประมวลผลรูปนี้ (OTHER)'), undefined, 'our own wording: shown as written');
+
+// ---------- browser wording (lib/errors.ts) ----------
+const { friendlyError, failText } = load('errors.ts', { console: { warn() {} } });
+// what api() throws: message = the route's `error`, plus status and the server's reason
+const err = (message, status, reason) => Object.assign(new Error(message), { status, reason });
 const RAW = /OpenAI|Rate limit|TypeError|fetch failed|HTTP \d|Supabase/;
 
-// raw provider / server text never reaches the user; every replacement says what to do
-for (const e of [
-  err('OpenAI ตอบกลับ 429: Rate limit reached for gpt-image in organization org-x', 502),
-  err('TypeError: fetch failed', 500),
-  err('Error: เก็บรูปลง Supabase ไม่สำเร็จ: duplicate key', 500),
-  err('เซิร์ฟเวอร์ใช้เวลานานเกินไป', 504),
-  err('HTTP 503', 503),
-]) {
+// a reason replaces the raw text; the server answered, so a paid action says it was free
+for (const [reason, pattern] of [['ai_busy', /AI ไม่ว่างชั่วคราว/], ['ai_unavailable', /ติดต่อผู้ดูแล/], ['ai_rejected', /เปลี่ยนรูป/], ['server', /ระบบขัดข้อง/], ['safety', /AI ปฏิเสธภาพนี้/]]) {
+  const e = err(reason === 'server' ? 'TypeError: fetch failed' : 'OpenAI ตอบกลับ 429: Rate limit reached', reason === 'server' ? 500 : 502, reason);
   const text = friendlyError(e);
+  assert.match(text, pattern, reason);
   assert.doesNotMatch(text, RAW, text);
-  assert.match(text, /ลองอีกครั้ง/, text);
   assert.doesNotMatch(text, /โควตา/, 'no quota note unless the action spends tokens');
-  assert.match(friendlyError(e, true), /ไม่เสียโควตา$/, 'the server answered with an error: it counted nothing');
+  assert.equal((friendlyError(e, true).match(/ไม่เสียโควตา/g) ?? []).length, 1, 'said once, at the end');
 }
+assert.notEqual(friendlyError(err('x', 502, 'ai_busy')), friendlyError(err('x', 500, 'server')), 'AI busy and our own failure read differently');
+
+// no reason: the route wrote the text for the user (quota, upload cap, our own 503s), shown as is
+for (const [message, status] of [
+  ['ใช้โทเคนครบ 300,000 แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา', 429],
+  ['อัปโหลดได้สูงสุด 100 รูป', 409],
+  ['ไฟล์ใหญ่เกินไป', 413],
+  ['Gemini ไม่ยอมประมวลผลรูปนี้ (SAFETY)', 502],
+  ['AI ยังวางแผนภาพที่ใช้ได้ไม่สำเร็จ กรุณาลองอีกครั้ง (ยังไม่ได้สร้างรูป)', 503],
+  ['เลือกรูปที่ต้องการแก้ก่อน', undefined],
+]) {
+  assert.equal(friendlyError(err(message, status)), message);
+  assert.equal(friendlyError(err(message, status), true), message, 'no quota note on our own messages');
+}
+assert.equal(friendlyError('ข้อความธรรมดา'), 'ข้อความธรรมดา', 'a plain string works too');
+// no JSON body: the host's timeout page, or a route that answered without text
+assert.match(friendlyError(err('เซิร์ฟเวอร์ใช้เวลานานเกินไป', 504)), /นานเกินไป/);
+assert.match(friendlyError(err('HTTP 418', 418)), /รหัส 418/);
+
 // no answer at all (connection lost mid-request): the server may still finish and count the image, so no "free" promise
 for (const e of [new TypeError('Failed to fetch'), new TypeError('Load failed')]) {
   assert.match(friendlyError(e), /อินเทอร์เน็ต.*ลองอีกครั้ง$/);
@@ -151,56 +186,19 @@ for (const e of [new TypeError('Failed to fetch'), new TypeError('Load failed')]
   assert.doesNotMatch(paid, /โควตา/, paid);
   assert.match(paid, /แถวรูปที่สร้างแล้ว/, 'says where a finished image would be');
 }
-
-// AI provider errors: only what passes with time reads "busy"; the rest says who can fix it
-const busy = /AI ไม่ว่างชั่วคราว/;
-for (const m of ['OpenAI ตอบกลับ 429: Rate limit reached for gpt-image', 'OpenAI ตอบกลับ 500: The server had an error', 'Gemini ตอบกลับ 503: The model is overloaded']) {
-  assert.match(friendlyError(err(m, 502)), busy, m);
-}
-for (const m of [
-  'OpenAI ตอบกลับ 401: Incorrect API key provided',
-  'OpenAI ตอบกลับ 429: You exceeded your current quota, please check your plan and billing details. (insufficient_quota)',
-  'OpenAI ตอบกลับ 403: Project does not have access to model',
-]) {
-  const text = friendlyError(err(m, 502));
-  assert.doesNotMatch(text, busy, m);
-  assert.match(text, /ติดต่อผู้ดูแล/, m);
-}
-assert.match(friendlyError(err('OpenAI ตอบกลับ 400: Invalid image file', 502)), /เปลี่ยนรูป/);
-assert.notEqual(friendlyError(err('OpenAI ตอบกลับ 500: x', 502)), friendlyError(err('x', 500)), 'AI busy and our own failure read differently');
-assert.match(friendlyError(new TypeError('Failed to fetch')), /อินเทอร์เน็ต/);
-assert.match(friendlyError(err('x', 504)), /นานเกินไป/);
-
-// messages we wrote for the user pass through unchanged (4xx, and our own Thai 502s)
-for (const [message, status] of [
-  ['ใช้โทเคนครบ 300,000 แล้ว ติดต่อผู้ดูแลเพื่อเพิ่มโควตา', 429],
-  ['อัปโหลดได้สูงสุด 100 รูป', 409],
-  ['ไฟล์ใหญ่เกินไป', 413],
-  ['Gemini ไม่ยอมประมวลผลรูปนี้ (SAFETY)', 502],
-  ['เลือกรูปที่ต้องการแก้ก่อน', undefined],
-]) {
-  assert.equal(friendlyError(err(message, status)), message);
-  assert.equal(friendlyError(err(message, status), true), message, 'no quota note on our own messages');
-}
-assert.equal(friendlyError('ข้อความธรรมดา'), 'ข้อความธรรมดา', 'a plain string works too');
-
-// browser-side errors (no HTTP status) in English never reach the user (17 Nov: offline, loadImg's img.decode() said
-// "The source image cannot be decoded." under สร้างรูปไม่สำเร็จ)
+// browser-side English never reaches the user (offline: loadImg's img.decode() said "The source image cannot be decoded.")
 for (const e of [new DOMException('The source image cannot be decoded.', 'EncodingError'), new Error('The source image cannot be decoded.')]) {
   assert.match(friendlyError(e), /^โหลดรูปที่เลือกไม่ได้/);
-  assert.doesNotMatch(friendlyError(e, true), /โควตา/, 'no server answer: no quota promise');
+  assert.doesNotMatch(friendlyError(e, true), /โควตา/);
 }
 for (const e of [new TypeError("Cannot read properties of undefined (reading 'src')"), new DOMException('The operation is insecure.', 'SecurityError')]) {
   const text = friendlyError(e);
   assert.ok(/[฀-๿]/.test(text) && !/Cannot|insecure/.test(text), text);
 }
-assert.match(friendlyError(err('HTTP 418', 418)), /รหัส 418/);
 assert.ok(friendlyError(undefined).length > 0 && friendlyError({}).length > 0, 'never an empty message');
 
-// the AI's safety refusal keeps its own wording, whatever the status
-for (const e of [err('OpenAI ตอบกลับ 400: Your request was rejected by the safety system', 502), { id: 'shot-1', message: 'moderation_blocked', status: 502 }]) {
-  assert.match(friendlyError(e), /AI ปฏิเสธภาพนี้/);
-  assert.equal((friendlyError(e, true).match(/ไม่เสียโควตา/g) ?? []).length, 1, 'said once');
-}
+// the design system's line
+assert.equal(failText('ดาวน์โหลด', err('ไฟล์ใหญ่เกินไป', 413)), 'ดาวน์โหลดไม่สำเร็จ: ไฟล์ใหญ่เกินไป');
+assert.match(failText('สร้างรูป', err('x', 502, 'ai_busy'), true), /^สร้างรูปไม่สำเร็จ: AI ไม่ว่างชั่วคราว.*ไม่เสียโควตา$/);
 
 console.log('toast + error wording: ok');

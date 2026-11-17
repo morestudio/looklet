@@ -9,7 +9,7 @@ import { AccountMenu } from './AuthForm';
 import ImageViewer from './ImageViewer';
 import { authEnabled } from '@/lib/auth';
 import { api, thumbSrc } from '@/lib/browser';
-import { friendlyError } from '@/lib/errors';
+import { failText } from '@/lib/errors';
 import { toast } from '@/lib/toast';
 import type { StoredResultBase, StylePlan } from '@/lib/result-types';
 import { DeleteButton, GalleryLink, PageSwitch, RemoveImageDialog, TokenUsage, useMe } from './ui';
@@ -74,7 +74,7 @@ export default function Gallery() {
       await api('/api/update', { src: r.src, favorite: !r.favorite });
     } catch (err) {
       set(Boolean(r.favorite));
-      toast.error('บันทึกรูปที่ชอบไม่สำเร็จ: ' + friendlyError(err));
+      toast.error(failText('บันทึกรูปที่ชอบ', err));
     } finally {
       pendingFav.current.delete(r.src);
     }
@@ -92,7 +92,7 @@ export default function Gallery() {
     try {
       await api('/api/delete', { src: r.src, from: 'gallery', permanent });
     } catch (err) {
-      return toast.error((permanent ? 'ลบไม่สำเร็จ: ' : 'เอาออกจากแกลลอรี่ไม่สำเร็จ: ') + friendlyError(err));
+      return toast.error(failText(permanent ? 'ลบ' : 'เอาออกจากแกลลอรี่', err));
     }
     setResults((list) => list && list.filter((x) => x.src !== r.src));
   }
@@ -103,7 +103,7 @@ export default function Gallery() {
       try {
         await api('/api/update', { src: r.src, inHistory: true });
       } catch (err) {
-        return toast.error('เปิดรูปนี้ไม่สำเร็จ: ' + friendlyError(err));
+        return toast.error(failText('เปิดรูปนี้', err));
       }
     }
     router.push((pageOf(r) === 'product' ? '/product' : '/') + '?image=' + encodeURIComponent(r.src));
