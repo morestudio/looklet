@@ -11,6 +11,29 @@ export const friendlyError = (message: string) => SAFETY_BLOCK.test(message)
 
 // เรียก API ของเรา: error จาก server -> throw พร้อมข้อความที่ server ส่งมา
 export const USAGE_EVENT = 'looklet:usage';
+
+// signed-in account (/api/me): ONE request per page load, shared by every useMe() and Analytics; fetched again once after
+// each image request (USAGE_EVENT). Plain fetch, not api(): api() sends a 401 to /login, which would loop on /login itself.
+// Timeout: a hung /api/me must not hold up the header or GA. A failed load is not kept, so the next caller retries.
+export type Me = { role: 'superadmin' | 'customer' | 'team'; aid?: string; label?: string; tokens?: number; tokenQuota?: number };
+let meRequest: Promise<Me | null> | null = null;
+const meListeners = new Set<(me: Me | null) => void>();
+export function loadMe(fresh = false): Promise<Me | null> {
+  if (meRequest && !fresh) return meRequest;
+  const request: Promise<Me | null> = fetch('/api/me', { signal: AbortSignal.timeout(5000) })
+    .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+    .catch(() => null);
+  meRequest = request;
+  void request.then((me) => {
+    if (meRequest !== request) return; // a newer request replaced it
+    if (!me) meRequest = null;
+    meListeners.forEach((l) => l(me));
+  });
+  return request;
+}
+// subscribe to later loads (the refetch after a generation); returns unsubscribe
+export const onMe = (listener: (me: Me | null) => void) => { meListeners.add(listener); return () => { meListeners.delete(listener); }; };
+if (typeof window !== 'undefined') window.addEventListener(USAGE_EVENT, () => void loadMe(true));
 const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];
 
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
