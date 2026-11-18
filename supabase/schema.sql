@@ -11,8 +11,8 @@ create table if not exists public.images (
 create index if not exists images_area_kind_created on public.images (area, kind, created desc);
 -- 16 Nov: lists (sbList) and the upload cap (sbCountUploads) filter by owner
 create index if not exists images_owner_area_kind_created on public.images ((meta->>'owner'), area, kind, created desc);
--- 10 พ.ย.: จัดโฟลเดอร์ใน bucket ตามบัญชี (team/... = คลังร่วมของทีม, customers/<id บัญชี>/... = ลูกค้า) — ลิงก์รูปและ path ไม่เปลี่ยน
--- object = ที่อยู่ไฟล์จริง (objectKey ใน lib/storage-supabase.ts) · null = ไฟล์ยังอยู่ที่ path เดิม (scripts/storage-rearrange.mjs ย้ายให้)
+-- 10 Nov: files filed by account in the bucket (accounts/<id>/...) — links and path never change
+-- object = the file's real location (objectKey in lib/storage-supabase.ts); every row has one since the 10/16 Nov moves
 alter table public.images add column if not exists object text;
 
 -- เปิด RLS โดยไม่มี policy: เข้าได้เฉพาะ server ที่ใช้ secret key (anon key จากหน้าเว็บอ่านไม่ได้)

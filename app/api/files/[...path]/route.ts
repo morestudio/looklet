@@ -1,7 +1,7 @@
 import { get } from '@/lib/route';
-import { readImage, readThumb, THUMB_WIDTHS } from '@/lib/storage';
+import { GRID_THUMB, readImage, readThumb } from '@/lib/storage';
 
-// ?w=512 = รูปย่อ JPEG ~40 KB (ตาราง/ประวัติรูปทุกหน้า thumbSrc ใน lib/browser.ts, ?w=400 หน้าตรวจงานเดิม) รูปเต็ม 1–6 MB ต่อรูป
+// ?w=512 = รูปย่อ JPEG ~40 KB (ตาราง/ประวัติรูปทุกหน้า และหน้าตรวจงาน: thumbSrc ใน lib/browser.ts) รูปเต็ม ~1 MB ต่อรูป
 // รับแค่ขนาดที่กำหนด ให้ browser จำซ้ำได้ · อ่านรูปย่อที่เก็บไว้ ไม่ดึงรูปเต็มจาก Supabase (โควตา egress, lib/storage-supabase.ts)
 
 // เปิดรูปที่เก็บไว้ (results/ และ images/uploads/) — ชื่อไฟล์ไม่ซ้ำ เปลี่ยนไม่ได้ ให้ browser จำไว้ได้นาน
@@ -9,8 +9,8 @@ import { readImage, readThumb, THUMB_WIDTHS } from '@/lib/storage';
 export const GET = get(async (req: Request, ctx: RouteContext<'/api/files/[...path]'>) => {
   const { path } = await ctx.params;
   const w = Number(new URL(req.url).searchParams.get('w'));
-  if (THUMB_WIDTHS.includes(w)) {
-    const thumb = await readThumb(path, w);
+  if (w === GRID_THUMB) {
+    const thumb = await readThumb(path);
     if (!thumb) return new Response('Not found', { status: 404 });
     return new Response(new Uint8Array(thumb.data), {
       headers: { 'Content-Type': thumb.type, 'Cache-Control': 'private, max-age=31536000, immutable' },

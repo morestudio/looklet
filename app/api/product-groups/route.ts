@@ -12,7 +12,6 @@ const thumbOf = async (src: string) => {
       .replace(/^\/api\/files\//, '')
       .split('/')
       .map(decodeURIComponent),
-    512,
   ).catch(() => null);
   return t && { data: t.data.toString('base64'), mime: 'image/jpeg' };
 };

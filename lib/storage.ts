@@ -13,6 +13,8 @@ import { me, ownerMeta, visibleTo } from './account';
 import { thumbJpeg } from './images';
 import {
   GRID_THUMB,
+  guideObject,
+  guideOwner,
   sbDelete,
   sbGetObject,
   sbList,
@@ -24,10 +26,9 @@ import {
   sbSaveThumb,
   sbUpdateMeta,
   supabaseEnabled,
-  THUMB_WIDTHS,
 } from './storage-supabase';
 
-export { THUMB_WIDTHS };
+export { GRID_THUMB };
 import type { StoredPosePlan } from './photo-director';
 import type { SetTag, StylePlan } from './result-types';
 
@@ -105,10 +106,10 @@ export async function saveImage(where: Where, dataB64: string, mime: string, met
   if (supabaseEnabled) {
     const key = keyOf(where, file),
       data = Buffer.from(dataB64, 'base64');
-    await sbSave(key, where.area, where.area === 'uploads' ? where.kind : null, data, mime, meta);
+    const object = await sbSave(key, where.area, where.area === 'uploads' ? where.kind : null, data, mime, meta);
     // รูปย่อสำหรับตาราง/ประวัติรูปทำตอนเก็บเลย (มีรูปอยู่ในมือแล้ว ไม่ต้องดึงจาก Supabase) · ทำไม่ได้ = เปิดครั้งแรกค่อยทำ รูปที่เก็บแล้วห้ามพัง
     await thumbJpeg(data, GRID_THUMB)
-      .then((t) => sbSaveThumb(key, GRID_THUMB, t))
+      .then((t) => sbSaveThumb(object, t))
       .catch(() => {});
     return urlOf(where, file);
   }
@@ -186,7 +187,8 @@ function resolveFile(parts: string[]) {
   if (parts[0] === 'results' && parts.length === 2) [folder, file] = [RESULTS_DIR, parts[1]];
   else if (parts[0] === 'uploads' && parts.length === 3 && isKind(parts[1]))
     [folder, file] = [path.join(UPLOADS_DIR, parts[1]), parts[2]];
-  else if (parts[0] === 'guides' && parts.length === 2) [folder, file] = [GUIDES_DIR, parts[1]];
+  else if (parts[0] === 'guides' && parts.length === 3 && /^[\w-]+$/.test(parts[1]))
+    [folder, file] = [path.join(GUIDES_DIR, parts[1]), parts[2]];
   else return null;
   if (!file || file.startsWith('.') || /[\\/]/.test(file)) return null;
   const type = MIME[path.extname(file).slice(1).toLowerCase()];
@@ -210,31 +212,36 @@ export async function readImage(parts: string[]) {
 
 // ---------- ภาพไฮไลต์สีแดงของแก้เฉพาะจุด (Image 2 ที่ส่งให้ AI) ----------
 // เดิมสร้างแล้วทิ้ง หน้าตรวจงานจึงไม่เห็นว่าระบายตรงไหน (ผู้ใช้ 10 พ.ย.: "ไม่เห็นสีแดง แปลว่าไม่ได้ส่งหรือเปล่า") -> เก็บ JPEG ย่อไว้
-// guides/<วันเวลา-สุ่ม>.jpg ไม่มีแถวในตาราง images (ไม่ขึ้นในคลัง) เปิดได้เฉพาะ superadmin (หน้าตรวจงาน) ลบผ่าน deleteImage ไม่ได้
+// link /api/files/guides/<account id>/<file>.jpg (the owner is in the link: no images row) -> accounts/<id>/guides/<file>.jpg on Supabase,
+// logs/guides/<owner>/ locally · no images row (not in any library), only the superadmin opens it, deleteImage refuses it
 export async function saveGuide(jpeg: Buffer) {
   const file = `${stamp()}.jpg`;
-  if (supabaseEnabled) await sbPutObject(`guides/${file}`, jpeg, 'image/jpeg');
+  const owner = guideOwner(ownerMeta().owner);
+  if (supabaseEnabled) await sbPutObject(guideObject(owner, file), jpeg, 'image/jpeg');
   else {
-    await fs.mkdir(GUIDES_DIR, { recursive: true });
-    await fs.writeFile(path.join(GUIDES_DIR, file), jpeg);
+    await fs.mkdir(path.join(GUIDES_DIR, owner), { recursive: true });
+    await fs.writeFile(path.join(GUIDES_DIR, owner, file), jpeg);
   }
-  return `${URL_PREFIX}guides/${file}`;
+  return `${URL_PREFIX}guides/${owner}/${file}`;
 }
 async function readGuide(f: { full: string; key: string; type: string }) {
-  const data = supabaseEnabled ? await sbGetObject(f.key) : await fs.readFile(f.full).catch(() => null);
+  const [, owner, file] = f.key.split('/');
+  const data = supabaseEnabled
+    ? await sbGetObject(guideObject(owner, file))
+    : await fs.readFile(f.full).catch(() => null);
   return data && { data, type: f.type };
 }
 
 // รูปย่อ (/api/files?w=, ตาราง/ประวัติรูป) สิทธิ์เหมือน readImage · Supabase = อ่านรูปย่อที่เก็บไว้ ไม่ดึงรูปเต็ม (ยังไม่มีค่อยทำครั้งเดียว)
 // เก็บในเครื่อง = ย่อสดทุกครั้ง (ไม่มีค่าโหลด)
-export async function readThumb(parts: string[], width: number) {
+export async function readThumb(parts: string[]) {
   const f = resolveFile(parts);
   if (!f) return null;
   const auditor = me()?.role === 'superadmin';
   if (f.key.startsWith('guides/')) return auditor ? readGuide(f) : null; // เก็บเป็นรูปย่ออยู่แล้ว (≤1024px)
-  const make = (full: Buffer) => thumbJpeg(full, width);
+  const make = (full: Buffer) => thumbJpeg(full, GRID_THUMB);
   const data = supabaseEnabled
-    ? await sbReadThumb(f.key, width, (meta) => auditor || visibleTo(meta), make)
+    ? await sbReadThumb(f.key, (meta) => auditor || visibleTo(meta), make)
     : await fs
         .readFile(f.full)
         .then(make)
