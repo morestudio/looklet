@@ -194,7 +194,9 @@ export async function finishedCanvas(src: string, film: Film) {
   return cv;
 }
 
-export const canvasJpeg = (cv: HTMLCanvasElement, quality = 0.92) =>
+// downloads and the viewer: q97 like stored results (lib/images.ts servable); 0.92 smoothed skin detail (~86% kept vs ~99% at 0.97)
+export const DOWNLOAD_QUALITY = 0.97;
+export const canvasJpeg = (cv: HTMLCanvasElement, quality = DOWNLOAD_QUALITY) =>
   new Promise<Blob>((resolve, reject) =>
     cv.toBlob((b) => (b ? resolve(b) : reject(new Error('สร้างไฟล์รูปไม่ได้'))), 'image/jpeg', quality),
   );

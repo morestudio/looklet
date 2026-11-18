@@ -76,6 +76,7 @@ import {
   api,
   canOpenImage,
   canvasJpeg,
+  DOWNLOAD_QUALITY,
   finishedCanvas,
   guessAccessory,
   inAppBrowser,
@@ -1092,14 +1093,6 @@ export default function TryOn() {
       : finishedCanvas(src, shown ? { ...film, look: finishLook } : NO_FILM);
   }
 
-  function outputBlob(canvas: HTMLCanvasElement, quality = 0.92) {
-    return shown?.editedFrom
-      ? new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('บันทึก PNG ไม่สำเร็จ'))), 'image/png'),
-        )
-      : canvasJpeg(canvas, quality);
-  }
-
   // กดรูปบนเวที -> ดูเต็มจอแบบพอดีจอ: ฝั่ง "ก่อนแต่ง" = ไฟล์ AI ต้นฉบับ, รูปหลัก = ตามที่เห็น (แต่งแล้ว + ลุคฟิล์ม) ทั้งรูปแม้กำลังซูมหน้าอยู่
   async function openViewer(before: boolean) {
     try {
@@ -1109,7 +1102,7 @@ export default function TryOn() {
           alt: skinOriginal ? 'ต้นฉบับก่อนปรับผิว' : 'ก่อนแต่ง',
           temp: false,
         });
-      const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
+      const url = URL.createObjectURL(await canvasJpeg(await currentCanvas()));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
       toast.error(failText('เปิดรูป', err));
@@ -1123,9 +1116,9 @@ export default function TryOn() {
       const kept = (via: 'download' | 'share' | 'inapp') => shown && trackKept('model', shown, via);
       if (inAppBrowser()) {
         kept('inapp');
-        return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
+        return setSaveSrc(cv.toDataURL('image/jpeg', DOWNLOAD_QUALITY));
       }
-      const how = await saveImageFile(await outputBlob(cv), `lolo-${Date.now()}.${shown?.editedFrom ? 'png' : 'jpg'}`);
+      const how = await saveImageFile(await canvasJpeg(cv), `lolo-${Date.now()}.jpg`);
       if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
