@@ -448,6 +448,24 @@ for (const [mode, mask] of [
     .ensureAlpha()
     .raw()
     .toBuffer();
+  if (mode === 'rough') {
+    // rough is saved as JPEG q97: compare with the original put through the same JPEG (a stretch or shift differs ~5 per channel)
+    assert.equal(saved.at(-1).mime, 'image/jpeg');
+    const expected = await sharp(prepared.original, { raw: { width, height, channels: 4 } })
+      .flatten({ background: '#fff' })
+      .jpeg({ quality: 97 })
+      .toBuffer()
+      .then((jpeg) => sharp(jpeg).ensureAlpha().raw().toBuffer());
+    assert.equal(raw.length, expected.length);
+    let sum = 0;
+    for (let i = 0; i < raw.length; i++) if (i % 4 !== 3) sum += Math.abs(raw[i] - expected[i]);
+    const mean = sum / ((raw.length / 4) * 3);
+    assert(
+      mean < 0.5,
+      `rough${mask ? '' : ' (text only)'}: geometry unchanged when the AI changes nothing (mean diff ${mean})`,
+    );
+    continue;
+  }
   assert.deepEqual(
     raw,
     prepared.original,

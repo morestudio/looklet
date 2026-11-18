@@ -422,7 +422,7 @@ export const POST = post(
     try {
       const raw = await generateImage(req.model, images, prompt, opt);
       tokens = raw.tokens;
-      const out = await servable(await cropTo(raw, aspect)); // ตัดตามสัดส่วนก่อน แล้วค่อยแปลงรูปใหญ่เป็น JPEG
+      const out = await servable(await cropTo(raw, aspect)); // ตัดตามสัดส่วนก่อน แล้วค่อยแปลงเป็น JPEG q97
       const stylePlan = creative
         ? { name: creative.title, th: creative.summary }
         : plan

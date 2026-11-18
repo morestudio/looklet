@@ -431,7 +431,7 @@ export const POST = post(async (req) => {
       calls++;
       tokens += again.tokens;
     }
-    // ตัดตามสัดส่วนที่เลือกก่อน (4:5 / 9:16) แล้วค่อยแปลง PNG ใหญ่ -> JPEG q97 ไม่งั้นเว็บจริงเปิดรูปไม่ขึ้น
+    // ตัดตามสัดส่วนที่เลือกก่อน (4:5 / 9:16) แล้วค่อยแปลงเป็น JPEG q97 (เก็บผลลัพธ์เป็น JPEG ทุกรูป)
     const image = await servable(await cropTo(again ?? first, aspect));
     // เซฟลง results/ ทันที (เสียเงินไปแล้ว ห้ามหาย)
     const save = (img: Img, savedPlan: StoredPosePlan | null) =>
