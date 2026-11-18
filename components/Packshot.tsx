@@ -80,6 +80,7 @@ import {
   api,
   canOpenImage,
   canvasJpeg,
+  DOWNLOAD_QUALITY,
   finishedCanvas,
   guessProduct,
   inAppBrowser,
@@ -1275,14 +1276,6 @@ export default function Packshot() {
     }
   }
 
-  function outputBlob(canvas: HTMLCanvasElement, quality = 0.92) {
-    return shown?.editedFrom
-      ? new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('บันทึก PNG ไม่สำเร็จ'))), 'image/png'),
-        )
-      : canvasJpeg(canvas, quality);
-  }
-
   // รูปที่กำลังดูแบบเต็มขนาด — กล่องรูปยังวาดรูปนี้ไม่เสร็จ -> วาดจากไฟล์เอง
   async function currentCanvas() {
     const src = shown?.src ?? product?.src;
@@ -1295,7 +1288,7 @@ export default function Packshot() {
     // เปิดแบบพอดีจอเสมอ กดในหน้าต่างถึงจะซูม
     if (!shown && !product) return;
     try {
-      const url = URL.createObjectURL(await outputBlob(await currentCanvas(), 0.95));
+      const url = URL.createObjectURL(await canvasJpeg(await currentCanvas()));
       setViewer({ src: url, alt: 'รูปที่กำลังดู', temp: true });
     } catch (err) {
       toast.error(failText('เปิดรูป', err));
@@ -1309,9 +1302,9 @@ export default function Packshot() {
       const kept = (via: 'download' | 'share' | 'inapp') => shown && trackKept('product', shown, via);
       if (inAppBrowser()) {
         kept('inapp');
-        return setSaveSrc(cv.toDataURL(shown?.editedFrom ? 'image/png' : 'image/jpeg', 0.92));
+        return setSaveSrc(cv.toDataURL('image/jpeg', DOWNLOAD_QUALITY));
       }
-      const how = await saveImageFile(await outputBlob(cv), downloadName(shown?.editedFrom ? 'png' : 'jpg'));
+      const how = await saveImageFile(await canvasJpeg(cv), downloadName('jpg'));
       if (how !== 'cancelled') kept(how === 'shared' ? 'share' : 'download');
     } catch (err) {
       console.error('ดาวน์โหลดไม่สำเร็จ', err);
