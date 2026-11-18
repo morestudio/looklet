@@ -271,11 +271,14 @@ export async function guidePreview(guide: Img): Promise<Buffer> {
     .toBuffer();
 }
 
+// rough = the AI redraws the whole picture, nothing is pixel-exact -> JPEG q97 like every result (17 Nov; PNG averaged 5.6 MB)
+// precise (blendLocalEdit, hidden in the UI) stays lossless PNG
 export async function finishRoughEdit(source: PreparedLocalEdit, edited: Img): Promise<Img> {
-  const png = await sharp(Buffer.from(edited.data, 'base64'), { limitInputPixels: MAX_EDIT_PIXELS })
+  const jpeg = await sharp(Buffer.from(edited.data, 'base64'), { limitInputPixels: MAX_EDIT_PIXELS })
     .rotate()
     .resize(source.width, source.height, { fit: 'fill' })
-    .png({ compressionLevel: 9 })
+    .flatten({ background: '#fff' })
+    .jpeg({ quality: 97 })
     .toBuffer();
-  return { data: png.toString('base64'), mime: 'image/png' };
+  return { data: jpeg.toString('base64'), mime: 'image/jpeg' };
 }

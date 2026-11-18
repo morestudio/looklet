@@ -3,14 +3,15 @@ import 'server-only';
 import sharp from 'sharp';
 import type { Img } from './ai';
 
-// รูปใหญ่ (GPT Image 2.5 1664×2496 เป็น PNG ~6 MB) เกินที่ Vercel ส่งได้ต่อครั้ง (4.5 MB) -> เปิด/ดาวน์โหลดรูปไม่ขึ้นบนเว็บจริง
-// แปลงเป็น JPEG คุณภาพ 97 (~1.3 MB) — วัด 22 ต.ค.: รายละเอียดผิวเท่า PNG, q92 ผิวเนียนลง 23% · รูปเล็กเก็บไฟล์เดิม
-const MAX_BYTES = 3_500_000;
+// Every generated result is stored as JPEG q97 (17 Nov: was PNG under 3.5 MB; PNGs ~2–6 MB filled the 1 GB free Supabase plan).
+// q97 measured 22 Oct: same skin detail as PNG; q92 smoothed skin 23%. Also keeps files under Vercel's 4.5 MB response cap.
 export async function servable(img: Img): Promise<Img> {
-  const data = Buffer.from(img.data, 'base64');
-  if (data.length <= MAX_BYTES) return img;
+  if (img.mime === 'image/jpeg') return img; // already JPEG: re-encoding only loses quality
   try {
-    const jpeg = await sharp(data).jpeg({ quality: 97 }).toBuffer();
+    const jpeg = await sharp(Buffer.from(img.data, 'base64'))
+      .flatten({ background: '#fff' })
+      .jpeg({ quality: 97 })
+      .toBuffer();
     return { data: jpeg.toString('base64'), mime: 'image/jpeg' };
   } catch (e) {
     // แปลงไม่ได้ (เช่น sharp โหลดไม่ขึ้นบนเซิร์ฟเวอร์) -> เก็บ PNG เดิมไว้ก่อน รูปที่จ่ายเงินแล้วต้องไม่หาย (แต่เว็บจริงอาจเปิดรูปใหญ่ไม่ขึ้น)
