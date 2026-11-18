@@ -170,10 +170,9 @@ const supabaseMock = {
     db.images = db.images.filter((x) => x.path !== key);
     return true;
   },
-  THUMB_WIDTHS: [400, 512],
   GRID_THUMB: 512,
   sbSaveThumb: async () => {},
-  sbReadThumb: async (key, _w, allowed) => {
+  sbReadThumb: async (key, allowed) => {
     const r = db.images.find((x) => x.path === key);
     return r && allowed(r.meta) ? Buffer.from('thumb') : null;
   },
@@ -300,8 +299,8 @@ assert.equal(await withAccount(bob, () => storage.readImage(parts(aliceSrc))), n
 assert.equal(await withAccount(alice, () => storage.readImage(parts(teamSrc))), null);
 assert.equal(await withAccount(team, () => storage.readImage(parts(aliceSrc))), null);
 // รูปย่อ (/api/files?w=) สิทธิ์เดียวกับรูปเต็ม
-assert(await withAccount(alice, () => storage.readThumb(parts(aliceSrc), 512)));
-assert.equal(await withAccount(bob, () => storage.readThumb(parts(aliceSrc), 512)), null);
+assert(await withAccount(alice, () => storage.readThumb(parts(aliceSrc))));
+assert.equal(await withAccount(bob, () => storage.readThumb(parts(aliceSrc))), null);
 assert.equal(await withAccount(alice, () => storage.readThumb(parts(teamSrc), 512)), null);
 assert.equal(await withAccount(bob, () => storage.deleteImage(aliceSrc)), false);
 assert(db.images.some((x) => x.meta.caption === 'alice'));

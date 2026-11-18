@@ -54,7 +54,7 @@ function load(file) {
         return { quotaBlock: async () => null, recordUsage: async (entry) => usages.push(entry) };
       if (id === '@/lib/storage')
         return {
-          THUMB_WIDTHS: [400, 512],
+          GRID_THUMB: 512,
           readThumb: async () => null,
           readImage: async () => imageRead,
           listImages: async () => (sourceMeta ? [sourceMeta] : []),
@@ -64,7 +64,7 @@ function load(file) {
           },
           saveGuide: async (jpeg) => {
             guides.push(jpeg);
-            return `/api/files/guides/g${guides.length}.jpg`;
+            return `/api/files/guides/acct-1/g${guides.length}.jpg`;
           },
         };
       if (id === '@/lib/genlog')
@@ -327,7 +327,7 @@ assert.equal(logs.at(-1).style.mode, 'rough');
 assert.equal(logs.at(-1).model.image, 1);
 assert.deepEqual(logs.at(-1).guide, {
   image: 2,
-  file: `/api/files/guides/g${guides.length}.jpg`,
+  file: `/api/files/guides/acct-1/g${guides.length}.jpg`,
   sent: `${width}×${height} · ไฮไลต์สีแดง`,
 });
 const guideJpeg = await sharp(guides.at(-1)).raw().toBuffer({ resolveWithObject: true });

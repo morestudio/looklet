@@ -88,47 +88,57 @@ const parts = (src) => src.slice('/api/files/'.length).split('/');
 const src = await storage.saveImage({ area: 'results' }, photo.toString('base64'), 'image/jpeg', { caption: 'new' });
 const key = parts(src).join('/'),
   file = key.split('/').pop();
-// ลิงก์/path เดิม (results/<ไฟล์>) แต่ไฟล์จริงอยู่ในโฟลเดอร์ของทีม (จัดโฟลเดอร์ 10 พ.ย.) · รูปย่อตั้งชื่อตาม path
+// link/path stays results/<file>; the file and its thumbnail sit in the owner's folder (owner-less = team/)
+const thumb = `team/thumbs/512/results/model/${file}`;
 assert.equal(key, `results/${file}`);
-assert.deepEqual(uploads, [`team/results/model/${file}`, `thumbs/512/${key}.jpg`]);
+assert.deepEqual(uploads, [`team/results/model/${file}`, thumb]);
 assert.deepEqual([rows.at(-1).path, rows.at(-1).object], [key, `team/results/model/${file}`]);
-const stored = objects.get(`thumbs/512/${key}.jpg`);
+const stored = objects.get(thumb);
 const meta = await sharp(stored).metadata();
 assert.equal(meta.width, 512);
 assert(stored.length < 60_000, `thumbnail is small (${stored.length} bytes)`);
 
 // 2) เปิดรูปย่อ = ดาวน์โหลดแค่รูปย่อ ไม่แตะรูปเต็ม
 downloads.length = 0;
-const t = await storage.readThumb(parts(src), 512);
+const t = await storage.readThumb(parts(src));
 assert.equal(t.type, 'image/jpeg');
-assert.deepEqual(downloads, [`thumbs/512/${key}.jpg`], 'A stored thumbnail never downloads the full photo');
+assert.deepEqual(downloads, [thumb], 'A stored thumbnail never downloads the full photo');
 
-// 3) รูปเก่า (ก่อนมีรูปย่อ): ครั้งแรกดึงรูปเต็มครั้งเดียวแล้วเก็บรูปย่อ ครั้งต่อไปอ่านแค่รูปย่อ
-objects.set('results/old.jpg', photo);
-rows.push({ path: 'results/old.jpg', area: 'results', kind: null, meta: {} });
+// 3) no thumbnail yet (saving it failed): the first view downloads the full photo once and keeps a thumbnail, later views read only that
+const oldObject = 'accounts/u-1/uploads/models/old.png',
+  oldThumb = 'accounts/u-1/thumbs/512/uploads/models/old.jpg';
+objects.set(oldObject, photo);
+rows.push({ path: 'uploads/models/old.png', object: oldObject, area: 'uploads', kind: 'models', meta: {} });
 downloads.length = 0;
 uploads.length = 0;
-assert(await storage.readThumb(['results', 'old.jpg'], 512));
-assert.deepEqual(downloads, ['thumbs/512/results/old.jpg.jpg', 'results/old.jpg']);
-assert.deepEqual(uploads, ['thumbs/512/results/old.jpg.jpg']);
+assert(await storage.readThumb(['uploads', 'models', 'old.png']));
+assert.deepEqual(downloads, [oldThumb, oldObject]);
+assert.deepEqual(uploads, [oldThumb]);
 downloads.length = 0;
-assert(await storage.readThumb(['results', 'old.jpg'], 512));
-assert.deepEqual(downloads, ['thumbs/512/results/old.jpg.jpg'], 'Second view reads only the saved thumbnail');
+assert(await storage.readThumb(['uploads', 'models', 'old.png']));
+assert.deepEqual(downloads, [oldThumb], 'Second view reads only the saved thumbnail');
 
 // 4) สิทธิ์: รูปของลูกค้าคนอื่น -> null ก่อนดาวน์โหลดอะไร · superadmin เปิดได้ (หน้าตรวจงาน)
-rows.push({ path: 'results/alice.jpg', area: 'results', kind: null, meta: { owner: 'alice' } });
-objects.set('results/alice.jpg', photo);
+const aliceObject = 'accounts/alice/results/model/alice.jpg';
+rows.push({ path: 'results/alice.jpg', object: aliceObject, area: 'results', kind: null, meta: { owner: 'alice' } });
+objects.set(aliceObject, photo);
 downloads.length = 0;
-assert.equal(await storage.readThumb(['results', 'alice.jpg'], 512), null);
+assert.equal(await storage.readThumb(['results', 'alice.jpg']), null);
 assert.deepEqual(downloads, []);
 role = 'superadmin';
-assert(await storage.readThumb(['results', 'alice.jpg'], 400));
+assert(await storage.readThumb(['results', 'alice.jpg']));
 role = 'customer';
 // path แปลก / ไฟล์เสีย -> null ไม่พัง
-assert.equal(await storage.readThumb(['..', 'etc', 'passwd'], 512), null);
-objects.set('results/broken.jpg', Buffer.from('not an image'));
-rows.push({ path: 'results/broken.jpg', area: 'results', kind: null, meta: {} });
-assert.equal(await storage.readThumb(['results', 'broken.jpg'], 512), null);
+assert.equal(await storage.readThumb(['..', 'etc', 'passwd']), null);
+objects.set('team/results/model/broken.jpg', Buffer.from('not an image'));
+rows.push({
+  path: 'results/broken.jpg',
+  object: 'team/results/model/broken.jpg',
+  area: 'results',
+  kind: null,
+  meta: {},
+});
+assert.equal(await storage.readThumb(['results', 'broken.jpg']), null);
 
 // 5) เก็บรูปย่อไม่ได้ (รูปเสีย) ต้องไม่ทำให้การเก็บรูปพัง
 uploads.length = 0;
@@ -141,12 +151,19 @@ const odd = await storage.saveImage(
 assert(odd.startsWith('/api/files/uploads/models/'));
 assert.equal(uploads.length, 1, 'No thumbnail for an unreadable file, but the file itself is saved');
 
-// 6) ลบรูป = ลบรูปย่อทุกขนาดด้วย
+// 6) ลบรูป = ลบรูปย่อด้วย
 await storage.deleteImage(src);
-assert.deepEqual(removed, [`team/results/model/${file}`, `thumbs/400/${key}.jpg`, `thumbs/512/${key}.jpg`]);
+assert.deepEqual(removed, [`team/results/model/${file}`, thumb]);
 
 // 6a) โฟลเดอร์ตามบัญชี: every account -> accounts/<id>/, หน้าสินค้า -> results/product, รูปที่เพิ่มเอง -> uploads/<ประเภท> · เปิดรูปอ่านจาก object
-const { objectKey } = app('lib/storage-supabase.ts');
+const { objectKey, thumbKey } = app('lib/storage-supabase.ts');
+assert.equal(
+  thumbKey('accounts/u-1/results/product/a.png'),
+  'accounts/u-1/thumbs/512/results/product/a.jpg',
+  'A thumbnail sits in the same account folder, always .jpg',
+);
+assert.equal(thumbKey('accounts/u-1/uploads/poses/b.webp'), 'accounts/u-1/thumbs/512/uploads/poses/b.jpg');
+assert.equal(thumbKey('team/results/model/c.jpg'), 'team/thumbs/512/results/model/c.jpg');
 assert.equal(objectKey('results/a.png', 'results', null, {}), 'team/results/model/a.png');
 assert.equal(
   objectKey('results/a.png', 'results', null, { page: 'product', owner: 'u-1' }),
@@ -183,24 +200,33 @@ assert.deepEqual(
 owner = null;
 assert.equal(await storage.readImage(parts(mine)), null, 'Team accounts still cannot open a customer photo');
 
-// 6b) ภาพไฮไลต์สีแดงของแก้เฉพาะจุด: เก็บที่ guides/ ไม่มีแถวในตาราง (ไม่ขึ้นในคลัง) เปิดได้เฉพาะ superadmin ลบผ่าน deleteImage ไม่ได้
+// 6b) red highlight of a local edit: in the account's own guides/ folder, owner in the link, no images row (not in any library),
+// only the superadmin opens it, deleteImage refuses it
+owner = 'cust-9';
 const rowsBefore = rows.length;
+const custGuide = await storage.saveGuide(Buffer.from('cust-guide'));
+assert.match(custGuide, /^\/api\/files\/guides\/cust-9\/[\w-]+\.jpg$/);
+assert(objects.has(`accounts/cust-9/guides/${custGuide.split('/').pop()}`));
+assert.equal(await storage.readImage(parts(custGuide)), null, 'Customers cannot open guides, even their own');
+owner = null;
 const guideSrc = await storage.saveGuide(Buffer.from('red-guide'));
-assert.match(guideSrc, /^\/api\/files\/guides\/[\w-]+\.jpg$/);
-assert(objects.has(guideSrc.slice('/api/files/'.length)));
+assert.match(guideSrc, /^\/api\/files\/guides\/team\/[\w-]+\.jpg$/);
+assert(objects.has(`team/guides/${guideSrc.split('/').pop()}`));
 assert.equal(rows.length, rowsBefore, 'A guide is not a library image');
 assert.equal(await storage.readImage(parts(guideSrc)), null, 'Team accounts cannot open guides');
-assert.equal(await storage.readThumb(parts(guideSrc), 512), null);
+assert.equal(await storage.readThumb(parts(guideSrc)), null);
 role = 'superadmin';
 assert.equal(String((await storage.readImage(parts(guideSrc))).data), 'red-guide');
+assert.equal(String((await storage.readImage(parts(custGuide))).data), 'cust-guide');
 assert.equal(
-  String((await storage.readThumb(parts(guideSrc), 512)).data),
+  String((await storage.readThumb(parts(guideSrc))).data),
   'red-guide',
   'The audit page thumbnail is the saved guide itself',
 );
 assert.equal(await storage.deleteImage(guideSrc), false);
 role = 'customer';
 assert.equal(await storage.readImage(['guides', '..', 'x.jpg']), null);
+assert.equal(await storage.readImage(['guides', 'x.jpg']), null, 'Guide links always name the owner');
 
 // 7) route: ?w=512 ใช้ readThumb เท่านั้น (ไม่อ่านรูปเต็ม) · ขนาดอื่นได้รูปเต็ม
 const calls = [];
@@ -208,9 +234,9 @@ const route = appLoader({
   overrides: {
     'lib/route.ts': { get: (fn) => fn },
     'lib/storage.ts': {
-      THUMB_WIDTHS: [400, 512],
-      readThumb: async (p, w) => {
-        calls.push(['thumb', w]);
+      GRID_THUMB: 512,
+      readThumb: async () => {
+        calls.push(['thumb']);
         return { data: Buffer.from('t'), type: 'image/jpeg' };
       },
       readImage: async () => {
@@ -224,14 +250,14 @@ const ctx = { params: Promise.resolve({ path: ['results', 'a.png'] }) };
 const thumbRes = await route.GET(new Request('http://localhost/api/files/results/a.png?w=512'), ctx);
 assert.equal(thumbRes.headers.get('Content-Type'), 'image/jpeg');
 assert.match(thumbRes.headers.get('Cache-Control'), /max-age=31536000/);
-assert.deepEqual(calls, [['thumb', 512]]);
+assert.deepEqual(calls, [['thumb']]);
 calls.length = 0;
-await route.GET(new Request('http://localhost/api/files/results/a.png?w=999'), {
+await route.GET(new Request('http://localhost/api/files/results/a.png?w=400'), {
   params: Promise.resolve({ path: ['results', 'a.png'] }),
 });
 assert.deepEqual(calls, [['full']]);
 
 Module._load = realLoad;
 console.log(
-  'Storage passed: new photos filed under team/ or accounts/<id>/ (results/model, results/product, uploads/<type>) with unchanged links, read from either place; red highlight images saved outside the library and readable only by the superadmin; saved with each new image, read without downloading the full photo, old images thumbnailed once then reused, same privacy as full photos, broken files never break saving, deleted with the photo, and the route only reads thumbnails for ?w=.',
+  'Storage passed: new photos filed under team/ or accounts/<id>/ (results/model, results/product, uploads/<type>) with unchanged links; thumbnails and red highlight images in the same account folder, guides readable only by the superadmin; saved with each new image, read without downloading the full photo, old images thumbnailed once then reused, same privacy as full photos, broken files never break saving, deleted with the photo, and the route only reads thumbnails for ?w=.',
 );
