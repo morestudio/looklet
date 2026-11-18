@@ -82,7 +82,7 @@ export function Card({
 }
 
 // magnifier on a picker photo -> full-size ImageViewer, without changing the selection
-// parent needs position: relative; the chip shows only while the pointer is on the top-right corner (always on touch)
+// parent needs position: relative; hit area = top-right corner, the chip shows while the card is hovered (always on touch)
 export function PreviewButton({ src, alt }: { src: string; alt: string }) {
   const [open, setOpen] = useState(false);
   return (
