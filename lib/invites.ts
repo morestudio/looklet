@@ -19,7 +19,9 @@ export function normalizeInviteCode(input: unknown) {
 // รหัสผ่านของบัญชีโค้ดเชิญ: มีตัวใหญ่ ตัวเล็ก ตัวเลข สัญลักษณ์ ผ่านกฎรหัสผ่านของ Supabase · ความลับจริงคือตัวโค้ด
 export const invitePassword = (code: string) => `Looklet!${code}#9`;
 // อีเมลภายในของบัญชีลูกค้า (ไม่เกี่ยวกับโค้ด ดูรายชื่อบัญชีแล้วเดาโค้ดไม่ได้)
+// .invalid is reserved for addresses that must never exist (RFC 2606), so mail Supabase sends here is never delivered
+// (was looklet+guest-…@morestudio.co.th until 18 Nov, which landed in a real company inbox)
 export const inviteEmail = () =>
-  `looklet+guest-${randomInt(36 ** 6)
+  `guest-${randomInt(36 ** 6)
     .toString(36)
-    .padStart(6, '0')}@morestudio.co.th`;
+    .padStart(6, '0')}@lolo.invalid`;

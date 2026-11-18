@@ -504,6 +504,9 @@ assert.equal(db.accounts.filter((i) => [code1, code2].includes(i.code) && i.toke
 const user1 = users.get(db.accounts.find((i) => i.code === code1).user_id);
 const user2 = users.get(db.accounts.find((i) => i.code === code2).user_id);
 assert.deepEqual(user1.app_metadata, { looklet: true }); // role is not stored for customers; accounts.code marks a code account
+// internal sign-in email on the reserved .invalid domain: mail sent to it is never delivered anywhere
+assert.match(user1.email, /^guest-[a-z0-9]{6}@lolo\.invalid$/);
+assert.notEqual(user1.email, user2.email);
 res = await admin.GET(new Request('http://test/api/admin'), {});
 const summary = await res.json();
 const aliceRow = summary.invites.find((i) => i.code === 'AAAA-BBBB');
