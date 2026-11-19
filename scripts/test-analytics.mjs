@@ -4,31 +4,39 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-function load(env, hostname) {
+const storage = (store) => ({
+  getItem: (k) => store.get(k) ?? null,
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+});
+
+// local: the browser's localStorage, shared between loads to simulate a page reload; null = it throws (private mode)
+function load(env, hostname, local = new Map()) {
   const code = ts.transpileModule(readFileSync(new URL('../lib/analytics.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const store = new Map();
   const sent = [];
+  const blocked = () => {
+    throw new Error('SecurityError');
+  };
   const win = {
     gtag: (...args) => sent.push(args),
     location: { hostname },
-    sessionStorage: {
-      getItem: (k) => store.get(k) ?? null,
-      setItem: (k, v) => store.set(k, String(v)),
-      removeItem: (k) => store.delete(k),
-    },
+    sessionStorage: storage(new Map()),
+    localStorage: local ? storage(local) : { getItem: blocked, setItem: blocked, removeItem: blocked },
   };
   const mod = { exports: {} };
-  new Function('module', 'exports', 'process', 'window', 'location', 'sessionStorage', 'performance', code)(
-    mod,
-    mod.exports,
-    { env },
-    win,
-    win.location,
-    win.sessionStorage,
-    performance,
-  );
+  new Function(
+    'module',
+    'exports',
+    'process',
+    'window',
+    'location',
+    'sessionStorage',
+    'localStorage',
+    'performance',
+    code,
+  )(mod, mod.exports, { env }, win, win.location, win.sessionStorage, win.localStorage, performance);
   return { ga: mod.exports, sent };
 }
 
@@ -100,6 +108,28 @@ assert.equal(ga.itemSource(undefined), 'none');
 assert.equal(ga.firstKeep('/api/files/results/a.png'), true);
 assert.equal(ga.firstKeep('/api/files/results/a.png'), false);
 assert.equal(ga.firstKeep('/api/files/results/b.png', true), false);
+
+// ...and across page loads in the same browser (localStorage), capped to the newest 500
+{
+  const local = new Map();
+  assert.equal(load({}, 'x', local).ga.firstKeep('/r/a.png'), true);
+  assert.equal(load({}, 'x', local).ga.firstKeep('/r/a.png'), false, 'a reload does not count it again');
+  assert.equal(load({}, 'x', new Map()).ga.firstKeep('/r/a.png'), true, 'another browser counts it once');
+  const g = load({}, 'x', local).ga;
+  for (let i = 0; i < 600; i++) g.firstKeep(`/r/n${i}.png`);
+  const list = JSON.parse(local.get('lolo:ga-kept'));
+  assert.equal(list.length, 500);
+  assert.equal(list.at(-1), '/r/n599.png');
+  assert.equal(load({}, 'x', local).ga.firstKeep('/r/a.png'), true, 'oldest dropped off');
+  local.set('lolo:ga-kept', '{broken');
+  assert.equal(load({}, 'x', local).ga.firstKeep('/r/n599.png'), true, 'broken storage: start over');
+}
+// private mode: localStorage throws, the page load still de-dups
+{
+  const g = load({}, 'x', null).ga;
+  assert.equal(g.firstKeep('/r/p.png'), true);
+  assert.equal(g.firstKeep('/r/p.png'), false);
+}
 
 // North Star event: a bookmark counts as first even though the image now carries inGallery; a later download doesn't
 {
