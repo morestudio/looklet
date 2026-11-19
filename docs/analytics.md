@@ -11,6 +11,8 @@
 
 ห้ามนับจำนวน event `image_kept` ตรงๆ เพราะรูปเดียวอาจดาวน์โหลดหลายครั้ง ให้นับเฉพาะ `first = true` หรือนับเป็นจำนวนคน/session
 
+`first = true` คือเบราว์เซอร์นี้ไม่เคยเก็บรูปนี้มาก่อน (จำไว้ใน localStorage ล่าสุด 500 รูป) ถ้าลูกค้าเปิดจากเครื่องอื่นหรือล้างข้อมูลเว็บ จะนับรูปเดิมอีกครั้ง ก่อน 19 พ.ย. ระบบจำได้แค่ภายในการเปิดหน้าครั้งเดียว พอโหลดหน้าใหม่แล้วโหลดรูปเดิมซ้ำก็นับเป็น `first` อีก ตัวเลขช่วงนั้นจึงสูงเกินจริง
+
 ## 1. ตั้งค่าครั้งแรก
 
 1. สร้าง GA4 property: timezone **Asia/Bangkok**, สกุลเงิน **THB**
@@ -21,7 +23,7 @@
    - แล้ว redeploy
 4. Admin → Data collection → **ปิด Google signals** และ**ปิด User-provided data collection** (ถ้าเปิดไว้ GA จะสแกนหาอีเมล/เบอร์โทร/ที่อยู่บนหน้าเว็บเอง ตอนนี้ไม่ถูกส่งเพราะ `ad_user_data` เป็น denied แต่ไม่ควรเปิดไว้)
 5. Admin → Data retention → **14 เดือน**
-6. Web stream → Enhanced measurement: เปิด "Page changes based on browser history events" (ค่าเริ่มต้นเปิดอยู่แล้ว)
+6. Web stream → Enhanced measurement: เปิด "Page changes based on browser history events" (ค่าเริ่มต้นเปิดอยู่แล้ว) และ**ปิด Form interactions** (การกดการ์ดในแผงถูกนับเป็น `form_start`/`form_submit` จนรกรายงาน ปิดแล้ว 19 พ.ย.)
 7. Admin → Events → ทำเครื่องหมาย **Key event** ให้ `image_kept` และ `generate_success` (event จะขึ้นในรายการหลังมีคนยิงครั้งแรก ประมาณ 24 ชม.)
 8. Admin → Custom definitions:
    - **User-scoped dimension**: `role`

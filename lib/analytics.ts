@@ -107,12 +107,32 @@ export function stopwatch() {
   return () => Math.round((performance.now() - start) / 1000);
 }
 
-// North Star de-dup: first = the first download/save of this image since the page opened, and it wasn't already in the gallery
-const kept = new Set<string>();
+// North Star de-dup: first = this browser never kept this image before and it wasn't already in the gallery.
+// Kept srcs live in localStorage so a reload doesn't count the same image again (it did until 19 Nov);
+// another browser or cleared site data counts it once more. The srcs stay on the device, never sent to GA.
+const KEPT_KEY = 'lolo:ga-kept';
+const KEPT_MAX = 500; // newest only
+const kept = new Set<string>(); // this page load; also covers private mode, where localStorage throws
+function storedKept(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(KEPT_KEY) ?? '[]');
+    return Array.isArray(list) ? list.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 export function firstKeep(src: string, inGallery = false) {
-  const first = !kept.has(src) && !inGallery;
+  const stored = storedKept();
+  const seen = kept.has(src) || stored.includes(src);
   kept.add(src);
-  return first;
+  if (!stored.includes(src)) {
+    try {
+      localStorage.setItem(KEPT_KEY, JSON.stringify([...stored, src].slice(-KEPT_MAX)));
+    } catch {
+      /* private mode / full storage: this page load still de-dups */
+    }
+  }
+  return !seen && !inGallery;
 }
 
 // the North Star event, one place for both studio pages: download / share sheet / in-app long-press save / gallery bookmark
