@@ -214,7 +214,7 @@ export default function Gallery() {
             <div className="gallery-grid">
               {shown.map((r) => (
                 <div className="deletable" key={r.src}>
-                  <button type="button" className="gallery-card" title={r.caption} onClick={() => setOpen(r)}>
+                  <button type="button" className="gallery-card" onClick={() => setOpen(r)}>
                     <span className="gallery-thumb">
                       <img src={thumbSrc(r.src)} alt={r.caption ?? 'รูปที่สร้าง'} loading="lazy" />
                     </span>
