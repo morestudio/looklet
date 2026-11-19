@@ -15,7 +15,7 @@ function setup() {
     env: { OPENAI_API_KEY: 'room-test-only' },
     overrides: {
       'lib/route.ts': {
-        post: (fn) => fn,
+        post: (fn, opts = {}) => Object.assign(fn, { opts }),
         json: (status, body) => ({ status, body }),
         errorResponse: (status, message) => ({ status, body: { error: { code: 'error', message } } }),
       },
@@ -113,6 +113,11 @@ test('ฉากที่เลือก: ขั้น 1 ถ่ายฉากใ
     'Create one photograph of the room in image 1, taken exactly the way image 2 was taken: the same camera position, angle and height, the same lens and framing, the same composition and exactly the same light.',
   );
   assert(usage[0].log.prompt.some((s) => s.includes('Image 4 already has this framing')));
+});
+
+test('หน้านางแบบใช้ GPT Image 2.6 (MODEL_PAGE_AI_MODEL, 19 พ.ย.): post() บังคับโมเดลนี้ทุกคำขอ', () => {
+  const { POST } = setup();
+  assert.equal(POST.opts.model, 'openai:gpt-image-2.6-sunburst');
 });
 
 test('ฉากที่เลือก: ไม่มีรูปฉาก -> 400 ก่อนเรียก AI', async () => {
