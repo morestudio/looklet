@@ -460,4 +460,4 @@ export const POST = post(
     }
   },
   { model: PRODUCT_AI_MODEL },
-); // หน้าสินค้าใช้ GPT Image 2.6 (lib/catalog.ts) หน้าอื่นใช้ DEFAULT_AI_MODEL
+); // หน้าสินค้าใช้ GPT Image 2.6 (lib/catalog.ts) แก้เฉพาะจุด/ปรับผิวใช้ DEFAULT_AI_MODEL

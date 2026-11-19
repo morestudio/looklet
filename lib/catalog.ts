@@ -479,8 +479,12 @@ export const QUALITIES_25 = [
 export const DEFAULT_AI_MODEL = 'openai:gpt-image-2.5-sunburst';
 // หน้าสินค้า (app/api/packshot) ใช้ GPT Image 2.6 Sunburst — ผู้ใช้เลือก 17 พ.ย. หลังทดสอบ 16 พ.ย. (คำสั่ง + รูปลูกค้าเดิมของ production 4 เคส เปลี่ยนแค่โมเดล):
 // VERA ครีม 2.6 ดีกว่า (สายเดียว ไม่แต่งตัวหนังสือ), VERA ดำ 2.5 ดีกว่า, ถุงหูรูด/ถุงอาหารสุนัข พอๆ กัน · โทเคน (ราคา) เท่ากัน ช้ากว่า ~15 วินาที
-// หน้านางแบบ แก้เฉพาะจุด และปรับผิว ยังใช้ DEFAULT_AI_MODEL (2.5)
+// แก้เฉพาะจุด และปรับผิว ยังใช้ DEFAULT_AI_MODEL (2.5)
 export const PRODUCT_AI_MODEL = 'openai:gpt-image-2.6-sunburst';
+// หน้านางแบบ (app/api/generate) ใช้ GPT Image 2.6 Sunburst — ผู้ใช้เลือก 19 พ.ย. หลังทดสอบวันเดียวกัน (คำสั่ง + รูปลูกค้าเดิม 3 เคส เปลี่ยนแค่โมเดล):
+// ท่าเดิม เท่า 2.5, ลอกทั้งช็อต + ฉาก หน้าเอียงไปทางคนในรูปท่า แต่ตัวหนังสือบนกระเป๋าเสื้อใกล้ของจริงกว่า,
+// รูปท่า + ฉากของฉัน (2 ขั้น) ขั้น 1 ทำร้านในรูปท่าแทนฉากสีชมพูของลูกค้า 1 ครั้ง (2.5 ถูก) · โทเคน (ราคา) เท่ากัน ความเร็วพอๆ กัน
+export const MODEL_PAGE_AI_MODEL = 'openai:gpt-image-2.6-sunburst';
 export const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
 export const qualitiesFor = (modelId: string) => (isGpt25(modelId) ? QUALITIES_25 : QUALITIES);
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ

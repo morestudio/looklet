@@ -18,6 +18,7 @@ import {
   isGpt25,
   MAX_ACCESSORIES,
   MAX_WEAR,
+  MODEL_PAGE_AI_MODEL,
   pickHeadGazes,
   pickMoment,
   POSE_AUTO,
@@ -77,7 +78,7 @@ const toRef = (v: unknown): Ref => {
   };
 };
 
-export const POST = post(async (req) => {
+const generate: Parameters<typeof post>[0] = async (req) => {
   if (!availableModels().some((m) => m.id === req.model))
     return errorResponse(400, 'ไม่มีโมเดลนี้ หรือยังไม่ได้ใส่ key ใน .env');
   const blocked = await quotaBlock(); // ลูกค้าใช้ครบโควตา/ถูกปิด -> ไม่เรียก AI
@@ -481,4 +482,6 @@ export const POST = post(async (req) => {
     await recordUsage({ ...usage, calls, status: 'error', tokens, log });
     throw e;
   }
-});
+};
+// หน้านางแบบใช้ GPT Image 2.6 ตั้งแต่ 19 พ.ย. (lib/catalog.ts MODEL_PAGE_AI_MODEL) แก้เฉพาะจุด/ปรับผิวยังใช้ DEFAULT_AI_MODEL
+export const POST = post(generate, { model: MODEL_PAGE_AI_MODEL });
