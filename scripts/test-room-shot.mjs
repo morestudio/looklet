@@ -98,10 +98,10 @@ test('ฉากที่เลือก: ขั้น 1 ถ่ายฉากใ
   assert.deepEqual(calls[1].images, ['model', 'outfit', 'pose-cropped4:5', 'rendered-1-cropped4:5-small']);
   assert.match(
     calls[1].prompt,
-    /Image 4 already has this framing, so keep it as it is; she takes the place of the person in image 3 at her real size\./,
+    /Image 4 already has this framing, so keep it as it is; the model takes the place of the person in image 3 at their real size\./,
   );
   assert.match(calls[1].prompt, /Image 4 was already photographed with the camera, framing and light of image 3/);
-  assert.match(calls[1].prompt, /her size comes only from her real height and the camera distance of image 4\./);
+  assert.match(calls[1].prompt, /their size comes only from their real height and the camera distance of image 4\./);
   assert.match(calls[1].prompt, /The light in image 4: light of rendered-1-cropped4:5-small/); // แสงอ่านจากฉากใหม่
   assert.doesNotMatch(calls[1].prompt, /light of room/); // ไม่อ่านแสงจากรูปฉากเดิม
   assert(!lights.includes('room'));

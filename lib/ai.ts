@@ -380,7 +380,7 @@ function planRequest({
     images.push(location);
     said.push(
       locationIsModelPhoto
-        ? `Image ${images.length} shows the model; the location is the background of this photo (ignore her current pose).`
+        ? `Image ${images.length} shows the model; the location is the background of this photo (ignore the pose in it).`
         : `Image ${images.length} is the location.`,
     );
   } else if (locationText) {
@@ -388,11 +388,11 @@ function planRequest({
   }
   if (outfit) {
     images.push(outfit);
-    said.push(`Image ${images.length} is her outfit.`);
+    said.push(`Image ${images.length} is the model's outfit.`);
   }
   for (const a of accessories) {
     images.push(a.img);
-    said.push(`Image ${images.length} is ${a.what}, which she has with her.`);
+    said.push(`Image ${images.length} is ${a.what}, which the model has with them.`);
   }
   const auto = preset === 'auto';
   const brief = auto
@@ -400,25 +400,26 @@ function planRequest({
       POSE_PRESETS.map((p) => `"${p.id}": ${p.brief}`).join(' ')
     : POSE_PRESETS.find((p) => p.id === preset)!.brief;
   const text =
-    'You are a photographer directing one real-life photo of one young woman. ' +
+    // คำกลางๆ ไม่ระบุเพศ (20 พ.ย.) เหมือน lib/prompts.ts: เดิม "one young woman" มีนายแบบแล้ว
+    'You are a photographer directing one real-life photo of one young model. ' +
     said.join(' ') +
     ` Pose brief: ${brief}` +
     (moment ? ` The moment for this photo (follow it): ${moment}.` : '') +
     // ไม่บอก -> AI ตัววางแผนให้นั่งขอบม้านั่งเกือบทุกรูป (เช็ก 20 ต.ค. ถ่ายเผลอ หัวเราะ 4 ครั้ง นั่งขอบหน้าม้านั่งทั้ง 4)
     // แต่สั่ง "อย่านั่ง" ตรงๆ กลายเป็นยืนทั้ง 4 -> ท่าตัวอยู่ใน moments แล้ว บรรทัดนี้ใช้เฉพาะตอนจังหวะไม่ได้บอก
-    ' If the moment does not say where her body is, choose the position (standing, walking, leaning or sitting) that fits it best, ' +
+    " If the moment does not say where the model's body is, choose the position (standing, walking, leaning or sitting) that fits it best, " +
     'and do not default to sitting on the edge of a seat.' +
     ' Plan ONE posture for this exact location: use the real furniture, surfaces and open space that are there, ' +
-    'with believable weight and balance. Her face and the outfit must stay clearly visible' +
+    "with believable weight and balance. The model's face and the outfit must stay clearly visible" +
     (accessories.length ? ', and the accessories are handled naturally' : '') +
     // ไม่บอกทิศหน้า -> ตัววางแผนให้หันหน้ามองกล้องแทบทุกรูป (2 พ.ย.) · สุ่มมาให้แล้วสั่งให้ชนะการมองใน moment
     (headGaze
-      ? `. Her head and gaze in this photo (follow this; it replaces any head direction or gaze in the moment): ${headGaze}. ` +
-        'Plan her expression to suit it. '
-      : '. Plan her gaze and expression too. ') +
+      ? `. The model's head and gaze in this photo (follow this; it replaces any head direction or gaze in the moment): ${headGaze}. ` +
+        'Plan the expression to suit it. '
+      : '. Plan the gaze and expression too. ') +
     'Reply in JSON: ' +
     (auto ? '"preset" = the id of the pose type you chose; ' : '') +
-    '"pose_en" = 3 to 5 concrete English sentences (where she is in the scene, what she sits or leans on or how she stands or moves, ' +
+    '"pose_en" = 3 to 5 concrete English sentences (where the model is in the scene, what they sit or lean on or how they stand or move, ' +
     'legs, arms and hands, torso, head, gaze, expression); "pose_th" = the same idea in 1 to 2 short Thai sentences.';
   return { images, text, auto };
 }

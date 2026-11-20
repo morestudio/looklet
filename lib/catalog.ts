@@ -13,26 +13,37 @@ export type Item = { name: string; src?: string; prompt?: string; type?: string;
 export type AccessoryType = { id: string; name: string; prompt: string; show: string; face?: boolean };
 export type AccessoryInfo = { name: string; type: string }; // ชื่อ + ประเภท (id) ของของเสริมหนึ่งชิ้น
 
-// รูปใน public/images — เข้ารหัสชื่อไฟล์ไทยใน URL (React ใส่ URL รูปลง HTTP header ให้ browser โหลดล่วงหน้า header รับแต่ตัวอักษรอังกฤษ)
-const img = (file: string) => '/images/' + encodeURIComponent(file);
+// รูปตัวอย่างชุด Lolo (20 พ.ย.): ทีมทำชุดรูปตัวอย่างใหม่ (OneDrive LoLo_Image-Stock) แทนรูปตัวอย่างเดิมทั้งหมดทั้งสองหน้า
+// ไฟล์อยู่ใน public/images/lolo (แปลงจาก PNG เป็น JPEG ด้านยาวไม่เกิน 1600px: การ์ดในหน้าเว็บโหลดรูปเต็ม ส่วน AI ได้รูปย่อเหลือ 1024px อยู่แล้ว)
+// รูปที่อัปโหลดเองของแต่ละบัญชีไม่เปลี่ยน · รูปตัวอย่างเดิม (ชื่อไทยใน public/images, poses/, products/) ไม่แสดงแล้ว
+// แต่ยังเก็บไฟล์ไว้ ให้หน้าตรวจงานเปิดรูปที่ใช้สร้างภาพเก่าได้ · สูตรของภาพเก่าที่ใช้รูปตัวอย่างเดิม = รูปที่ไม่มีแล้ว (เหมือนรูปอัปโหลดที่ลบไป)
+const lolo = (file: string) => '/images/lolo/' + file;
 
 export const MODELS: Item[] = [
-  { name: 'นางแบบเอเชีย', src: img('หญิงสาวเอเชียในสตูดิโอสีขาว.png') },
-  { name: 'นางแบบผิวเข้ม', src: img('แฟชั่นสตูดิโอหญิงสาวผิวเข้ม.png') },
-  { name: 'นางแบบผมบลอนด์', src: img('แฟชั่นสตูดิโอเรียบหรูในชุดขาวและยีนส์.png') },
-  { name: 'นางแบบผมรวบ ผิวขาว', src: img('แฟชั่นสตูดิโอสไตล์มินิมอลในชุดขาวและยีนส์.png') },
-  { name: 'นางแบบผมรวบ ผิวแทน', src: img('แฟชั่นสตูดิโอเสื้อครอปและยีนส์ขาสั้น.png') },
-  { name: 'นางแบบผมยาว ริมทะเล', src: img('นางแบบผมยาวริมทะเล.jpg') }, // จากบัญชี Tae (29 ต.ค.)
+  { name: 'นางแบบเอเชีย ผมรวบ', src: lolo('model-01.jpg') },
+  { name: 'นางแบบเอเชีย ผมยาวดำ', src: lolo('model-02.jpg') },
+  { name: 'นางแบบเอเชีย ผมยาวน้ำตาล', src: lolo('model-03.jpg') },
+  { name: 'นางแบบผมบลอนด์', src: lolo('model-04.jpg') },
+  { name: 'นายแบบเอเชีย มือจับผม', src: lolo('model-05.jpg') },
+  { name: 'นายแบบเอเชีย มือล้วงกระเป๋า', src: lolo('model-06.jpg') },
 ];
 
 export const OUTFITS: Item[] = [
-  { name: 'เสื้อกีฬาชมพู + กระโปรงระบาย', src: img('ชุดสปอร์ตชมพูและกระโปรงระบายลูกไม้.png') },
-  { name: 'เชิ้ตครีม + กางเกงเบจ', src: img('ชุดเสื้อเชิ้ตสีครีมกับกางเกงขายาวสีเบจ.png') },
-  { name: 'เสื้อแขนพองขาว + ยีนส์ขาสั้น', src: img('ชุดเสื้อแขนพองสีขาวกับกางเกงยีนส์ขาสั้น.png') },
-  // จากบัญชี Tae (29 ต.ค.)
-  { name: 'เสื้อยืดสีครีม ลายภูเขา', src: img('เสื้อยืดสีครีมลายภูเขา.jpg'), type: 'top' },
-  { name: 'เสื้อแขนยาวเขียวอ่อน + กางเกงครีม', src: img('เสื้อแขนยาวสีเขียวอ่อนกับกางเกงครีม.jpg') },
-  { name: 'บิกินี่สีน้ำตาล', src: img('บิกินี่สีน้ำตาล.jpg') },
+  // เสื้อ
+  { name: 'เสื้อแขนยาวซีทรูสีเทาเข้ม ลายดอก', src: lolo('clothing-01.jpg'), type: 'top' },
+  { name: 'เสื้อสายเดี่ยวสีครีม ขอบลูกไม้', src: lolo('clothing-02.jpg'), type: 'top' },
+  { name: 'เสื้อกล้ามสีขาว ขอบสีเลือดหมู', src: lolo('clothing-03.jpg'), type: 'top' },
+  { name: 'เบลเซอร์สีดำ กระดุมสองแถว', src: lolo('clothing-05.jpg'), type: 'top' },
+  { name: 'เสื้อไหมพรมคอตั้ง ซิปครึ่ง สีเทาเข้ม', src: lolo('clothing-09.jpg'), type: 'top' },
+  { name: 'เสื้อเชิ้ตสีเทาอ่อน', src: lolo('clothing-11.jpg'), type: 'top' },
+  { name: 'แจ็กเก็ตหนังสีดำ', src: lolo('clothing-12.jpg'), type: 'top' },
+  // ท่อนล่าง
+  { name: 'กางเกงทรงบาร์เรล จีบหน้า สีเทาเข้ม', src: lolo('clothing-06.jpg'), type: 'bottom' },
+  { name: 'กางเกงขากว้าง จีบหน้า สีดำ', src: lolo('clothing-07.jpg'), type: 'bottom' },
+  { name: 'กระโปรงซาตินยาวสีฟ้าอ่อน', src: lolo('clothing-08.jpg'), type: 'bottom' },
+  { name: 'กางเกงสแล็กขาตรงสีดำ', src: lolo('clothing-10.jpg'), type: 'bottom' },
+  // ทั้งชุด
+  { name: 'เดรสสายเดี่ยวซาตินสีเขียวเสจ', src: lolo('clothing-04.jpg') },
 ];
 
 // เสื้อผ้าแยกชิ้น (29 ต.ค.): ขั้นเสื้อผ้าแบ่งเป็น เสื้อ / ท่อนล่าง / รองเท้า / ทั้งชุด แต่ละช่องเริ่มที่ "เดิม" (ของที่นางแบบใส่อยู่)
@@ -58,11 +69,12 @@ export const wearPart = (item: Item): Exclude<WearSlot, 'shoes'> =>
 export const MAX_WEAR = 4;
 
 // ของเสริม: เครื่องประดับ/กระเป๋า/รองเท้า ใส่เพิ่มบนชุด เลือกได้หลายชิ้น — { name, src, type: id ใน ACCESSORY_TYPES }
-// ตัวอย่างจากของที่บัญชี Tae อัปโหลด (29 ต.ค.) ผู้ใช้ใหม่ลองได้ทันทีโดยไม่ต้องอัปโหลดเอง
+// ตัวอย่างให้ผู้ใช้ใหม่ลองได้ทันทีโดยไม่ต้องอัปโหลดเอง: ชุด Lolo ไม่มีโฟลเดอร์ของเสริม จึงใช้รูปหลักของสินค้าตัวอย่าง (PRODUCT_SAMPLES ใน
+// lib/product-groups.ts): รองเท้า 2 คู่ (อยู่ในแท็บรองเท้าของขั้นเสื้อผ้า) + กระเป๋า 1 ใบ (ขั้นของเสริม)
 export const ACCESSORIES: Item[] = [
-  { name: 'รองเท้าผ้าใบวิ่งเทรลสีดำ', src: img('รองเท้าผ้าใบวิ่งเทรลสีดำ.png'), type: 'shoes' },
-  { name: 'รองเท้าผ้าใบวิ่งสีน้ำตาล', src: img('รองเท้าผ้าใบวิ่งสีน้ำตาล.png'), type: 'shoes' },
-  { name: 'หมวกแก๊ปผ้าสีครีม', src: img('หมวกแก๊ปผ้าสีครีม.png'), type: 'hat' },
+  { name: 'รองเท้าผ้าใบเทรลสีดำ', src: lolo('product-01.jpg'), type: 'shoes' },
+  { name: 'รองเท้าส้นสูงหัวแหลมสีดำ', src: lolo('product-05.jpg'), type: 'shoes' },
+  { name: 'กระเป๋าสะพายไหล่หนังสีดำ', src: lolo('product-09.jpg'), type: 'bag' },
 ];
 export const MAX_ACCESSORIES = 3; // รูปที่ส่งให้ AI ยิ่งเยอะ ยิ่งแพงและ AI ยิ่งใส่ไม่ครบ/ไม่ตรง (server เช็กค่านี้ด้วย)
 
@@ -129,34 +141,33 @@ export const ACCESSORY_TYPES: AccessoryType[] = [
 
 // ท่าโพสต์: ส่งรูปให้ AI ดู (lib/prompts.ts สั่งไม่ให้เอาหน้า/ชุด/ของจากรูปนี้มา) — จะเอาอะไรจากรูปเลือกได้ที่ POSE_MODES
 // ถ้าเปิดใส่หน้าจริง (REAL_FACE ใน components/TryOn.tsx): ท่าที่หันหน้าต่างจากรูปนางแบบมาก จะใส่ไม่ได้แล้วใช้หน้าจาก AI แทน
-// รูปท่าแคปจาก IG ตัดแถบแอป/ตัวนับ/ไอคอนออกแล้ว — ชื่อขึ้นต้นด้วย ยืน/เดิน/พิง/นั่ง ค้นในหน้าเว็บได้
+// ชุด Lolo (20 พ.ย.) — ชื่อขึ้นต้นด้วย ยืน/เดิน/พิง/นั่ง ค้นในหน้าเว็บได้ · ท่าของผู้ชายลงท้ายด้วย (ผู้ชาย)
 export const POSES: Item[] = [
   // ยืน
-  { name: 'ยืนเฉียง มือล้วงกระเป๋า', src: '/images/poses/pose-01.jpg' },
-  { name: 'ถือกระเป๋าโชว์ ก้มมอง', src: '/images/poses/pose-03.jpg' },
-  { name: 'ยืนยกมือข้างหนึ่ง สะพายกระเป๋า', src: '/images/poses/pose-04.jpg' },
-  { name: 'ยืนก้มหน้า มือเท้าเอว', src: '/images/poses/pose-05.jpg' },
-  { name: 'ยืนหันหลัง ถือตะกร้า', src: '/images/poses/pose-06.jpg' },
-  { name: 'ยืนบนโขดหิน มือบังแดด', src: '/images/poses/pose-07.jpg' },
+  { name: 'ยืนไขว้ขา ข้างเสา ถือกระเป๋าใบเล็ก', src: lolo('pose-05.jpg') },
+  { name: 'ยืนในแกลเลอรี มุมกว้าง ก้มมอง', src: lolo('pose-08.jpg') },
+  { name: 'ยืนเท้าเอว สะพายกระเป๋าใบใหญ่ หันมอง', src: lolo('pose-12.jpg') },
+  { name: 'ยืนข้างบันได มือล้วงกระเป๋า ใส่แว่นกันแดด', src: lolo('pose-15.jpg') },
+  { name: 'ยืนมือล้วงกระเป๋า เชิ้ตพับแขน (ผู้ชาย)', src: lolo('pose-17.jpg') },
+  { name: 'ยืนหน้าตรง มือล้วงกระเป๋า (ผู้ชาย)', src: lolo('pose-18.jpg') },
+  { name: 'ยืนก้มมอง สะพายกระเป๋าผ้า (ผู้ชาย)', src: lolo('pose-19.jpg') },
+  { name: 'ยืนเฉียง มือล้วงกระเป๋า หันมอง (ผู้ชาย)', src: lolo('pose-20.jpg') },
   // เดิน
-  { name: 'เดินกลางก้าว ถือกระเป๋า', src: '/images/poses/pose-02.jpg' },
-  { name: 'เดินถือตะกร้า', src: '/images/poses/pose-08.jpg' },
-  { name: 'ก้าวเดิน มุมต่ำ เห็นขา', src: '/images/poses/pose-09.jpg' },
+  { name: 'เดินรับแดด ผมปลิว ถือกระเป๋า', src: lolo('pose-03.jpg') },
+  { name: 'เดินก้าวยาว มือล้วงกระเป๋าแจ็กเก็ต', src: lolo('pose-06.jpg') },
   // พิง
-  { name: 'พิงประตู ถือดอกไม้', src: '/images/poses/pose-10.jpg' },
-  { name: 'พิงเสา ไขว้ขา ถือกระเป๋า', src: '/images/poses/pose-11.jpg' },
-  { name: 'เกาะเสา เตะขาไปข้างหลัง', src: '/images/poses/pose-12.jpg' },
-  { name: 'ยืนจับเท้าข้างหนึ่ง พิงผนัง', src: '/images/poses/pose-13.jpg' },
+  { name: 'พิงผนัง ถือกระเป๋าสาน', src: lolo('pose-01.jpg') },
+  { name: 'พิงผนัง ยิ้ม ยกมือ สะพายกระเป๋า', src: lolo('pose-02.jpg') },
+  { name: 'พิงผนัง มือไขว้หลัง', src: lolo('pose-09.jpg') },
+  { name: 'พิงผนัง กอดอก ยกขาข้างหนึ่ง', src: lolo('pose-10.jpg') },
+  { name: 'พิงผนังหินริมทะเล ก้มมอง', src: lolo('pose-14.jpg') },
   // นั่ง (ฉากไม่มีที่นั่ง AI จะเติมที่นั่งที่เข้ากับฉากให้ — ดู lib/prompts.ts)
-  { name: 'นั่งขอบหิน ไขว่ห้าง ถือกระเป๋า', src: '/images/poses/pose-14.jpg' },
-  { name: 'นั่งโซฟา แขนพาดพนัก', src: '/images/poses/pose-15.jpg' },
-  { name: 'นั่งบันได ขาไขว้', src: '/images/poses/pose-16.jpg' },
-  { name: 'นั่งพิงผนัง มือเท้าสะโพก หันมอง', src: '/images/poses/pose-17.jpg' },
-  { name: 'นั่งเก้าอี้ ยกแก้วดื่ม', src: '/images/poses/pose-18.jpg' },
-  { name: 'นั่งเอนเก้าอี้ เงยหน้ารับแดด', src: '/images/poses/pose-19.jpg' },
+  { name: 'นั่งม้านั่งข้างโต๊ะ ไขว่ห้าง ใส่หมวกแก๊ป', src: lolo('pose-07.jpg') },
+  { name: 'นั่งเก้าอี้ ขาแยก ใส่แว่นกันแดด', src: lolo('pose-11.jpg') },
+  { name: 'นั่งเอนโซฟา แขนพาดพนัก', src: lolo('pose-13.jpg') },
+  { name: 'นั่งชันเข่า เซลฟี่มือถือ', src: lolo('pose-16.jpg') },
   // อื่นๆ
-  { name: 'เซลฟี่กระจก ถือแก้วกาแฟ', src: '/images/poses/pose-20.jpg' },
-  { name: 'นั่งพื้น ถือมือถือ', src: '/images/poses/pose-21.jpg' }, // จากบัญชี Tae (29 ต.ค.)
+  { name: 'เซลฟี่กระจก สะพายกระเป๋า', src: lolo('pose-04.jpg') },
 ];
 
 // ---------- ท่าสำเร็จรูป: ไม่ต้องมีรูปท่า ให้ AI ตัววางแผนท่า (planPose ใน lib/ai.ts) ดูฉาก + ชุด + ของเสริม แล้วคิดท่าที่เข้ากับฉากนั้น ----------
@@ -206,11 +217,11 @@ export const POSE_PRESETS: PosePreset[] = [
       'Leaning casually against something that is really in the location (a wall, door frame, pillar, railing, counter or table), ' +
       'weight on one leg. Expression: calm and confident.',
     moments: [
-      'the back flat against the wall with one foot raised and resting flat against the wall behind her',
+      'the back flat against the wall with one foot raised and resting flat against the wall behind them',
       'one shoulder against the wall with the arms loosely crossed',
       'leaning on a door frame or pillar with one hand raised and resting on it',
       'the hip leaning against the edge of a table, counter or railing, body turned three-quarters to the camera',
-      'leaning back on both hands against a ledge or counter behind her',
+      'leaning back on both hands against a ledge or counter behind them',
     ],
   },
   {
@@ -222,7 +233,7 @@ export const POSE_PRESETS: PosePreset[] = [
       'is clearly in view and the hands interact with it. The pose stays natural, not stiff, and the outfit stays visible. Expression: a soft smile.',
     moments: [
       'standing, holding the accessory up in front of the body with both hands',
-      'sitting, with the accessory on the lap or beside her and one hand resting on it',
+      'sitting, with the accessory on the lap or beside them and one hand resting on it',
       'standing three-quarters to the camera, wearing or carrying the accessory with one hand on it',
       'leaning against something, looking down at the accessory while adjusting it',
       'standing, holding the accessory slightly out toward the camera',
@@ -249,7 +260,7 @@ export const POSE_PRESETS: PosePreset[] = [
     name: 'ถ่ายเผลอ หัวเราะ',
     hint: 'จังหวะหัวเราะจริง แต่ละรูปไม่ซ้ำกัน',
     brief:
-      'A candid caught moment: she laughs genuinely, as if the friend taking the photo just made her laugh. ' +
+      'A candid caught moment: the model laughs genuinely, as if the friend taking the photo just made them laugh. ' +
       'Expression: a real laugh with crinkled eyes.',
     // แต่ละจังหวะบอกท่าตัวด้วย (นั่ง/ยืน/เดิน/พิง) ไม่งั้น AI ให้ท่าตัวแบบเดียวทุกรูป (เช็ก 20 ต.ค.: ไม่บอก = นั่งขอบม้านั่งทั้งหมด)
     moments: [
@@ -313,7 +324,7 @@ export const HEAD_GAZES: HeadGaze[] = [
     weight: 3,
     contact: true,
     prompt:
-      'her head turned about 15 to 20 degrees off straight-on and slightly tilted, with her eyes looking into the lens',
+      'the head turned about 15 to 20 degrees off straight-on and slightly tilted, with the eyes looking into the lens',
   },
   {
     id: 'shoulder',
@@ -321,7 +332,7 @@ export const HEAD_GAZES: HeadGaze[] = [
     weight: 1,
     contact: true,
     prompt:
-      'her shoulders turned away from the camera and her head turned back over one shoulder in three-quarter view, her eyes glancing into the lens',
+      'the shoulders turned away from the camera and the head turned back over one shoulder in three-quarter view, the eyes glancing into the lens',
   },
   {
     id: 'away',
@@ -329,7 +340,7 @@ export const HEAD_GAZES: HeadGaze[] = [
     weight: 3,
     contact: false,
     prompt:
-      'her head turned about 30 to 45 degrees away from the camera in three-quarter view, her eyes looking past the camera into the distance, not at the lens',
+      'the head turned about 30 to 45 degrees away from the camera in three-quarter view, the eyes looking past the camera into the distance, not at the lens',
   },
   {
     id: 'down',
@@ -337,7 +348,7 @@ export const HEAD_GAZES: HeadGaze[] = [
     weight: 2,
     contact: false,
     prompt:
-      'her head tipped slightly down and turned a little to one side, eyelids lowered as she looks down at her hands, the outfit or something she holds, not at the camera',
+      'the head tipped slightly down and turned a little to one side, eyelids lowered, looking down at the hands, the outfit or something held in the hands, not at the camera',
   },
   {
     id: 'light',
@@ -345,7 +356,7 @@ export const HEAD_GAZES: HeadGaze[] = [
     weight: 2,
     contact: false,
     prompt:
-      'her face turned toward the main light, such as a window or the brightest side of the location, seen in three-quarter view, her eyes on the light, not at the camera',
+      'the face turned toward the main light, such as a window or the brightest side of the location, seen in three-quarter view, the eyes on the light, not at the camera',
   },
   {
     id: 'profile',
@@ -353,7 +364,7 @@ export const HEAD_GAZES: HeadGaze[] = [
     weight: 1,
     contact: false,
     prompt:
-      'her head turned to a near profile, about 60 to 70 degrees from the camera, looking ahead into the scene, not at the camera, with her features still clearly recognizable',
+      'the head turned to a near profile, about 60 to 70 degrees from the camera, looking ahead into the scene, not at the camera, with the features still clearly recognizable',
   },
 ];
 // สุ่ม n แบบไม่ซ้ำตามน้ำหนัก · สบตากล้องได้ไม่เกิน 1 แบบ · ใช้กับท่าสำเร็จรูป (AI จัดท่าฯ ให้ตัววางแผนคิดมุมหน้าเอง)
@@ -412,13 +423,15 @@ export const PROPS: Choice[] = [
 // สัดส่วนภาพ (ไม่เลือก = ตามรูปนางแบบ) — OpenAI ทำได้แค่ 2:3 / 3:2 / 1:1 แนวตั้งทุกแบบจะได้ 2:3
 
 // ฉาก: มี src = ส่งรูปฉากให้ AI ดู, มี prompt = บอก AI เป็นคำบรรยาย (ภาษาอังกฤษ AI เข้าใจแม่นกว่า)
-// ตัวอย่างเดิม (ถนนยุโรป + ฉากคำบรรยาย 6 แบบ) เอาออกตามที่ผู้ใช้ขอ · ตอนนี้ใช้รูปสถานที่จริงที่บัญชี Tae อัปโหลด (29 ต.ค.)
+// ตัวอย่างเดิม (ถนนยุโรป + ฉากคำบรรยาย 6 แบบ) เอาออกตามที่ผู้ใช้ขอ · ตอนนี้ใช้รูปสถานที่ชุด Lolo (20 พ.ย.)
 export const SCENES: Item[] = [
-  { name: 'คาเฟ่ต้นไม้', src: img('คาเฟ่ในร่มต้นไม้เยอะหน้าต่างกว้าง.jpg') },
-  { name: 'หน้าร้านต้นไม้', src: img('หน้าร้านต้นไม้ผนังลอนใส.jpg') },
-  { name: 'ชายหาด', src: img('ชายหาดทรายขาวน้ำทะเลใส.jpg') },
-  { name: 'เคาน์เตอร์คาเฟ่', src: img('เคาน์เตอร์คาเฟ่ผนังลอนใสสีชมพู.jpg') },
-  { name: 'ลานสวนร้านกาแฟ', src: img('ลานสวนร้านกาแฟต้นไม้เขตร้อน.jpg') },
+  { name: 'หน้าคาเฟ่สไตล์ยุโรป', src: lolo('background-01.jpg') },
+  { name: 'คาเฟ่ซุ้มโค้ง แดดส่อง', src: lolo('background-02.jpg') },
+  { name: 'คาเฟ่มินิมอล ผนังปูน', src: lolo('background-03.jpg') },
+  { name: 'ลานซุ้มโค้ง ต้นมะกอก', src: lolo('background-04.jpg') },
+  { name: 'ระเบียงริมทะเล', src: lolo('background-05.jpg') },
+  { name: 'สระว่ายน้ำริมทะเล', src: lolo('background-06.jpg') },
+  { name: 'หน้าร้านเสื้อผ้า', src: lolo('background-07.jpg') },
 ];
 
 // ---------- สไตล์ถ่ายภาพ (preset): แสง + เลนส์ + มุมกล้อง + ระยะ + โทนสี ที่เข้ากันเป็นชุดเดียว ----------
@@ -503,7 +516,7 @@ export type FramingChoice = { id: string; name: string; hint: string; fullBody: 
 // AI ขยับกล้องเข้าไปจนเห็นสถานที่แค่นิดเดียว คนดูตัวใหญ่ (ผู้ใช้เจอ 28 ต.ค. ร้านหน้ากระจก: คนสูง 74% ของภาพ) ใช้คำนี้ทุกที่ที่เป็นเต็มตัว
 export const FULL_BODY =
   'framed full body from head to feet, the person about 60 percent of the frame height, with clear space above ' +
-  'the head and below the feet and more of the location visible around her';
+  'the head and below the feet and more of the location visible around them';
 export const FRAMINGS: FramingChoice[] = [
   {
     id: 'full',
@@ -527,7 +540,7 @@ export const FRAMINGS: FramingChoice[] = [
     hint: 'ตัดที่เข่า เห็นชุดชัดกว่าเต็มตัว',
     fullBody: false,
     prompt:
-      'a medium shot from the knees up: the bottom edge of the frame crosses her legs just above the knees, so the lower legs and ' +
+      'a medium shot from the knees up: the bottom edge of the frame crosses the legs just above the knees, so the lower legs and ' +
       'feet are out of frame, even if the pose uses them',
   },
   {
@@ -536,7 +549,7 @@ export const FRAMINGS: FramingChoice[] = [
     hint: 'เอวขึ้นไป เห็นหน้าและเสื้อชัด',
     fullBody: false,
     prompt:
-      'a waist-up shot: the bottom edge of the frame crosses her body at the hips, so the legs and feet are out of frame, even if ' +
+      'a waist-up shot: the bottom edge of the frame crosses the body at the hips, so the legs and feet are out of frame, even if ' +
       'the pose uses them, and the upper body fills most of the frame',
   },
   {
@@ -545,7 +558,7 @@ export const FRAMINGS: FramingChoice[] = [
     hint: 'ใกล้มาก เนื้อผ้า รายละเอียด และของเสริมเต็มภาพ',
     fullBody: false,
     prompt:
-      'a tight close-up: the frame spans only from her chin to her waist, so the fabric, details and any accessories fill the frame ' +
+      'a tight close-up: the frame spans only from the chin to the waist, so the fabric, details and any accessories fill the frame ' +
       'and the legs and feet are out of frame, even if the pose uses them',
   },
 ];
@@ -567,7 +580,7 @@ export const ANGLES: AngleChoice[] = [
     id: 'eye',
     name: 'ระดับสายตา',
     hint: 'เหมือนคนยืนถ่ายกันปกติ',
-    prompt: 'camera at her eye level, held level and straight on',
+    prompt: "camera at the model's eye level, held level and straight on",
   },
   {
     id: 'side',
@@ -575,23 +588,23 @@ export const ANGLES: AngleChoice[] = [
     hint: 'กล้องเยื้องไปด้านข้างนิดๆ เห็นรูปทรงตัวและชุด',
     prompt:
       'camera at chest height, moved about 30 to 45 degrees ' +
-      'to one side of her, so we see her body and outfit at an angle rather than straight on',
+      'to one side of the model, so we see their body and outfit at an angle rather than straight on',
   },
   {
     id: 'low',
     name: 'มุมต่ำ มองขึ้น',
     hint: 'กล้องระดับเข่า ขาดูยาว ดูมั่นใจ',
     prompt:
-      'camera low, at about her knee height, tilted up toward her: ' +
-      'we look up at her, her legs look long, more of the ceiling and less of the floor is visible, and vertical lines lean slightly inward toward the top',
+      "camera low, at about the model's knee height, tilted up toward them: " +
+      'we look up at them, their legs look long, more of the ceiling and less of the floor is visible, and vertical lines lean slightly inward toward the top',
   },
   {
     id: 'high',
     name: 'มุมสูง มองลง',
     hint: 'กล้องสูงกว่าหัวนิดๆ ดูเป็นกันเอง',
     prompt:
-      'camera high, above her head height, tilted down toward her: ' +
-      'we look down on her, much more of the floor around her is visible, and her head looks slightly larger than her feet',
+      "camera high, above the model's head height, tilted down toward them: " +
+      'we look down on them, much more of the floor around them is visible, and their head looks slightly larger than their feet',
   },
 ];
 
