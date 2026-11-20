@@ -1,5 +1,5 @@
 import { availableModels, describeLighting, generateImage, planStyling, type Img } from '@/lib/ai';
-import { GPT25_SIZES, PRODUCT_AI_MODEL, isGpt25 } from '@/lib/catalog';
+import { GPT25_SIZES, PRODUCT_AI_MODEL, isGpt25, sendsInputFidelity } from '@/lib/catalog';
 import { localTime, sentences, writeGenerateLog, type LogImage, type PackshotLog } from '@/lib/genlog';
 import { cropTo, servable, svgJpeg } from '@/lib/images';
 import { readTurn, turnFill, turnPlace, turntableSvg } from '@/lib/turntable';
@@ -368,7 +368,11 @@ export const POST = post(
       ai: {
         model: String(req.model),
         params: (openai
-          ? { size, quality: String(opt.quality), input_fidelity: 'high' }
+          ? {
+              size,
+              quality: String(opt.quality),
+              ...(sendsInputFidelity(String(req.model)) ? { input_fidelity: 'high' } : {}),
+            }
           : { aspectRatio: aspect }) as Record<string, string>,
       },
       product: logOf('product')!,

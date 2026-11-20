@@ -484,6 +484,21 @@ assert.throws(
     }),
   /OpenAI/,
 );
+// GPT Image 2.6 ไม่รับ input_fidelity: ไม่ส่งตั้งแต่แรก เรียก AI ครั้งเดียว ไม่เสียคำขอที่ถูกปฏิเสธ (19 พ.ย.) · 2.5 ยังส่ง high
+for (const [model, fidelity] of [
+  ['openai:gpt-image-2.6-sunburst', null],
+  ['openai:gpt-image-2.5-sunburst', 'high'],
+]) {
+  rejectFidelity = model.includes('2.6');
+  calls.length = 0;
+  await generateImage(model, [prepared.image], 'edit', { aspect: '2:3', size: '1024x1536', quality: 'high' });
+  assert.deepEqual(
+    calls.map((c) => c.fidelity),
+    [fidelity],
+    model,
+  );
+}
+rejectFidelity = false;
 const { GET } = load('app/api/files/[...path]/route.ts');
 imageRead = { data: Buffer.alloc(3_700_000, 42), type: 'image/png' };
 const streamed = await GET(new Request('http://localhost/api/files/results/test.png'), {

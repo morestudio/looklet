@@ -100,15 +100,15 @@ export const DIRECTOR_FIELDS = [
 // but must state the head angle, give the eyes a reason, and let at most one of the three ideas look into the lens.
 const HEAD_GAZE_RULE =
   'Head and gaze are part of each idea, not a default: direct them as a photographer would for that pose, interaction and light. ' +
-  'The eyes follow the moment, for example where she is walking, what her hands are doing or touching, out of a window or toward the light, ' +
-  'past the camera into the distance, or back over her shoulder. State the head angle relative to the camera (for example three-quarter, ' +
-  'turned about 30 degrees, tipped down, near profile) and where the eyes look. Never turn her face squarely to the camera by default: across ' +
+  'The eyes follow the moment, for example where the model is walking, what their hands are doing or touching, out of a window or toward the light, ' +
+  'past the camera into the distance, or back over one shoulder. State the head angle relative to the camera (for example three-quarter, ' +
+  'turned about 30 degrees, tipped down, near profile) and where the eyes look. Never turn the face squarely to the camera by default: across ' +
   'the three candidates at most one may look into the lens, and only when direct eye contact suits that idea. Keep the face visible and recognizable.';
 
 export function directorRequest(input: DirectorInput) {
   const images = [input.person];
   const refs = [
-    'Image 1 is ONLY the model identity, face, hair and natural proportions. Do not copy her current pose or clothes.',
+    'Image 1 is ONLY the model identity, face, hair and natural proportions. Do not copy the pose or clothes in image 1.',
   ];
   if (input.outfit) {
     images.push(input.outfit);

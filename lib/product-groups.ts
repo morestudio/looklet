@@ -31,30 +31,23 @@ export const PHOTO_VIEWS = [
   { id: 'bottom', name: 'ด้านล่าง' },
   { id: 'detail', name: 'รายละเอียด' },
 ] as const;
-// สินค้าตัวอย่าง (หน้าสินค้า): รูปที่บัญชี Tae อัปโหลด (29 ต.ค.) ให้ผู้ใช้ใหม่ลองสร้างได้ทันทีโดยไม่ต้องอัปโหลดเอง
-// โครงเดียวกับรูปที่อัปโหลด (กลุ่ม = src ของรูปแรก) แต่เป็นไฟล์ใน public/images/products ไม่ได้อยู่ใน storage -> แก้/นำออก/เพิ่มรูปไม่ได้
+// สินค้าตัวอย่าง (หน้าสินค้า): ชุดรูป Lolo (20 พ.ย., แทนรูปของบัญชี Tae) ให้ผู้ใช้ใหม่ลองสร้างได้ทันทีโดยไม่ต้องอัปโหลดเอง
+// โครงเดียวกับรูปที่อัปโหลด (กลุ่ม = src ของรูปแรก = รูปหลัก) แต่เป็นไฟล์ใน public/images/lolo ไม่ได้อยู่ใน storage -> แก้/นำออก/เพิ่มรูปไม่ได้
+// รูปตัวอย่างเดิมใน public/images/products ไม่แสดงแล้ว แต่ยังเก็บไฟล์ไว้ให้หน้าตรวจงานเปิดรูปที่ใช้สร้างภาพเก่าได้
 const sample = (name: string, type: string, files: string[]): ProductPhoto[] =>
   files.map((f, i) => {
-    const src = `/images/products/${f}`,
-      root = `/images/products/${files[0]}`;
+    const src = `/images/lolo/${f}`,
+      root = `/images/lolo/${files[0]}`;
     return i
       ? { name, src, type, productGroup: root }
       : { name, src, type, productGroupName: name, productGroupType: type };
   });
 export const PRODUCT_SAMPLES: ProductPhoto[] = [
-  ...sample('เป้สะพายหลังสีดำสไตล์สปอร์ต', 'bag', ['backpack-1.jpg', 'backpack-2.jpg', 'backpack-3.jpg']),
-  ...sample('รองเท้าผ้าใบสีดำสไตล์สปอร์ต', 'shoes', [
-    'sneaker-black-1.jpg',
-    'sneaker-black-2.jpg',
-    'sneaker-black-3.jpg',
-    'sneaker-black-4.jpg',
-  ]),
-  ...sample('รองเท้าวิ่งสีเขียวสะท้อนแสง', 'shoes', [
-    'sneaker-green-1.jpg',
-    'sneaker-green-2.jpg',
-    'sneaker-green-3.jpg',
-    'sneaker-green-4.jpg',
-  ]),
+  // รูปหลักเป็นรูปเฉียง 45° เห็นทั้งคู่ ตามด้วยด้านหน้า / ด้านหลังเฉียง (หรือด้านข้าง) / ด้านหลัง
+  ...sample('รองเท้าผ้าใบเทรลสีดำ', 'shoes', ['product-01.jpg', 'product-02.jpg', 'product-03.jpg', 'product-04.jpg']),
+  ...sample('รองเท้าส้นสูงหัวแหลมสีดำ', 'shoes', ['product-05.jpg', 'product-06.jpg', 'product-07.jpg', 'product-08.jpg']),
+  // หนังนิ่ม ปากกระเป๋าย้วย (hobo) จึงเป็นทรงนิ่ม · รูปหลักด้านหน้า + ด้านข้าง
+  ...sample('กระเป๋าสะพายไหล่หนังสีดำ', 'soft-bag', ['product-09.jpg', 'product-10.jpg']),
 ];
 export const isSampleGroup = (group: ProductGroup) => !group.photos.some((p) => p.uploaded);
 
