@@ -470,6 +470,9 @@ export const GPT25_SIZES: Record<string, string> = {
 };
 // GPT Image 2.6 (หน้าสินค้า ตั้งแต่ 17 พ.ย.) ใช้ขนาดใหญ่ชุดเดียวกัน: ทดสอบ 16 พ.ย. ที่ 2048×2048 และ 1664×2496 ได้ทั้งคู่ โทเคนเท่า 2.5 ทุกตัว
 export const isGpt25 = (modelId: string) => /^openai:gpt-image-2\.[56]/.test(modelId);
+// GPT Image 2.6 ไม่รับ input_fidelity (คู่มือ OpenAI: "Omit input_fidelity on image edits") จึงไม่ส่งเลย ไม่ต้องเสียคำขอแรกที่ถูกปฏิเสธ
+// แล้วส่งใหม่ (19 พ.ย.) · รุ่นอื่นยังส่ง high · รุ่นที่ไม่รู้จักแล้วไม่รับ ยังมีการส่งใหม่แบบไม่ใส่ใน lib/ai.ts รองรับ
+export const sendsInputFidelity = (modelId: string) => !/^openai:gpt-image-2\.6/.test(modelId);
 
 // ---------- โมเดล AI + คุณภาพ (ใช้ทั้งหน้านางแบบและหน้าสินค้า) ----------
 // คุณภาพ (OpenAI): GPT Image 2.5 มีระดับ xhigh/max เพิ่ม และ high ของ 2.5 ได้รายละเอียดพอๆ กับ medium ของรุ่นก่อน

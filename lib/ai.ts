@@ -1,7 +1,7 @@
 // ai.ts — เรียก AI เจนรูป + ดูรูปของเสริม/สินค้า (ใช้ฝั่ง server เท่านั้น: อ่าน API key จาก .env หน้าเว็บไม่เคยเห็น key)
 import 'server-only';
 import sharp from 'sharp';
-import { ACCESSORY_TYPES, POSE_PRESETS, type AccessoryInfo } from './catalog';
+import { ACCESSORY_TYPES, POSE_PRESETS, sendsInputFidelity, type AccessoryInfo } from './catalog';
 import { AUTO_PROPS, NO_PROPS, PRODUCT_TYPES, PROP_STYLES } from './packshot';
 import {
   DIRECTOR_FIELDS,
@@ -153,7 +153,7 @@ export function generateImage(modelId: string, images: Img[], prompt: string, op
   if (opt.mask && provider !== 'openai') throw new ApiError('การแก้เฉพาะจุดต้องใช้โมเดล OpenAI ที่รองรับ mask');
   return provider === 'gemini'
     ? callGemini(model, images, prompt, opt.aspect)
-    : callOpenAI(model, images, prompt, opt.size, opt.quality, 'high', opt.mask);
+    : callOpenAI(model, images, prompt, opt.size, opt.quality, sendsInputFidelity(modelId) ? 'high' : null, opt.mask);
 }
 
 // ---------- ดูรูปของเสริมตอนอัปโหลด: บอกประเภท + ตั้งชื่อไทย (หน้าเว็บให้ผู้ใช้ยืนยัน/แก้ได้) ----------

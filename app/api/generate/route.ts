@@ -16,6 +16,7 @@ import {
   ACCESSORY_TYPES,
   GPT25_SIZES,
   isGpt25,
+  sendsInputFidelity,
   MAX_ACCESSORIES,
   MAX_WEAR,
   MODEL_PAGE_AI_MODEL,
@@ -365,7 +366,7 @@ const generate: Parameters<typeof post>[0] = async (req) => {
   const sceneText = text(req.scene_text);
   const params: Record<string, string> = req.model.startsWith('gemini:')
     ? { aspectRatio: opt.aspect }
-    : { size: opt.size, quality: opt.quality, input_fidelity: 'high' };
+    : { size: opt.size, quality: opt.quality, ...(sendsInputFidelity(req.model) ? { input_fidelity: 'high' } : {}) };
   const logBase = {
     ai: { model: String(req.model), params },
     model: byRole('นางแบบ')[0],
