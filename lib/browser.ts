@@ -13,6 +13,7 @@ export const USAGE_EVENT = 'looklet:usage';
 // Timeout: a hung /api/me must not hold up the header or GA. A failed load is not kept, so the next caller retries.
 export type Me = {
   role: 'superadmin' | 'customer';
+  poster?: boolean; // เปิดหน้าโปสเตอร์ได้ (superadmin + POSTER_ACCOUNTS, 27 พ.ย.)
   aid?: string;
   login?: 'code' | 'email';
   email?: string;

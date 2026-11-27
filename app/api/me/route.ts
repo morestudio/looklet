@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { get, json } from '@/lib/route';
-import { isLimited, me } from '@/lib/account';
+import { canUsePoster, isLimited, me } from '@/lib/account';
 import { serviceClient, supabaseEnabled } from '@/lib/storage-supabase';
 import { accountOf, usedTokens } from '@/lib/usage';
 
@@ -26,6 +26,7 @@ export const GET = get(async () => {
         : undefined;
     return json(200, {
       role: account?.role ?? 'customer',
+      poster: canUsePoster(account),
       aid,
       ...(account && { login: 'email', email: account.email }),
       ...(pending != null && { pending }),
@@ -36,6 +37,7 @@ export const GET = get(async () => {
   const login = row?.code ? 'code' : 'email';
   return json(200, {
     role: account!.role,
+    poster: canUsePoster(account),
     aid,
     login,
     ...(login === 'email' && { email: account!.email }),

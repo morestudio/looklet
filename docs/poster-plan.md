@@ -141,6 +141,6 @@ or much typing.
 
 ## On production (27 Nov): superadmin only
 
-Merged to main and deployed at the user's request, visible to the superadmin account only: the tab, the page (`proxy.ts`
-redirects other accounts to `/`) and the two APIs (`canUsePoster` in `lib/account.ts`, 403). Opening it to customers =
-change those three places.
+Merged to main and deployed at the user's request, visible to the superadmin and the accounts in `POSTER_ACCOUNTS`
+(`lib/auth.ts`; Tae Morestudio): the tab, the page (`proxy.ts` redirects other accounts to `/`) and the two APIs
+(`canUsePoster` in `lib/account.ts`, 403). Adding someone = their account id in that list + deploy.

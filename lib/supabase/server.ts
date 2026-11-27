@@ -3,7 +3,7 @@ import 'server-only';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Account } from '../account';
-import { authEnabled, isMember, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../auth';
+import { authEnabled, isMember, posterAllowed, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../auth';
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -32,5 +32,11 @@ export async function signedInAccount(): Promise<Account | undefined> {
   const { data } = await (await createClient()).auth.getClaims();
   const claims = data?.claims;
   if (!isMember(claims)) return undefined;
-  return { id: String(claims!.sub), email: String(claims!.email ?? ''), role: roleOf(claims) };
+  const role = roleOf(claims);
+  return {
+    id: String(claims!.sub),
+    email: String(claims!.email ?? ''),
+    role,
+    poster: posterAllowed(role, String(claims!.sub)),
+  };
 }
