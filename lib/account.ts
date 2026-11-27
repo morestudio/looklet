@@ -11,6 +11,9 @@ const store = new AsyncLocalStorage<Account>();
 export const withAccount = <T>(account: Account, fn: () => T) => store.run(account, fn);
 export const me = (): Account => store.getStore() ?? null;
 export const isSuperadmin = (a: Account = me()) => !a || a.role === 'superadmin'; // ไม่มีระบบ login (ในเครื่อง) = เปิดหน้า admin ได้
+// หน้าโปสเตอร์ยังเป็นต้นแบบ: เฉพาะ superadmin (ผู้ใช้ 27 พ.ย. "deploy that poster page to superadmin account only")
+// ที่เดียวกันอีก 2 ที่: proxy.ts (หน้า /poster) และ PageSwitch ใน components/ui.tsx (แท็บ) · เปิดให้ลูกค้า = แก้ทั้ง 3 ที่
+export const canUsePoster = (a: Account = me()) => isSuperadmin(a);
 
 // quota + upload cap apply to every signed-in account except superadmin
 export const isLimited = (a: Account = me()) => !!a && a.role !== 'superadmin';

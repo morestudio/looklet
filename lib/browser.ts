@@ -44,7 +44,7 @@ export const onMe = (listener: (me: Me | null) => void) => {
   };
 };
 if (typeof window !== 'undefined') window.addEventListener(USAGE_EVENT, () => void loadMe(true));
-const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin'];
+const USAGE_ROUTES = ['/api/generate', '/api/packshot', '/api/local-edit', '/api/refine-skin', '/api/poster'];
 
 export async function api<T = { src: string }>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {

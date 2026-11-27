@@ -501,6 +501,8 @@ export const PRODUCT_AI_MODEL = 'openai:gpt-image-2.6-sunburst';
 // ท่าเดิม เท่า 2.5, ลอกทั้งช็อต + ฉาก หน้าเอียงไปทางคนในรูปท่า แต่ตัวหนังสือบนกระเป๋าเสื้อใกล้ของจริงกว่า,
 // รูปท่า + ฉากของฉัน (2 ขั้น) ขั้น 1 ทำร้านในรูปท่าแทนฉากสีชมพูของลูกค้า 1 ครั้ง (2.5 ถูก) · โทเคน (ราคา) เท่ากัน ความเร็วพอๆ กัน
 export const MODEL_PAGE_AI_MODEL = 'openai:gpt-image-2.6-sunburst';
+// หน้าโปสเตอร์ (app/api/poster, ต้นแบบ 20 พ.ย.): ฉากหลังรอบตัวหลัก ใช้รุ่นเดียวกับหน้าสินค้า (รักษาของเดิมได้ดีกว่าใน 16 พ.ย.)
+export const POSTER_AI_MODEL = 'openai:gpt-image-2.6-sunburst';
 export const defaultQuality = (modelId: string) => (isGpt25(modelId) ? 'high' : 'medium');
 export const qualitiesFor = (modelId: string) => (isGpt25(modelId) ? QUALITIES_25 : QUALITIES);
 // "Gemini 3.1 Flash Image (แนะนำ ~1.5–5 บาท/รูป)" -> ชื่อ + รายละเอียดในวงเล็บ

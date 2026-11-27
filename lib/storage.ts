@@ -140,7 +140,7 @@ export type Stored = {
   editedFrom?: string;
   refinedFrom?: string;
   posePlan?: StoredPosePlan;
-  page?: 'product';
+  page?: 'product' | 'poster'; // poster = ฉากหลังจากหน้าโปสเตอร์ (ต้นแบบ 20 พ.ย.)
   stylePlan?: StylePlan;
   recipe?: Record<string, unknown>; // steps 1–8 choices (lib/recipe.ts)
   favorite?: boolean; // ♡ on /gallery, shared by everyone who sees the image

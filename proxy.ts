@@ -49,9 +49,10 @@ export async function proxy(request: NextRequest) {
   if (pathname === '/api/invite-login' || pathname === '/api/signup') return response;
   if (member) {
     const role = roleOf(data?.claims);
-    // หน้า admin เฉพาะ superadmin (API เช็กซ้ำ) · บัญชีที่เข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
+    // หน้า admin + หน้าโปสเตอร์ (ต้นแบบ 27 พ.ย.) เฉพาะ superadmin (API เช็กซ้ำ, canUsePoster)
+    // · บัญชีที่เข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
     if (
-      ((pathname === '/admin' || pathname.startsWith('/admin/')) && role !== 'superadmin') ||
+      ((pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/poster') && role !== 'superadmin') ||
       (pathname === '/account' && (await codeAccount(String(data!.claims!.sub))))
     ) {
       return carry(NextResponse.redirect(new URL('/', request.url)));

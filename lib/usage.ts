@@ -107,8 +107,8 @@ export async function uploadBlock(): Promise<Response | null> {
 }
 
 export type UsageEntry = {
-  page: 'model' | 'product';
-  action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin';
+  page: 'model' | 'product' | 'poster';
+  action: 'generate' | 'packshot' | 'local-edit' | 'refine-skin' | 'poster';
   model: string;
   quality: string;
   status: 'ok' | 'error';
