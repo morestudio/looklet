@@ -1,5 +1,7 @@
+import { canUsePoster } from '@/lib/account';
 import { ACCESSORY_TYPES } from '@/lib/catalog';
 import { PRODUCT_TYPES } from '@/lib/packshot';
+import { GRAPHIC_MAX, keyAspect, readGraphic } from '@/lib/poster';
 import { errorResponse, json, post } from '@/lib/route';
 import { readMeta, updateMeta } from '@/lib/storage';
 
@@ -11,7 +13,29 @@ const isUploadSrc = (v: unknown): v is string => typeof v === 'string' && v.star
 // inGallery: true = add to /gallery (♡ starts off; no-op when already there, keeps a teammate's ♡)
 // inGallery: false = bookmark off: never deletes; a result already out of history goes back there so it is never in neither place
 // inHistory: true = back into history (gallery ✎) · removing with a confirm goes through /api/delete
+// posterGraphic = กราฟิกของโปสเตอร์ที่แก้บนภาพที่สร้างแล้ว (ตำแหน่ง สี คำ แบบ; ผู้ใช้ 24 พ.ย.) เก็บทับกับภาพนั้น
+//   ภาพจาก AI ไม่เปลี่ยน (กราฟิกวาดทับในหน้าเว็บ) · posterLayout ไม่เปลี่ยน = ยังรู้ว่า AI เว้นที่ไว้ตรงไหนตอนสร้าง
+//   posterGraphicFirst = กราฟิกตอนสร้าง (เก็บตอนแก้ครั้งแรก) ให้หน้าเว็บคืนค่าได้
 export const POST = post(async (req) => {
+  if (req.posterGraphic !== undefined) {
+    if (!canUsePoster()) return errorResponse(403, 'หน้าโปสเตอร์ยังเปิดเฉพาะผู้ดูแล'); // ต้นแบบ (27 พ.ย.)
+    if (!isResultSrc(req.src)) return errorResponse(400, 'ข้อมูลไม่ถูกต้อง');
+    const old = await readMeta(req.src);
+    if (!old) return errorResponse(404, 'ไม่พบรูปนี้');
+    if (old.page !== 'poster') return errorResponse(400, 'ข้อมูลไม่ถูกต้อง');
+    const graphic = readGraphic(
+      req.posterGraphic,
+      keyAspect(typeof old.posterLayout === 'string' ? old.posterLayout : '') || '4:5',
+    );
+    const text = graphic && JSON.stringify(graphic);
+    if (!text || text.length > GRAPHIC_MAX) return errorResponse(400, 'ข้อมูลกราฟิกไม่ถูกต้อง');
+    // แก้ครั้งแรก: เก็บกราฟิกตอนสร้างไว้ (posterGraphicFirst) ให้กดคืนค่าได้ (ผู้ใช้ 25 พ.ย. "revertable") · ครั้งต่อไปไม่ทับ
+    const meta: Record<string, string> = { posterGraphic: text };
+    if (typeof old.posterGraphicFirst !== 'string' && typeof old.posterGraphic === 'string')
+      meta.posterGraphicFirst = old.posterGraphic;
+    if (!(await updateMeta(req.src, meta))) return errorResponse(404, 'ไม่พบรูปนี้');
+    return json(200, { ok: true });
+  }
   if (typeof req.inGallery === 'boolean' || req.inHistory === true) {
     if (!isResultSrc(req.src)) return errorResponse(400, 'ข้อมูลไม่ถูกต้อง');
     const old = await readMeta(req.src);

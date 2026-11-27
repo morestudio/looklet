@@ -424,7 +424,7 @@ export default function TryOn() {
       .then((lib) => {
         if (!lib || cancelled) return;
         const past = lib.results
-          .filter((r) => r.page !== 'product' && r.inHistory !== false)
+          .filter((r) => r.page !== 'product' && r.page !== 'poster' && r.inHistory !== false)
           .map((r) => ({
             src: r.src,
             caption: r.caption || 'รูปที่สร้างไว้',

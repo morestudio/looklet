@@ -37,7 +37,8 @@ const ownerFolder = (id: string) => (id === 'team' ? 'team' : `accounts/${id}`);
 export const guideObject = (owner: string, file: string) => `${ownerFolder(owner)}/guides/${file}`;
 
 export function objectKey(path: string, area: string, kind: string | null, meta: Record<string, unknown>) {
-  const folder = area === 'results' ? `results/${meta.page === 'product' ? 'product' : 'model'}` : `uploads/${kind}`;
+  const page = meta.page === 'product' || meta.page === 'poster' ? meta.page : 'model';
+  const folder = area === 'results' ? `results/${page}` : `uploads/${kind}`;
   return `${ownerFolder(guideOwner(meta.owner))}/${folder}/${path.slice(path.lastIndexOf('/') + 1)}`;
 }
 
