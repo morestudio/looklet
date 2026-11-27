@@ -3,7 +3,7 @@
 // ไม่มี Supabase ใน env -> ปล่อยผ่านทั้งหมด (ดู lib/auth.ts)
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { authEnabled, isMember, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/auth';
+import { authEnabled, isMember, posterAllowed, roleOf, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/auth';
 import { errorBody } from '@/lib/api-error';
 import { serviceClient } from '@/lib/storage-supabase';
 
@@ -49,10 +49,11 @@ export async function proxy(request: NextRequest) {
   if (pathname === '/api/invite-login' || pathname === '/api/signup') return response;
   if (member) {
     const role = roleOf(data?.claims);
-    // หน้า admin + หน้าโปสเตอร์ (ต้นแบบ 27 พ.ย.) เฉพาะ superadmin (API เช็กซ้ำ, canUsePoster)
+    // หน้า admin เฉพาะ superadmin · หน้าโปสเตอร์ (ต้นแบบ 27 พ.ย.) superadmin + POSTER_ACCOUNTS (API เช็กซ้ำ, canUsePoster)
     // · บัญชีที่เข้าด้วยโค้ด เปลี่ยนรหัสผ่านไม่ได้ (เปลี่ยนแล้วโค้ดจะใช้ไม่ได้)
     if (
-      ((pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/poster') && role !== 'superadmin') ||
+      ((pathname === '/admin' || pathname.startsWith('/admin/')) && role !== 'superadmin') ||
+      (pathname === '/poster' && !posterAllowed(role, String(data!.claims!.sub))) ||
       (pathname === '/account' && (await codeAccount(String(data!.claims!.sub))))
     ) {
       return carry(NextResponse.redirect(new URL('/', request.url)));

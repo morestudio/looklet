@@ -5,15 +5,16 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Role } from './auth';
 
 // null = ไม่ต้องเข้าสู่ระบบ (ไม่มี Supabase หรือ dev ไม่ต้อง login)
-export type Account = { id: string; email: string; role: Role } | null;
+// poster = เปิดหน้าโปสเตอร์ได้ (posterAllowed ใน lib/auth.ts ตอนอ่านบัญชี, lib/supabase/server.ts)
+export type Account = { id: string; email: string; role: Role; poster?: boolean } | null;
 
 const store = new AsyncLocalStorage<Account>();
 export const withAccount = <T>(account: Account, fn: () => T) => store.run(account, fn);
 export const me = (): Account => store.getStore() ?? null;
 export const isSuperadmin = (a: Account = me()) => !a || a.role === 'superadmin'; // ไม่มีระบบ login (ในเครื่อง) = เปิดหน้า admin ได้
-// หน้าโปสเตอร์ยังเป็นต้นแบบ: เฉพาะ superadmin (ผู้ใช้ 27 พ.ย. "deploy that poster page to superadmin account only")
-// ที่เดียวกันอีก 2 ที่: proxy.ts (หน้า /poster) และ PageSwitch ใน components/ui.tsx (แท็บ) · เปิดให้ลูกค้า = แก้ทั้ง 3 ที่
-export const canUsePoster = (a: Account = me()) => isSuperadmin(a);
+// หน้าโปสเตอร์ยังเป็นต้นแบบ: superadmin + POSTER_ACCOUNTS ใน lib/auth.ts (ผู้ใช้ 27 พ.ย.) · ไม่มีระบบ login (ในเครื่อง) = ใช้ได้
+// ที่เดียวกันอีก 2 ที่: proxy.ts (หน้า /poster) และแท็บใน PageSwitch (อ่าน poster จาก /api/me)
+export const canUsePoster = (a: Account = me()) => !a || a.role === 'superadmin' || a.poster === true;
 
 // quota + upload cap apply to every signed-in account except superadmin
 export const isLimited = (a: Account = me()) => !!a && a.role !== 'superadmin';

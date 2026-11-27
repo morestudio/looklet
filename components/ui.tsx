@@ -381,9 +381,9 @@ export function Brand() {
 // 'gallery' -> no active tab
 // แอดมิน lives in AccountMenu (components/AuthForm.tsx) since 17 Nov
 export function PageSwitch({ current }: { current: 'model' | 'product' | 'poster' | 'admin' | 'gallery' }) {
-  // แท็บโปสเตอร์ (ต้นแบบ): เฉพาะ superadmin (27 พ.ย., canUsePoster ใน lib/account.ts) · ไม่มีระบบ login (ในเครื่อง) = เห็น
+  // แท็บโปสเตอร์ (ต้นแบบ): superadmin + POSTER_ACCOUNTS (27 พ.ย., /api/me poster) · ไม่มีระบบ login (ในเครื่อง) = เห็น
   const me = useMe();
-  const poster = !authEnabled || me?.role === 'superadmin';
+  const poster = !authEnabled || me?.poster === true;
   const tab = (id: 'model' | 'product' | 'poster', href: string, label: ReactNode) => (
     <Link
       href={href}

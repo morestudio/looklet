@@ -1636,3 +1636,20 @@ test('poster page is superadmin-only for now (27 Nov): a customer is refused bef
   const edit = await update.POST({ src: '/api/files/results/x.jpg', posterGraphic: {} });
   assert.equal(edit.status, 403, 'graphic edits too');
 });
+
+test('poster access (27 Nov): superadmin and Tae Morestudio only', () => {
+  const { app } = setup();
+  const { canUsePoster } = app('lib/account.ts');
+  const { posterAllowed, POSTER_ACCOUNTS } = app('lib/auth.ts');
+  const tae = '23c15a27-89f5-4309-9d97-a089c76fc898';
+  assert.deepEqual(POSTER_ACCOUNTS, [tae], 'only Tae Morestudio is added');
+  assert.equal(posterAllowed('customer', tae), true);
+  assert.equal(posterAllowed('customer', 'someone-else'), false);
+  assert.equal(posterAllowed('superadmin', 'admin'), true);
+  assert.equal(posterAllowed('customer', undefined), false);
+  // the account read at sign-in carries the answer (lib/supabase/server.ts)
+  assert.equal(canUsePoster({ id: tae, email: 'x', role: 'customer', poster: true }), true);
+  assert.equal(canUsePoster({ id: 'someone-else', email: 'x', role: 'customer', poster: false }), false);
+  assert.equal(canUsePoster({ id: 'admin', email: 'x', role: 'superadmin' }), true);
+  assert.equal(canUsePoster(null), true, 'no login (local) = open');
+});

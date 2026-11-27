@@ -22,4 +22,8 @@ export const isMember = (claims: JwtPayload | null | undefined) => appMeta(claim
 export type Role = 'superadmin' | 'customer';
 export const roleOf = (claims: JwtPayload | null | undefined): Role =>
   appMeta(claims)?.role === 'superadmin' ? 'superadmin' : 'customer';
+// หน้าโปสเตอร์ (ต้นแบบ): superadmin + บัญชีในรายการนี้ (ผู้ใช้ 27 พ.ย.: เพิ่ม Tae Morestudio) · ใช้ใน proxy.ts, canUsePoster, /api/me
+export const POSTER_ACCOUNTS = ['23c15a27-89f5-4309-9d97-a089c76fc898']; // Tae Morestudio (บัญชีโค้ดเชิญ)
+export const posterAllowed = (role: Role, id: string | undefined) =>
+  role === 'superadmin' || (!!id && POSTER_ACCOUNTS.includes(id));
 // how an account signs in (code or email) is not stored here: accounts.code says it (null = email + password)
